@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.29 instructions
+                 Amiga Monitor v1.30 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -559,6 +559,9 @@ x -- Exit
 
 Version history:
 ----------------
+1.30 ->
+ - many internal changes: global variable base register changed, uses
+   new library call macros...
 1.29 ->
  - added lib(), dev(), res() and task() to expression parser.
 1.28 ->
@@ -655,7 +658,7 @@ Version history:
 
 
 
-Amiga Monitor v1.29 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.30 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
 way of distribution is the zoo-file 'mon129.zoo'.

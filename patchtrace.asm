@@ -8,24 +8,25 @@
 ;
 ; Modified 1990-07-13 --> Now works if the vector base register is
 ;			  nonzero on a 68010/20/30/40... system
+;	   1990-08-22 --> added includes, added this to makefile, uses
+;			  new macros...
 ;
 
-ExecBase	equ	4
-_LVOSupervisor	equ	-30
-_LVOAllocMem	equ	-$c6
-MEMF_PUBLIC	equ	1
-AttnFlags	EQU	$128
-AFB_68010	EQU	0
+		include	'include.i'
+		include	'offsets.i'
+		include	'macros.i'
+
 trace_vector	equ	$24	;offset from start of vector table
 
 
-	move.l	ExecBase,a6
+	getbase	Exec
+
 	lea	supercode(pc),a5
-	jsr	_LVOSupervisor(a6)	;get VBR into a4
+	lib	Supervisor		;get VBR into a4
 
 	moveq	#copylen+4,d0
 	moveq	#MEMF_PUBLIC,d1
-	jsr	_LVOAllocMem(a6)
+	lib	AllocMem
 	tst.l	d0
 	beq.s	exit
 	move.l	d0,a1

@@ -2,17 +2,27 @@
 # Makefile for Amiga monitor
 # created for v1.25 by TR on 1990-05-24
 #
+# mod. 1990-08-22
+#
 
 .SUFFIXES: .asm .o
 
+VER = 1.30
 ASM = a68k
-AFLAGS = -iai: -f -q100
+AOPTS = -iai: -f -q100
 LNK = blink
-LFLAGS = nodebug verbose
+LOPTS = nodebug verbose
 
 .asm.o:
-	$(ASM) $(AFLAGS) $*.asm
+	$(ASM) $(AOPTS) $*.asm
+
+all:	mon patchtrace
 
 mon:	mon.o
-	$(LNK) $(LFLAGS) from mon.o to mon
+	$(LNK) $(LOPTS) from mon.o to mon
 
+patchtrace:	patchtrace.o
+	$(LNK) $(LOPTS) from patchtrace.o to patchtrace
+
+mon$(VER).zoo:	mon mon.doc patchtrace
+	zoo a mon$(VER).zoo mon mon.doc patchtrace

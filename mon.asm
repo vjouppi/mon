@@ -20,6 +20,7 @@
 * v1.27 -> last mod. 1990-06-26    *
 * v1.28 -> last mod. 1990-07-13	   *
 * v1.29 -> last mod. 1990-08-07	   *
+* v1.30 -> last mod. 1990-08-22	   *
 ************************************
 
 ;DEBUG	set	1
@@ -359,6 +360,9 @@
 ;		- task(clinum) can also be used to find CLI processes,
 ;		  task(0) finds current task.
 ;
+;   1990-08-22 --> v1.30
+;		- uses new macros
+;
 
 		include	'exec/types.i'
 		include	'include.i'
@@ -368,7 +372,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.29'
+		dc.b	'1.30'
 		endm
 
 *** macro to display a single character ***
@@ -384,7 +388,7 @@ emitwin		macro
 
 *** start output line ***
 startline	macro
-		lea	OutputBuffer(a5),a3
+		lea	OutputBuf(a4),a3
 		endm
 
 *** end output line (line feed+NULL) ***
@@ -457,7 +461,7 @@ ILLEGAL		equ	$4AFC	;illegal instruction (used by breakpoints)
 
 		STRUCTURE MonitorData,0
 ; first the long word variables
-		 APTR	DosBase		;DOS library base
+		 APTR	_DosBase	;DOS library base
 		 APTR	WBenchMsg	;Workbench startup message pointer
 		 APTR	MyTask		;pointer to TCB of monitor process
 		 LONG	StackSize	;monitor stack size
@@ -491,8 +495,8 @@ ILLEGAL		equ	$4AFC	;illegal instruction (used by breakpoints)
 		 APTR	GoBrkPtr	;address of skipped brkpoint struct
 
 ; the output buffer must be long word aligned
-		 STRUCT	OutputBuffer,LEN
-		 STRUCT	InputBuffer,LEN
+		 STRUCT	OutputBuf,LEN
+		 STRUCT	InputBuf,LEN
 		 STRUCT	History,LEN*NLINES
 		 STRUCT	CmdLineBuf,LEN
 		 STRUCT DevNameBuf,DNBUFSIZE
@@ -595,40 +599,40 @@ monitor_code_start
 
 		moveq	#0,d5
 		move.l	d5,a1
-		call	ExecBase,FindTask	;find our task
-		move.l	D0,A4
-		tst.l	pr_CLI(A4)		;started from CLI ?
+		lib	Exec,FindTask		;find our task
+		move.l	D0,a5
+		tst.l	pr_CLI(a5)		;started from CLI ?
 		bne.s	main			;branch if yes
-		lea	pr_MsgPort(A4),A0	;started from workbench
-		call	WaitPort		;wait for WB startup message
-		lea	pr_MsgPort(A4),A0
-		call	GetMsg			;get it
+		lea	pr_MsgPort(a5),A0	;started from workbench
+		lib	WaitPort		;wait for WB startup message
+		lea	pr_MsgPort(a5),A0
+		lib	GetMsg			;get it
 		move.l	D0,d5
 
 main		move.l	#MonitorData_SIZE,d0
 		move.l	#MEMF_PUBLIC!MEMF_CLEAR,d1
-		call	AllocMem
+		lib	AllocMem
 		tst.l	d0
 		beq	exit10
-		move.l	d0,a5
+		move.l	d0,a4
 
-		move.l	4(sp),StackSize(a5)
-		move.l	d5,WBenchMsg(a5)
-		move.l	a4,MyTask(a5)
+		move.l	4(sp),StackSize(a4)
+		move.l	d5,WBenchMsg(a4)
+		move.l	a5,MyTask(a4)
 
 *
 * OPEN DOS LIBRARY
 *
 		lea	dosname(pc),A1
 		moveq	#0,d0
-		call	OpenLibrary
-		move.l	d0,DosBase(a5)
+		lib	OpenLibrary
+		move.l	d0,_DosBase(a4)
 		beq	exit9
 
 		moveq	#-1,d4			window width
 		moveq	#-1,d5			window height
 
-		tst.l	WBenchMsg(a5)
+		tst.l	WBenchMsg(a4)
 		bne.s	cmdline_done		;don't try to parse cmdline
 						;if started from Workbench
 
@@ -662,13 +666,13 @@ put_usage	lea	usage_txt(pc),a0
 		bra	exit8
 
 no_opt		bsr	GetName
-		move.l	d0,InitialFileName(a5)
+		move.l	d0,InitialFileName(a4)
 
 cmdline_done
 ;
 ; set default number base, currently hex....
 ;
-		move.b	#16,defbase(a5)
+		move.b	#16,defbase(a4)
 ;
 ; Find the width and height of workbench screen before opening the window
 ; so this program works ok with NTSC & PAL & LACEWB & MoreRows etc..
@@ -676,25 +680,25 @@ cmdline_done
 ;
 		lea	intuname(pc),A1
 		moveq	#33,D0		  version 33: kickstart 1.2 or later
-		call	OpenLibrary
+		lib	OpenLibrary
 		tst.l	D0
 		beq	exit8
 		move.l	d0,a6
 
-		lea	OutputBuffer(a5),a0
+		lea	OutputBuf(a4),a0
 		lea	20(a0),a2
-		suba.l	a1,a1
+		clra	a1
 		moveq	#sc_Height+2,d0		enough length to get width and height
 		moveq	#WBENCHSCREEN,d1
-		call	GetScreenData
+		lib	GetScreenData
 		move.l	d0,d2		  	save result
 
 		move.l	a6,a1
-		call	ExecBase,CloseLibrary
+		lib	Exec,CloseLibrary
 		tst.l	d2
 		beq	exit8
 
-		lea	OutputBuffer(a5),a0
+		lea	OutputBuf(a4),a0
 		movem.w	sc_Width(a0),d1-d2	this sign-extends to long
 		moveq	#0,d0
 
@@ -724,28 +728,28 @@ cmdline_done
 		lea	windowfmt(pc),a0
 		bsr	fmtstring
 
-		lea	OutputBuffer(a5),a0
+		lea	OutputBuf(a4),a0
 		move.l	a0,d1
 		move.l	#MODE_OLDFILE,D2
-		call	DosBase(a5),Open		open the window
-		move.l	D0,WinFile(A5)
+		lib	Dos,Open		open the window
+		move.l	D0,WinFile(a4)
 		bne.s	01$
 		lea	win_openerr_txt(pc),a0
 		bsr	puts_stdout
 		bra	exit8
-01$		move.l	D0,OutputFile(A5) 	;default output is monitor window
+01$		move.l	D0,OutputFile(a4) 	;default output is monitor window
 
 ;
 ; set the the task trap code and data pointers
 ;
 		lea	trapreturn(pc),A1
-		move.l	MyTask(A5),A0
-		move.l	TC_TRAPCODE(A0),OldTrapCode(A5)	;save old TrapCode
-		move.l	TC_Userdata(a0),OldUserData(a5)	; & UserData
+		move.l	MyTask(a4),A0
+		move.l	TC_TRAPCODE(A0),OldTrapCode(a4)	;save old TrapCode
+		move.l	TC_Userdata(a0),OldUserData(a4)	; & UserData
 		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
-		move.l	a5,TC_Userdata(a0)
+		move.l	a4,TC_Userdata(a0)
 ; save pr_ReturnAddr pointer
-		move.l	pr_ReturnAddr(a0),OldRetAddr(a5)
+		move.l	pr_ReturnAddr(a0),OldRetAddr(a4)
 ;
 ; find pointer to intuition window structure of the monitor output window
 ; also find pointer to the console device unit structure
@@ -754,22 +758,22 @@ cmdline_done
 		move.l	d0,a0
 		move.l	fh_Type(a0),a0
 		moveq	#ACTION_DISK_INFO,d0
-		lea	OutputBuffer(a5),a1	we use output buffer for InfoData
+		lea	OutputBuf(a4),a1	we use output buffer for InfoData
 		move.l	a1,d1
 		lsr.l	#2,d1			infodataptr APTR->BPTR
 		bsr	sendpacket
 		tst.l	d0
 		beq	exit
 
-		lea	OutputBuffer(a5),a0
+		lea	OutputBuf(a4),a0
 		move.l	id_InUse(a0),a0		console IORequest ptr
-		move.l	IO_UNIT(a0),ConsoleUnit(a5)
+		move.l	IO_UNIT(a0),ConsoleUnit(a4)
 
 ;
 ; set default disk device name ("trackdisk.device")
 ;
 		lea	tdname(pc),a0
-		lea	DevNameBuf(a5),a1
+		lea	DevNameBuf(a4),a1
 02$		move.b	(a0)+,(a1)+
 		bne.s	02$
 
@@ -780,40 +784,40 @@ cmdline_done
 		sub.w	#MONSTACK,a0	;a safe area from this task's stack
 		move.l	a0,d0
 		and.b	#$fc,d0			;long word align
-		move.l	d0,RegSP(a5)		;set stack pointer
-		move.l	d0,StackHigh(a5)
+		move.l	d0,RegSP(a4)		;set stack pointer
+		move.l	d0,StackHigh(a4)
 		lea	returncode(pc),a1
 		move.l	d0,a0
 		move.l	a1,(a0)+
-		move.l	StackSize(a5),a1
+		move.l	StackSize(a4),a1
 		sub.w	#MONSTACK,a1
 		move.l	a1,(a0)
 ; set pr_ReturnAddr
-		move.l	MyTask(a5),a1
+		move.l	MyTask(a4),a1
 		move.l	a0,pr_ReturnAddr(a1)
 ;;
 ;; set the PC-register to an odd value, so jump/go/trace without
 ;; setting pc is error...
 ;;
 ;;		moveq	#-1,d0
-;;		move.l	d0,RegPC(a5)
+;;		move.l	d0,RegPC(a4)
 
 		lea	welcometxt(pc),A0
 		bsr	printstring_a0_window		;display welcome message
 
 ; this is for error handling...and for the return from the trap routine...
-		move.l	sp,StackPtr(a5)
-		move.l	InitialFileName(a5),d1
+		move.l	sp,StackPtr(a4)
+		move.l	InitialFileName(a4),d1
 		beq.s	mainloop
 		bsr	loadseg1
 
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
-mainloop	move.l	StackPtr(a5),sp		;restore stack pointer
-		bclr	#MONB_QTRACE,flags(a5)
+mainloop	move.l	StackPtr(a4),sp		;restore stack pointer
+		bclr	#MONB_QTRACE,flags(a4)
 
 		moveq	#0,D0		;clear CTRL-C/D/E/F flags
 		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
-		call	ExecBase,SetSignal
+		lib	Exec,SetSignal
 
 		lea	main_prompt(pc),A0
 		bsr	printstring_a0_window	;display prompt
@@ -823,8 +827,8 @@ mainloop	move.l	StackPtr(a5),sp		;restore stack pointer
 		move.b	(A3)+,D0
 		bne.s	ml1
 
-		move.l	WinFile(A5),D0		;empty command line
-		cmp.l	OutputFile(A5),D0
+		move.l	WinFile(a4),D0		;empty command line
+		cmp.l	OutputFile(a4),D0
 		beq.s	mainloop
 
 		emit	LF
@@ -859,41 +863,41 @@ info		lea	infotext(pc),A0
 		bra.s	hinfo
 
 *** EXIT FROM MONITOR ***
-exit		move.l	MyTask(A5),A0
-		move.l	OldTrapCode(A5),TC_TRAPCODE(A0)	 ;restore old TrapCode
-		move.l	OldUserData(a5),TC_Userdata(a0)	 ; and UserData
-		move.l	OldRetAddr(a5),pr_ReturnAddr(a0) ; and ReturnAddr
+exit		move.l	MyTask(a4),A0
+		move.l	OldTrapCode(a4),TC_TRAPCODE(A0)	 ;restore old TrapCode
+		move.l	OldUserData(a4),TC_Userdata(a0)	 ; and UserData
+		move.l	OldRetAddr(a4),pr_ReturnAddr(a0) ; and ReturnAddr
 
 		bsr	FreeAllMem		free all memory allocated by commands & and (
 		bsr	remove_all_breaks	remove all breakpoints (free memory)
 		bsr	clear_all_variables
-		move.l	DosBase(a5),a6
-		move.l	SegList(A5),D1		if a seglist is loaded, unload it
+		getbase	Dos
+		move.l	SegList(a4),D1		if a seglist is loaded, unload it
 		beq.s	exit7
-		call	UnLoadSeg
+		lib	UnLoadSeg
 
-exit7		move.l	OutputFile(A5),D1	if output is redirected, close output file
-		cmp.l	WinFile(A5),D1
+exit7		move.l	OutputFile(a4),D1	if output is redirected, close output file
+		cmp.l	WinFile(a4),D1
 		beq.s	exit7a
-		call	Close
+		lib	Close
 
-exit7a		move.l	WinFile(A5),D1
-		call	Close			close window file
+exit7a		move.l	WinFile(a4),D1
+		lib	Close			close window file
 
-exit8		move.l	DosBase(a5),a1
-		call	ExecBase,CloseLibrary	close dos library
+exit8		getbase	Dos,a1
+		lib	Exec,CloseLibrary	close dos library
 
-exit9		move.l	WBenchMsg(A5),D3	started from workbench??
+exit9		move.l	WBenchMsg(a4),D3	started from workbench??
 
-		move.l	a5,a1
+		move.l	a4,a1
 		move.l	#MonitorData_SIZE,d0
-		call	FreeMem
+		lib	FreeMem
 
 exit10		tst.l	d3
 		beq.s	exit99
-		call	Forbid		;forbid, so WB can't UnloadSeg before exit
+		lib	Forbid		;forbid, so WB can't UnloadSeg before exit
 		move.l	D3,A1
-		call	ReplyMsg	;reply the WB startup message
+		lib	ReplyMsg	;reply the WB startup message
 
 exit99		moveq	#0,D0	;error return code
 		rts		;return control to the system...
@@ -904,10 +908,10 @@ dir		addq.l	#2,A3
 		move.l	#fib_SIZEOF,D0	;allocate FileInfoBlock
 *** we use the same memory space for the InfoData structure
 		move.l	#MEMF_PUBLIC!MEMF_CLEAR,D1
-		call	ExecBase,AllocMem
+		lib	Exec,AllocMem
 		tst.l	D0
 		beq	OutOfMem
-		move.l	D0,A4		;we keep the fib-pointer in A4
+		move.l	D0,a5		;we keep the fib-pointer in a5
 
 		bsr	GetName
 		move.l	d0,d1
@@ -916,51 +920,51 @@ dir		addq.l	#2,A3
 		move.l	a0,d1
 
 dir_lock	moveq	#SHARED_LOCK,D2
-		call	DosBase(a5),Lock
+		lib	Dos,Lock
 		move.l	D0,D7		;we keep the lock pointer in D7
 		beq.s	dir7		;if i/o error
 		move.l	D7,D1
-		move.l	A4,D2
-		call	Examine
+		move.l	a5,D2
+		lib	Examine
 		tst.l	D0
 		beq.s	dir7		;branch if Examine failed
-		tst.l	fib_DirEntryType(A4)
+		tst.l	fib_DirEntryType(a5)
 		bpl.s	dir1
 		bsr.s	DisplayDirLine	;if Examine found a file, display information about it
 		bra.s	dir7b		;then number of free blocks
 dir1	;Examine found a directory, ExNext() it
 		move.l	D7,D1
-		move.l	A4,D2
-		call	ExNext
+		move.l	a5,D2
+		lib	ExNext
 		tst.l	D0
 		bne.s	dir2
-		call	IoErr
+		lib	IoErr
 		cmp.l	#ERROR_NO_MORE_ENTRIES,D0
 		bne.s	dir7a		;branch if a real dos error
 		bra.s	dir7b		;no more entries, the display free blocks
 dir2		bsr.s	DisplayDirLine
 		bne.s	dir7b		;branch if user pressed break (control-c)
 		bra.s	dir1
-dir7		call	IoErr
+dir7		lib	IoErr
 dir7a		tst.l	D0
 		beq.s	dir7c
 		bsr	DOSErr
 		bra.s	dir7c
 dir7b	;directory ready, now display number of free blocks
 		move.l	D7,D1
-		move.l	A4,D2
-		call	Info		;get info about the disk
+		move.l	a5,D2
+		lib	Info		;get info about the disk
 		tst.l	D0
 		beq.s	dir7
-		move.l	id_NumBlocks(A4),D0
-		sub.l	id_NumBlocksUsed(A4),D0
+		move.l	id_NumBlocks(a5),D0
+		sub.l	id_NumBlocksUsed(a5),D0
 		lea	freeblkfmt(pc),a0
 		bsr	printf
 dir7c		move.l	D7,D1
-		call	UnLock
-dir8		move.l	A4,A1
+		lib	UnLock
+dir8		move.l	a5,A1
 		move.l	#fib_SIZEOF,D0
-		call	ExecBase,FreeMem		;free FileInfoBlock
+		lib	Exec,FreeMem		;free FileInfoBlock
 		bra	mainloop
 
 OutOfMem	;print error message 'out of memory'
@@ -968,9 +972,9 @@ OutOfMem	;print error message 'out of memory'
 		bra	errcom
 
 *** PRINT ONE LINE OF DIREECTORY ***
-DisplayDirLine	;fib-pointer in A4
+DisplayDirLine	;fib-pointer in a5
 		startline
-		lea	fib_FileName(A4),A1
+		lea	fib_FileName(a5),A1
 		moveq	#0,D1
 txmovloop	;copy file name to output buffer
 		move.b	(A1)+,D0
@@ -984,7 +988,7 @@ txfloop		putchr	SPACE
 txmov2		cmp.w	#24,D1
 		bcs.s	txfloop
 		putchr	SPACE
-		tst.l	fib_DirEntryType(A4)	;positive=dir, negative=file
+		tst.l	fib_DirEntryType(a5)	;positive=dir, negative=file
 		bmi.s	txputlen
 		lea	dnam(pc),A1		;'(dir)'
 		bsr	putstring
@@ -992,9 +996,9 @@ txmov2		cmp.w	#24,D1
 
 txputlen	movem.l	a2/a6,-(sp)
 		lea	numfmt(pc),a0
-		lea	fib_Size(a4),a1
+		lea	fib_Size(a5),a1
 		lea	putch(pc),a2
-		call	ExecBase,RawDoFmt
+		lib	Exec,RawDoFmt
 		movem.l	(sp)+,a2/a6
 		bra.s	txmov10
 txmov9		endline
@@ -1011,22 +1015,22 @@ DOSErr		;error number in D0
 		bra	printstring_a0_window
 
 **** LOAD SEGMENT ****
-loadseg		tst.l	SegList(A5)
+loadseg		tst.l	SegList(a4)
 		bne.s	oldseg		;can't do this before old segment is unloaded
 
 		bsr	GetName
 		move.l	d0,d1
 		beq	error
 
-loadseg1	call	DosBase(a5),LoadSeg
-		move.l	D0,SegList(A5)
+loadseg1	lib	Dos,LoadSeg
+		move.l	D0,SegList(a4)
 		beq.s	segerr		;branch if LoadSeg failed
 
 		move.l	d0,d1
 		lsl.l	#2,d0		;BPTR->APTR
 		addq.l	#4,d0		;skip next segment pointer
-		move.l	d0,RegPC(a5)	;PC points to first instruction
-		move.l	d0,Addr(a5)
+		move.l	d0,RegPC(a4)	;PC points to first instruction
+		move.l	d0,Addr(a4)
 		move.l	d0,-(sp)
 
 		moveq	#0,d0
@@ -1054,7 +1058,7 @@ oldseg		;message 'unload old segment first'
 		bra.s	mjump
 
 segerr		;come here if LoadSeg failed
-		call	IoErr
+		lib	IoErr
 		bsr.s	DOSErr
 mjump		bra	mainloop
 
@@ -1064,14 +1068,14 @@ nosegerr	;error 'no segment loaded'
 		bra.s	mjump
 
 **** UNLOAD SEGMENT ****
-unloadseg	move.l	SegList(A5),D1
+unloadseg	move.l	SegList(a4),D1
 		beq.s	nosegerr	;branch if no segment
-		call	DosBase(a5),UnLoadSeg
-		clr.l	SegList(A5)	;remember to clear the seglist pointer
+		lib	Dos,UnLoadSeg
+		clr.l	SegList(a4)	;remember to clear the seglist pointer
 		bra.s	mjump
 
 **** SEGMENT LIST ****
-show_seglist	move.l	SegList(A5),D4
+show_seglist	move.l	SegList(a4),D4
 		beq.s	nosegerr	;branch if no seglist
 		lea	seghead(pc),A0
 		bsr	printstring_a0
@@ -1112,8 +1116,8 @@ errx01		bra	error
 ; called before exit and when the cv-command is executed
 ; changes d2 and a6
 clear_all_variables
-		move.l	ExecBase,a6
-		move.l	VarList(a5),d2
+		getbase	Exec
+		move.l	VarList(a4),d2
 
 clrvarloop	tst.l	d2
 		beq.s	cleared_vars
@@ -1121,10 +1125,10 @@ clrvarloop	tst.l	d2
 		moveq	#0,d0
 		move.w	var_Length(a1),d0
 		move.l	var_Next(a1),d2
-		call	FreeMem
+		lib	FreeMem
 		bra.s	clrvarloop
 
-cleared_vars	clr.l	VarList(a5)
+cleared_vars	clr.l	VarList(a4)
 		rts
 
 ;
@@ -1139,7 +1143,7 @@ set_command	addq.l	#1,a3
 		tst.b	(a3)
 		bne.s	set_variable
 ; show variables
-		move.l	VarList(a5),d5
+		move.l	VarList(a4),d5
 		bne.s	showvar1
 		lea	novartxt(pc),a0
 		bsr	printstring_a0_window	;'no variables defined'
@@ -1164,13 +1168,13 @@ xvar_end	bra	mainloop
 set_variable	move.b	(a3),d0
 		bsr	isalpha
 		bcc	error
-		move.l	a3,a4
+		move.l	a3,a5
 01$		move.b	(a3)+,d0
 		bsr	isalnum
 		bcs.s	01$
 		subq.l	#1,a3
 		move.l	a3,a2
-		cmp.l	a3,a4
+		cmp.l	a3,a5
 		beq	error
 		bsr	skipspaces
 		tst.b	(a3)
@@ -1179,11 +1183,11 @@ set_variable	move.b	(a3),d0
 		beq.s	02$
 		subq.l	#1,a3
 02$		bsr	get_expr
-		move.l	a4,a0
+		move.l	a5,a0
 		clr.b	(a2)
 		bsr.s	setvar
 		bra.s	xvar_end
-remvar		move.l	a4,a0
+remvar		move.l	a5,a0
 		clr.b	(a2)
 		bsr	findvar
 		bcs.s	xvar_end
@@ -1219,7 +1223,7 @@ addvar		movem.l	d2/a2-a3/a6,-(sp)
 		sub.l	a2,d0
 		move.l	d0,d2
 		move.l	#MEMF_CLEAR!MEMF_PUBLIC,d1
-		call	ExecBase,AllocMem
+		lib	Exec,AllocMem
 		tst.l	d0
 		beq	OutOfMem
 		move.l	d0,a3
@@ -1234,7 +1238,7 @@ addvar		movem.l	d2/a2-a3/a6,-(sp)
 ;# ->v1.21 ... sorting is now case insensitive
 ;#
 ;
-		lea	VarList(a5),a2
+		lea	VarList(a4),a2
 06$		move.l	(a2),d0
 		beq.s	add_now
 		move.l	d0,a0
@@ -1272,7 +1276,7 @@ str_comp_ch	move.b	(a1)+,d0
 ;# ->v1.21  1990-01-06
 ;# variable names are now case insensitive
 ;#
-findvar		move.l	VarList(a5),d1
+findvar		move.l	VarList(a4),d1
 fvloop		beq.s	varnotfound
 		move.l	d1,a1
 		movem.l	d1/a0-a1,-(sp)
@@ -1293,7 +1297,7 @@ varnotfound	sec
 ;
 ; remove variable, variable structure pointer in a0
 ;
-deletevar	lea	VarList(a5),a1
+deletevar	lea	VarList(a4),a1
 01$		cmp.l	(a1),a0
 		beq.s	02$
 		move.l	(a1),d1
@@ -1305,12 +1309,12 @@ deletevar	lea	VarList(a5),a1
 		moveq	#0,d0
 		move.w	var_Length(a1),d0
 		move.l	a6,-(sp)
-		call	ExecBase,FreeMem
+		lib	Exec,FreeMem
 		move.l	(sp)+,a6
 09$		rts
 
 *** MEMORY LIST ***
-showmemlist	move.l	MemoryList(A5),D5
+showmemlist	move.l	MemoryList(a4),D5
 		bne.s	showm2
 not_at_all_allocated
 		lea	no_alloc(pc),A0
@@ -1340,17 +1344,17 @@ showmem_end	bra	mainloop
 
 *** FREE ALL MEMORY ALLOCATED WITH THE ( AND & COMMANDS ***
 FreeAllMem	move.l	a6,-(sp)
-		move.l	MemoryList(A5),D5
+		move.l	MemoryList(a4),D5
 		beq.s	freeall9
-		move.l	ExecBase,A6
+		getbase	Exec
 freeall_loop	move.l	D5,A1
 		move.l	4(A1),D0
 		addq.l	#8,D0
 		move.l	(A1),D5
-		call	FreeMem
+		lib	FreeMem
 		tst.l	D5
 		bne.s	freeall_loop
-		clr.l	MemoryList(A5)
+		clr.l	MemoryList(a4)
 freeall9	move.l	(sp)+,a6
 		rts
 
@@ -1367,7 +1371,7 @@ allocate_mem	bsr	get_expr
 01$		move.l	D5,D0
 		addq.l	#8,D0
 		or.l	#MEMF_CLEAR!MEMF_PUBLIC,D1
-		call	ExecBase,AllocMem
+		lib	Exec,AllocMem
 		tst.l	D0
 		beq.s	allocfailed
 		move.l	D0,A0
@@ -1376,7 +1380,7 @@ alloc_mem_1	;add allocated memory to linked list of memory blocks
 ** A0 points to memory block, D5 is length
 		move.l	D5,4(A0)
 		moveq	#0,D0
-		move.l	MemoryList(A5),D1
+		move.l	MemoryList(a4),D1
 
 alloc_find1	beq.s	alloc_find2	;keep the linked list in order, lowest address first
 		move.l	D1,A1
@@ -1388,8 +1392,8 @@ alloc_find1	beq.s	alloc_find2	;keep the linked list in order, lowest address fir
 
 alloc_find2	tst.l	D0
 		bne.s	alloc_do2
-		move.l	MemoryList(A5),(A0)	;add new memory node to start of list
-		move.l	A0,MemoryList(A5)
+		move.l	MemoryList(a4),(A0)	;add new memory node to start of list
+		move.l	A0,MemoryList(a4)
 		bra.s	alloc_display
 
 alloc_do2	move.l	D1,(A0)		;add new memory node to middle or end of list
@@ -1398,7 +1402,7 @@ alloc_do2	move.l	D1,(A0)		;add new memory node to middle or end of list
 
 alloc_display	move.l	a0,d0
 		addq.l	#8,d0
-		move.l	d0,Addr(a5)
+		move.l	d0,Addr(a4)
 		move.l	d0,d1
 		add.l	4(a0),d1
 		subq.l	#1,d1
@@ -1420,7 +1424,7 @@ alloc_abs	bsr	get_expr
 		beq	error
 		addq.l	#8,D0	;add 8 to length
 		move.l	D7,A1
-		call	ExecBase,AllocAbs
+		lib	Exec,AllocAbs
 		tst.l	D0
 		beq.s	allocfailed
 		move.l	D7,A0
@@ -1446,7 +1450,7 @@ mloop_xj	bra	mainloop
 
 free_norm	bsr	get_expr
 		subq.l	#8,D0
-		move.l	MemoryList(A5),D1
+		move.l	MemoryList(a4),D1
 		beq	not_at_all_allocated
 		moveq	#0,D2
 find_mem_to_free_loop
@@ -1462,7 +1466,7 @@ find_mem_to_free_loop
 found_do_free_mem	;remove memory block from linked list
 		tst.l	D2
 		bne.s	notfirst
-		move.l	(A1),MemoryList(A5)
+		move.l	(A1),MemoryList(a4)
 		bra.s	do_free
 
 notfirst	move.l	D2,A0
@@ -1470,12 +1474,12 @@ notfirst	move.l	D2,A0
 
 do_free		move.l	4(A1),D0
 		addq.l	#8,D0
-		call	ExecBase,FreeMem
+		lib	Exec,FreeMem
 		bra.s	mloop_xj
 
 *** SAVE ABSOLUTE (using DOS Write)****
 abs_save	bsr	get_expr
-		move.l	D0,A4
+		move.l	D0,a5
 		bsr	get_expr
 		move.l	D0,D6
 
@@ -1484,54 +1488,54 @@ abs_save	bsr	get_expr
 		beq	error
 
 		move.l	#MODE_NEWFILE,D2
-		call	DosBase(a5),Open
+		lib	Dos,Open
 		move.l	D0,D7
 		bne.s	abs_save_1
 
-dos_err			call	IoErr
+dos_err		lib	IoErr
 		bsr	DOSErr
 		bra.s	jmp_mainloop_2a
 
 abs_save_1	move.l	D7,D1
-		move.l	A4,D2
+		move.l	a5,D2
 		move.l	D6,D3
-		call	Write
+		lib	Write
 		move.l	D7,D1
-		call	Close
+		lib	Close
 		bra.s	jmp_mainloop_2a
 
 *** LOAD ABSOLUTE (using DOS Read) ***
 abs_load	bsr	get_expr
-		move.l	D0,A4
+		move.l	D0,a5
 
 		bsr	GetName
 		move.l	d0,d1
 		beq	error
 
 		move.l	#MODE_OLDFILE,D2
-		call	DosBase(a5),Open	;open file
+		lib	Dos,Open	;open file
 		move.l	D0,D7
 		beq.s	dos_err
 		move.l	D7,D1
-		move.l	A4,D2
+		move.l	a5,D2
 		move.l	#$7FFFFFFF,D3	;MaxInt (the file can't be longer than this)
-		call	Read		;read from file, until EOF, return actual length
+		lib	Read		;read from file, until EOF, return actual length
 		tst.l	D0
 		ble.s	abs_load_1
-		move.l	A4,D5
+		move.l	a5,D5
 		move.l	D0,D6
 		bsr.s	showrange
 abs_load_1	move.l	D7,D1
-		call	Close	;close the file
+		lib	Close	;close the file
 jmp_mainloop_2a	bra.s	jmp_mainloop_2
 
 *** REDIRECT OUTPUT ***
-redirect	move.l	DosBase(a5),a6
-		move.l	OutputFile(A5),D1	;is output currently redirected
-		cmp.l	WinFile(A5),D1
+redirect	getbase	Dos
+		move.l	OutputFile(a4),D1	;is output currently redirected
+		cmp.l	WinFile(a4),D1
 		beq.s	redir1
-		call	Close			;if so, then close redirection file
-		move.l	WinFile(A5),OutputFile(A5)	;standard output
+		lib	Close			;if so, then close redirection file
+		move.l	WinFile(a4),OutputFile(a4)	;standard output
 redir1		bsr	skipspaces
 		tst.b	(A3)
 		beq.s	jmp_mainloop_2
@@ -1541,10 +1545,10 @@ redir1		bsr	skipspaces
 		beq	error
 
 		move.l	#MODE_NEWFILE,D2
-		call	Open	;open redirection file
+		lib	Open	;open redirection file
 		tst.l	D0
 		beq	dos_err
-		move.l	D0,OutputFile(A5)
+		move.l	D0,OutputFile(a4)
 
 jmp_mainloop_2	bra	mainloop
 
@@ -1555,18 +1559,18 @@ jmp_mainloop_2	bra	mainloop
 new_cli		lea	NewShellCom(pc),A0
 		move.l	A0,D1
 		moveq	#0,D2
-		move.l	WinFile(A5),D3
-		call	DosBase(a5),Execute
+		move.l	WinFile(a4),D3
+		lib	Dos,Execute
 		tst.l	d0
 		beq.s	01$
-		call	IoErr
+		lib	IoErr
 		tst.l	d0
 		beq.s	jmp_mainloop_2
 01$		lea	NewCLICom(pc),a0
 		move.l	a0,d1	
 		moveq	#0,d2
-		move.l	WinFile(a5),d3
-		call	Execute
+		move.l	WinFile(a4),d3
+		lib	Execute
 		bra.s	jmp_mainloop_2
 
 showrange	;start addr in D5, length in D6
@@ -1593,7 +1597,7 @@ disk_write	moveq	#-1,D7
 disk_rw		bsr	get_expr
 		btst	#0,D0
 		bne	oddaddr_error
-		move.l	D0,Addr(A5)
+		move.l	D0,Addr(a4)
 		beq	error
 		bsr	get_expr
 		move.l	D0,D3		;Unit number (drive)
@@ -1604,10 +1608,10 @@ disk_rw		bsr	get_expr
 		beq	error		;error: zero length
 		move.l	#DISKBLOCKSIZE,d0
 		move.l	#MEMF_CLEAR!MEMF_CHIP,d1
-		call	ExecBase,AllocMem
+		lib	Exec,AllocMem
 		tst.l	d0
 		beq	OutOfMem
-		move.l	d0,a4
+		move.l	d0,a5
 		bsr	MyCreatePort
 		move.l	D0,D6
 		beq	disk_io_9	;branch if CreatePort failed
@@ -1619,14 +1623,14 @@ disk_rw		bsr	get_expr
 		move.l	D0,A2
 
 		move.l	D3,D0
-		lea	DevNameBuf(a5),A0
+		lea	DevNameBuf(a4),A0
 		move.l	A2,A1
 		moveq	#0,D1
-		call	OpenDevice
+		lib	OpenDevice
 		tst.l	D0
 		bne	opendev_fail
 
-		move.l	a4,IO_DATA(A2)
+		move.l	a5,IO_DATA(A2)
 		move.l	#DISKBLOCKSIZE,IO_LENGTH(A2)
 
 		moveq	#DISKBLOCKSHIFT,D0
@@ -1643,43 +1647,43 @@ disk_rw		bsr	get_expr
 ;
 disk_rd		move.w	#CMD_READ,IO_COMMAND(A2)	;read from disk
 		move.l	A2,A1
-		call	DoIO
+		lib	DoIO
 		tst.l	D0
 		bne	disk_io_err
 		move.l	#DISKBLOCKSIZE,d0
-		move.l	a4,a0
-		move.l	Addr(a5),a1
-		call	CopyMem
+		move.l	a5,a0
+		move.l	Addr(a4),a1
+		lib	CopyMem
 		move.l	#DISKBLOCKSIZE,d0
 		add.l	d0,IO_OFFSET(a2)
-		add.l	d0,Addr(a5)
+		add.l	d0,Addr(a4)
 		sub.l	d0,d4
 		bgt.s	disk_rd
 		move.l	d5,d6
-		move.l	Addr(a5),d5
+		move.l	Addr(a4),d5
 		sub.l	d6,d5
 		bsr	showrange
 		bra.s	disk_io_5
 ;
 ; write to disk
 ;
-disk_wr		move.l	Addr(a5),a0
-		move.l	a4,a1
+disk_wr		move.l	Addr(a4),a0
+		move.l	a5,a1
 		move.l	#DISKBLOCKSIZE,d0
-		call	CopyMem
+		lib	CopyMem
 		move.w	#CMD_WRITE,IO_COMMAND(A2)	;write to disk
 		move.l	A2,A1
-		call	DoIO
+		lib	DoIO
 		tst.l	D0
 		bne.s	disk_io_err
 		move.l	#DISKBLOCKSIZE,d0
 		add.l	d0,IO_OFFSET(a2)
-		add.l	d0,Addr(a5)
+		add.l	d0,Addr(a4)
 		sub.l	d0,d4
 		bgt.s	disk_wr
 		move.w	#CMD_UPDATE,IO_COMMAND(A2)	;make sure that the buffer is written
 		move.l	A2,A1
-		call	DoIO
+		lib	DoIO
 		tst.l	D0
 		beq.s	disk_io_5
 
@@ -1705,10 +1709,10 @@ disk_io_5	;stop drive motor
 		move.w	#TD_MOTOR,IO_COMMAND(A2)
 		clr.l	IO_LENGTH(A2)
 		move.l	A2,A1
-		call	DoIO
+		lib	DoIO
 
 disk_io_6	move.l	A2,A1
-		call	CloseDevice
+		lib	CloseDevice
 		bra.s	disk_io_7
 
 opendev_fail	lea	opendevfailfmt(pc),a0
@@ -1721,9 +1725,9 @@ disk_io_7	move.l	MN_REPLYPORT(a2),d6
 disk_io_8	move.l	D6,A1
 		bsr	MyDeletePort
 
-disk_io_9	move.l	a4,a1
+disk_io_9	move.l	a5,a1
 		move.l	#DISKBLOCKSIZE,d0
-		call	FreeMem
+		lib	FreeMem
 d_mloop_1	bra	mainloop
 
 ;
@@ -1739,14 +1743,14 @@ setdevice	addq.l	#2,a3
 		beq.s	digi_err
 
 		move.l	d0,a0
-		lea	DevNameBuf(a5),a1
+		lea	DevNameBuf(a4),a1
 		moveq	#DNBUFSIZE-2,d1
 01$		move.b	(a0)+,(a1)+
 		dbeq	d1,01$
 		clr.b	(a0)
 		bra.s	d_mloop_1
 
-showdev		lea	DevNameBuf(a5),a0
+showdev		lea	DevNameBuf(a4),a0
 		bsr	printstring_a0
 		emit	LF
 		bra.s	d_mloop_1
@@ -1767,12 +1771,12 @@ digisound	bsr	get_expr
 		move.l	D0,D6
 		bsr	get_expr	;period (speed)
 		move.w	D0,D7
-		clr.w	size(a5)
+		clr.w	size(a4)
 		bsr	skipspaces
 		tst.b	(a3)
 		beq.s	00$
 		bsr	get_expr	;# of cycles, defaults to zero (loop)
-		move.w	d0,size(a5)
+		move.w	d0,size(a4)
 00$		bsr	MyCreatePort
 		move.l	d0,d2
 		beq	digi9
@@ -1791,13 +1795,13 @@ digisound	bsr	get_expr
 		lea	audioname(pc),A0
 		moveq	#0,D0
 		moveq	#0,D1
-		call	ExecBase,OpenDevice	;open audio.device
+		lib	Exec,OpenDevice	;open audio.device
 		tst.l	D0
 		bne.s	digi7
 		move.l	D5,ioa_Data(A2)
 		move.l	D6,ioa_Length(A2)
 		move.w	D7,ioa_Period(A2)
-		move.w	size(a5),ioa_Cycles(A2)
+		move.w	size(a4),ioa_Cycles(A2)
 		move.w	#64,ioa_Volume(A2)	;maximum volume
 		move.b	#ADIOF_PERVOL,IO_FLAGS(A2) ;flag to set the volume & period
 		move.w	#CMD_WRITE,IO_COMMAND(A2)	;audio output=CMD_WRITE
@@ -1808,18 +1812,18 @@ digisound	bsr	get_expr
 		moveq	#0,D0
 		move.l	#SIGBREAKF_CTRL_C,d2
 		move.l	d2,d1
-		call	SetSignal	;clear CTRL-C signal
+		lib	SetSignal	;clear CTRL-C signal
 		move.l	d2,d0
 		move.l	MN_REPLYPORT(a2),a0
 		move.b	MP_SIGBIT(a0),d3
 		bset	d3,d0			wait until the sound finishes or
-		call	Wait			user presses Ctrl-C
+		lib	Wait			user presses Ctrl-C
 		btst	d3,d0
 		beq.s	01$
 		move.l	a2,a1
-		call	Remove		remove the message from the port
+		lib	Remove		remove the message from the port
 01$		move.l	A2,A1
-		call	CloseDevice
+		lib	CloseDevice
 digi7		move.l	MN_REPLYPORT(a2),d2
 		move.l	A2,A1
 		bsr	MyDeleteIO
@@ -1923,28 +1927,28 @@ Deletefile	addq.l	#2,A3
 		move.l	d0,d1
 		beq	error
 
-		call	DosBase(a5),DeleteFile
+		lib	Dos,DeleteFile
 		tst.l	D0
 		beq	dos_err
 		bra.s	jmp_mainloop_3
 
 *** CHANGE CURRENT DIRECTORY (CD) ***
 CurrentDirectory
-		move.l	DosBase(a5),a6
+		getbase	Dos
 		addq.l	#1,A3
 		bsr	GetName
 		move.l	d0,d1
 		beq.s	cd_2	;if no name set currentdir to zero lock
 
 		moveq	#SHARED_LOCK,D2
-		call	Lock
+		lib	Lock
 		tst.l	D0
 		beq	dos_err
 		move.l	D0,D1
 
-cd_2		call	CurrentDir
+cd_2		lib	CurrentDir
 		move.l	D0,D1
-		call	UnLock	;unlock previous current directory
+		lib	UnLock	;unlock previous current directory
 
 jmp_mainloop_3	bra	mainloop
 
@@ -2016,7 +2020,7 @@ comp99		emit	LF
 ; in the c and h commands
 ;
 get_n_per_line	moveq	#0,d6
-		move.l	ConsoleUnit(a5),a0
+		move.l	ConsoleUnit(a4),a0
 		move.w	cu_XMax(a0),d6
 		divu	#9,d6
 		bne.s	09$
@@ -2067,7 +2071,7 @@ memfill		bsr	get_expr
 		move.l	D0,-(sp)
 		bsr	get_expr
 		move.l	D0,A2
-		lea	InputBuffer(a5),a0
+		lea	InputBuf(a4),a0
 		bsr	getstring
 		move.l	(sp)+,A1
 		tst.l	D2
@@ -2094,7 +2098,7 @@ memhunt		bsr	skipspaces
 		move.l	D0,-(sp)
 		bsr	get_expr
 		move.l	D0,A2
-		lea	InputBuffer(a5),a0
+		lea	InputBuf(a4),a0
 		bsr	getstring
 		move.l	(sp)+,A1
 		tst.l	D2	;string length
@@ -2127,9 +2131,9 @@ huntfound	movem.l	A0-A1,-(sp)
 		cmp.l	a0,a1
 		bcs.s	huntf2
 
-hunt_ck1	cmp.l	a5,a1
+hunt_ck1	cmp.l	a4,a1
 		bcs.s	huntprint
-		lea	MonitorData_SIZE(a5),a0
+		lea	MonitorData_SIZE(a4),a0
 		cmp.l	a0,a1
 		bcs.s	huntf2
 
@@ -2153,13 +2157,13 @@ hunt99		emit	LF
 		bra	mainloop
 
 **** WAIT IF SPACE PRESSED, BREAK IF CTRL-C (status non-zero) ****
-CheckKeys	move.l	WinFile(A5),D1
+CheckKeys	move.l	WinFile(a4),D1
 		movem.l	D2/a6,-(sp)
 ;#
 ;# is timeout zero really safe?...I have found no problems yet...
 ;#
 		moveq	#0,D2		;timeout=0
-		call	DosBase(a5),WaitForChar
+		lib	Dos,WaitForChar
 		movem.l	(sp)+,D2/a6
 		tst.l	D0
 		beq.s	nobreak		;branch if no key pressed
@@ -2190,23 +2194,23 @@ getparams	bsr	skipspaces
 		tst.b	(A3)
 		beq.s	param9
 		bsr	get_expr
-		move.l	D0,Addr(A5)
+		move.l	D0,Addr(a4)
 		bsr	skipspaces
 		tst.b	(A3)
 		beq.s	param9
 		bsr	get_expr
-		move.l	D0,EndAddr(A5)
+		move.l	D0,EndAddr(a4)
 		moveq	#0,D7
 		rts
 param9		moveq	#20,D7
-		move.l	OutputFile(a5),d0
-		cmp.l	WinFile(a5),d0
+		move.l	OutputFile(a4),d0
+		cmp.l	WinFile(a4),d0
 		bne.s	09$
 ;
 ; get the number of text lines that will fit in the window
 ; from the console device unit structure
 ;
-		move.l	ConsoleUnit(a5),a0
+		move.l	ConsoleUnit(a4),a0
 		move.w	cu_YMax(a0),d7
 		subq.w	#2,d7
 		moveq	#1,d0
@@ -2227,7 +2231,7 @@ CheckEnd	;returns Z=1 if stop
 		subq.l	#1,D7
 		rts
 
-cmpadrs		cmp.l	EndAddr(A5),A4
+cmpadrs		cmp.l	EndAddr(a4),a5
 		bls.s	cont
 
 stop1		moveq	#0,D0
@@ -2252,8 +2256,8 @@ nodel		cmp.b	#'i',(A3)
 
 **** DISASSEMBLE ****
 nodir		bsr	getparams
-		bclr	#0,Addr+3(a5)
-		move.l	Addr(A5),A4
+		bclr	#0,Addr+3(a4)
+		move.l	Addr(a4),a5
 
 disasmloop	startline
 		bsr.s	disassemble
@@ -2261,14 +2265,14 @@ disasmloop	startline
 		bsr	CheckEnd
 		bne.s	disasmloop
 
-		move.l	A4,Addr(A5)
+		move.l	a5,Addr(a4)
 		bra	mainloop
 
 *** DISASSEMBLE ONE INSTRUCTION ***
 ;
 ; disassembler routine main entry point
 ;
-; a4 contains memory address of opcode on entry, incremented to
+; a5 contains memory address of opcode on entry, incremented to
 ; next instruction on exit.
 ;
 ; a3 contains address of output text buffer, incremented to end of
@@ -2278,13 +2282,13 @@ disasmloop	startline
 ; return d0 zero if valid instruction was disasembled
 ; (now line-[af] and ILLEGAL are not considered as valid instructions)
 ;
-disassemble	movem.l	d2-d7/a2/a5-a6,-(sp)
+disassemble	movem.l	d2-d7/a2/a4/a6,-(sp)
 
-		move.l	a4,d0
+		move.l	a5,d0
 		bsr	puthex1_68
 
-		move.l	a3,a5
-		addq.l	#1,a5
+		move.l	a3,a4
+		addq.l	#1,a4
 		moveq	#SPACE,d0
 		moveq	#24-1,d1
 01$		move.b	d0,(a3)+
@@ -2299,10 +2303,10 @@ disassemble	movem.l	d2-d7/a2/a5-a6,-(sp)
 		move.l	a3,d3
 
 		bsr	GetWord			get opcode
-		move.l	a4,a6
+		move.l	a5,a6
 		move.w	d0,d7
 		bne.s	02$
-		move.w	(a4),d1
+		move.w	(a5),d1
 		and.w	#$ff00,d1
 		beq.s	02$
 		lea	zero_txt(pc),a0
@@ -2387,7 +2391,7 @@ valid_instr	moveq	#0,d0
 dis_end		move.b	#LF,(a3)+
 		clr.b	(a3)
 		move.l	(sp)+,a0
-		movem.l	(sp)+,d2-d7/a2/a5-a6
+		movem.l	(sp)+,d2-d7/a2/a4/a6
 		rts
 
 fmt_char	moveq	#0,d0
@@ -2433,26 +2437,26 @@ str_routines	rw	datar11,datar2,addrr11,addrr2
 ; note: GetWord & GetLong do not modify d1
 ;
 GetWord		movem.l	d1/a3,-(sp)
-		move.l	a5,a3
-		move.w	(a4)+,d0
+		move.l	a4,a3
+		move.w	(a5)+,d0
 		move.w	d0,-(sp)
 		moveq	#4,d1
 		bsr	put_hexnum1
 		move.w	(sp)+,d0
 		move.b	#SPACE,(a3)+
-		move.l	a3,a5
+		move.l	a3,a4
 		movem.l	(sp)+,d1/a3
 		rts
 
 GetLong		movem.l	d1/a3,-(sp)
-		move.l	a5,a3
-		move.l	(a4)+,d0
+		move.l	a4,a3
+		move.l	(a5)+,d0
 		move.l	d0,-(sp)
 		moveq	#8,d1
 		bsr	put_hexnum1
 		move.l	(sp)+,d0
 		move.b	#SPACE,(a3)+
-		move.l	a3,a5
+		move.l	a3,a4
 		movem.l	(sp)+,d1/a3
 		rts
 
@@ -2512,7 +2516,7 @@ invalid		move.l	d4,d0		restore stack pointer
 		move.b	d0,(a3)+
 		move.b	d0,(a3)+
 		move.b	d0,(a3)+
-		move.l	a6,a4
+		move.l	a6,a5
 		move.l	d3,a0
 		moveq	#SPACE,d0
 		moveq	#18-1,d1
@@ -2614,10 +2618,10 @@ ccodes		dc.b	'rasrhilscccsneeqvcvsplmigeltgtle'
 short_pc_offset	move.b	d7,d0
 		ext.w	d0
 		ext.l	d0
-		add.l	a4,d0
+		add.l	a5,d0
 		bra.s	put_addr
 
-pc_offset	move.l	a4,d1
+pc_offset	move.l	a5,d1
 		bsr	GetWord
 		ext.l	d0
 		add.l	d1,d0
@@ -2751,7 +2755,7 @@ abs_short	bsr	GetWord		;%%%signed
 abs_long	bsr	GetLong
 		bra	put_addr
 
-pcrel		move.l	a4,d1
+pcrel		move.l	a5,d1
 		bsr	GetWord
 		ext.l	d0
 		add.l	d1,d0
@@ -2760,7 +2764,7 @@ pcrel		move.l	a4,d1
 		bsr.s	put_str
 		bra.s	endpar
 
-pcrel_indx	move.l	a4,d1
+pcrel_indx	move.l	a5,d1
 		bsr	GetWord
 		move.w	d0,d2
 		ext.w	d0
@@ -2914,21 +2918,21 @@ memoryinfo	addq.l	#1,a3
 
 ; walk the memory list
 
-		call	ExecBase,Forbid
+		lib	Exec,Forbid
 
-		move.l	MemList(a6),a4
+		move.l	MemList(a6),a5
 
-01$		tst.l	(a4)
+01$		tst.l	(a5)
 		beq.s	09$
 
-		cmp.l	MH_LOWER(a4),d5
+		cmp.l	MH_LOWER(a5),d5
 		bcs.s	08$
-		cmp.l	MH_UPPER(a4),d5
+		cmp.l	MH_UPPER(a5),d5
 		bcc.s	08$
 
 ; address is in this memory region
 
-		move.l	MH_FIRST(a4),d2
+		move.l	MH_FIRST(a5),d2
 02$		beq.s	10$
 		move.l	d2,a1
 		cmp.l	a1,d5
@@ -2941,14 +2945,14 @@ memoryinfo	addq.l	#1,a3
 05$		move.l	(a1),d2
 		bra.s	02$
 
-08$		move.l	(a4),a4
+08$		move.l	(a5),a5
 		bra.s	01$
 
-09$		suba.l	a4,a4
+09$		suba.l	a5,a5
 
-10$		call	Permit
+10$		lib	Permit
 
-; if a4 is zero, location is not in memory list
+; if a5 is zero, location is not in memory list
 ; else if d2 is zero, location is allocated, else free
 
 		startline
@@ -2957,19 +2961,19 @@ memoryinfo	addq.l	#1,a3
 		move.b	#':',(a3)+
 		move.b	#SPACE,(a3)+
 
-		move.l	a4,d0
+		move.l	a5,d0
 		bne.s	100$
 		lea	notmemtxt(pc),a1
 		bsr	putstring
 		bra.s	999$
 
-100$		btst	#MEMB_CHIP,MH_ATTRIBUTES+1(a4)
+100$		btst	#MEMB_CHIP,MH_ATTRIBUTES+1(a5)
 		beq.s	101$
 		move.l	#'chip',d0
 		bsr	PutLong
 		move.b	#SPACE,(a3)+
 
-101$		btst	#MEMB_FAST,MH_ATTRIBUTES+1(a4)
+101$		btst	#MEMB_FAST,MH_ATTRIBUTES+1(a5)
 		beq.s	102$
 		move.l	#'fast',d0
 		bsr	PutLong
@@ -2989,7 +2993,7 @@ memoryinfo	addq.l	#1,a3
 ;
 ; check if location is in a hunk and print hunk number if it is
 ;
-		move.l	SegList(a5),d0
+		move.l	SegList(a4),d0
 		moveq	#0,d4
 500$		lsl.l	#2,d0
 		beq.s	599$
@@ -3016,9 +3020,9 @@ memoryinfo	addq.l	#1,a3
 ;
 ; subroutine to read an unaligned word
 ;
-mgetw		move.b	(a4)+,d0
+mgetw		move.b	(a5)+,d0
 		lsl.w	#8,d0
-		move.b	(a4)+,d0
+		move.b	(a5)+,d0
 		rts
 
 **** DISPLAY MEMORY ****
@@ -3031,13 +3035,13 @@ memdisplay	move.b	(a3),d0
 		cmp.b	#'i',d0
 		beq	memoryinfo
 		bsr	getparams
-		move.l	ConsoleUnit(a5),a0
+		move.l	ConsoleUnit(a4),a0
 		cmp.w	#65,cu_XMax(a0)
 		scs	d6
-		move.l	Addr(A5),A4
+		move.l	Addr(a4),a5
 
 disploop	startline
-		move.l	A4,D0
+		move.l	a5,D0
 		bsr	puthex1_68
 		putchr	<':'>
 		putchr	SPACE
@@ -3050,14 +3054,14 @@ disploop	startline
 		putchr	SPACE
 		dbf	D2,01$
 
-		sub.w	#16,A4
+		sub.w	#16,a5
 		putchr	SPACE
 		tst.b	d6
 		bmi.s	100$
 		putchr	<''''>
 100$		moveq	#16-1,D2
 
-02$		move.b	(A4)+,D0	;printable codes are $20-$7F and $A0-$FF
+02$		move.b	(a5)+,D0	;printable codes are $20-$7F and $A0-$FF
 		cmp.b	#SPACE+$80,D0
 		bcc.s	03$
 		cmp.b	#SPACE,D0
@@ -3074,7 +3078,7 @@ disploop	startline
 		bsr	CheckEnd
 		bne.s	disploop
 
-		move.l	A4,Addr(A5)
+		move.l	a5,Addr(a4)
 		bra	mainloop
 
 **** SKIP SPACES ****
@@ -3254,7 +3258,7 @@ ex35		cmp.b	#'%',d0		;binary prefix '%'
 gnum_j		bra	get_num
 ex37		cmp.b	#'*',d0
 		bne.s	ex37a
-		move.l	Addr(a5),d0
+		move.l	Addr(a4),d0
 		rts
 ex37a		cmp.b	#'[',d0
 		bne.s	ex38
@@ -3263,7 +3267,7 @@ ex37a		cmp.b	#'[',d0
 		lsl.w	#8,d0
 		move.b	(a3)+,d0
 		bsr	tolower
-		lea	RegPC(a5),a0
+		lea	RegPC(a4),a0
 		cmp.w	#'pc',d0
 		beq.s	ex37x
 		cmp.b	#'cc',d0
@@ -3274,22 +3278,22 @@ ex37a		cmp.b	#'[',d0
 		bne.s	01$
 		addq.l	#1,a3
 01$		moveq	#0,d0
-		move.b	RegCCR_B(a5),d0
+		move.b	RegCCR_B(a4),d0
 		bra.s	ex37z
-ex37b		lea	RegSP(a5),a0
+ex37b		lea	RegSP(a4),a0
 		cmp.b	#'sp',d0
 		beq.s	ex37x
 		sub.w	#'a0',d0
 		bcs.s	ex37_err
 		cmp.w	#7,d0
 		bhi.s	ex37c
-		lea	AddrRegs(a5),a0
+		lea	AddrRegs(a4),a0
 		bra.s	ex37r
 ex37c		sub.w	#'d0'-'a0',d0
 		bcs.s	ex37_err
 		cmp.w	#7,d0
 		bhi.s	ex37_err
-		lea	DataRegs(a5),a0
+		lea	DataRegs(a4),a0
 ex37r		lsl.w	#2,d0
 		add.w	d0,a0
 ex37x		move.l	(a0),d0
@@ -3330,7 +3334,7 @@ ex39b		moveq	#10,d0
 		cmp.b	#'_',(a3)+		;decimal perix '_'
 		beq.s	ex39x
 		subq.l	#1,a3
-		move.b	defbase(a5),d0
+		move.b	defbase(a4),d0
 ex39x		bra	get_num
 
 multiply	movem.l	d4-d6,-(sp)
@@ -3431,7 +3435,7 @@ r_hend		bsr.s	gethunk
 		bra	no_more_args
 
 r_nhunks	moveq	#0,d0
-		move.l	SegList(a5),d1
+		move.l	SegList(a4),d1
 01$		lsl.l	#2,d1
 		beq.s	g_rts
 		move.l	d1,a0
@@ -3440,7 +3444,7 @@ r_nhunks	moveq	#0,d0
 		bra.s	01$
 
 gethunk		bsr	get_first_arg
-		move.l	SegList(a5),d1
+		move.l	SegList(a4),d1
 01$		lsl.l	#2,d1
 		beq	expr_error		;hunk not found
 		tst.l	d0
@@ -3480,7 +3484,7 @@ r_peekl		bsr	get_first_arg
 
 r_avail		bsr	get_first_arg
 		move.l	d0,d1
-		call	ExecBase,AvailMem
+		lib	Exec,AvailMem
 		bra	no_more_args
 
 ;
@@ -3498,10 +3502,10 @@ r_execlist	bsr	skipspaces
 		tst.l	d0
 		beq	expr_error
 		move.l	d0,a1
-		call	ExecBase,Forbid	;Forbid() & Permit are quaranteed
+		lib	Exec,Forbid	;Forbid() & Permit are quaranteed
 		lea	0(a6,d1.w),a0	;to preserve all registers
-		call	FindName
-		call	Permit
+		lib	FindName
+		lib	Permit
 		bra	no_more_args
 
 ;
@@ -3517,7 +3521,7 @@ r_task		bsr	skipspaces
 		tst.l	d0
 		beq.s	r_ftask
 
-		move.l	DosBase(a5),a0	;Forbid() here??
+		getbase Dos,a0		;Forbid() here??
 		move.l	dl_Root(a0),a0
 		move.l	rn_TaskArray(a0),a0
 		add.l	a0,a0		; BCPL pointer conversion
@@ -3536,7 +3540,7 @@ r_taskname	bsr	GetName
 		tst.l	d0
 		beq	expr_error
 r_ftask		move.l	d0,a1
-		call	ExecBase,FindTask
+		lib	Exec,FindTask
 		bra	no_more_args
 
 get_first_arg	bsr	skipspaces
@@ -3722,19 +3726,19 @@ low1		rts
 assemble	bsr	skipspaces
 		tst.b	(A3)
 		bne.s	assem_01
-		move.l	Addr(A5),D0
+		move.l	Addr(a4),D0
 		bra.s	assem_02
 assem_01	bsr	get_expr
 		btst	#0,D0
 		bne	oddaddr_error	;assembling to odd address is illegal
-		move.l	D0,Addr(A5)
-assem_02	move.l	D0,EndAddr(A5)
+		move.l	D0,Addr(a4)
+assem_02	move.l	D0,EndAddr(a4)
 		bsr	skipspaces
 		tst.b	(A3)
 		bne.s	assem1a
 
-assem1		move.l	Addr(A5),D0
-		move.l	D0,EndAddr(A5)
+assem1		move.l	Addr(a4),D0
+		move.l	D0,EndAddr(a4)
 		lea	assemfmt(pc),a0
 		bsr	printf_window
 		moveq	#1,D0
@@ -3743,10 +3747,10 @@ assem1a0	bsr	GetInput
 		tst.w	D0		;check for Ctrl-E (GetInput returns -1)
 		bpl.s	assem1a1	;branch if not Ctrl-E
 *** disassemble at current address and put result in input buffer ***
-		move.l	Addr(A5),A4
+		move.l	Addr(a4),a5
 		startline
 		bsr	disassemble
-		lea	InputBuffer(a5),a1
+		lea	InputBuf(a4),a1
 		moveq	#LF,D0
 300$		move.b	(A0)+,(A1)+	copy instruction to input buffer
 		cmp.b	(A0),D0 	until LF found
@@ -3804,7 +3808,7 @@ branch_1	lsl.w	#8,D1
 		cmp.b	#'s',-1(A3)
 		bne.s	br_err
 		bsr	get_expr
-		sub.l	Addr(A5),D0
+		sub.l	Addr(a4),D0
 		subq.l	#2,D0
 		move.b	D0,D2
 		ext.w	D2
@@ -3817,7 +3821,7 @@ branch_1	lsl.w	#8,D1
 		bra	one_word_instr
 
 long_branch	bsr	get_expr
-		sub.l	Addr(A5),D0
+		sub.l	Addr(a4),D0
 		subq.l	#2,D0
 		move.w	D0,D2
 		ext.l	D2
@@ -3854,7 +3858,7 @@ Scc_2		subq.l	#1,A3
 		cmp.w	#2,D1
 		bcs.s	cc_err
 Scc_3		move.w	D1,D3
-		addq.l	#2,Addr(A5)
+		addq.l	#2,Addr(a4)
 		bsr	GetEA
 		cmp.w	#1,D1
 		beq.s	cc_err
@@ -3897,7 +3901,7 @@ DBcc_3		move.w	D1,D3
 		or.w	#$50C8,D3
 		bsr	SkipComma
 		bsr	get_expr	
-		sub.l	Addr(A5),D0
+		sub.l	Addr(a4),D0
 		subq.l	#2,D0
 		move.l	D0,D1
 		ext.l	D0
@@ -3909,8 +3913,8 @@ try_dc		cmp.b	#'c',-1(A3)
 		bne.s	cc_err
 		bsr	GetSize	;*** DC.B, DC.W, DC.L ***
 		bsr	skipspaces
-		move.l	Addr(A5),A0
-		move.w	size(A5),D0
+		move.l	Addr(a4),A0
+		move.w	size(a4),D0
 		beq.s	dc_byte
 		subq.w	#1,D0
 		beq.s	dc_word
@@ -3933,7 +3937,7 @@ dc_exit		move.l	A0,D0	;align address to word boundary
 		beq.s	dc_exit1
 		addq.l	#1,D0
 
-dc_exit1	move.l	D0,Addr(A5)
+dc_exit1	move.l	D0,Addr(a4)
 		bra.s	dc_exit2
 
 assem9		bsr	skipspaces
@@ -3942,7 +3946,7 @@ assem9		bsr	skipspaces
 
 		lea	UpAndClearEol(pc),A0	;move cursor to previous line and clear the line
 		bsr	printstring_a0_window
-		move.l	EndAddr(A5),A4
+		move.l	EndAddr(a4),a5
 		startline
 		bsr	disassemble
 		bsr	printstring_window
@@ -3988,7 +3992,7 @@ shift_instr	cmp.b	#'r',(A3)+		get direction
 shift_1		cmp.b	#'.',(A3)
 		bne.s	shift_mem
 		bsr	GetSize
-		move.w	size(A5),D0
+		move.w	size(a4),D0
 		lsl.w	#6,D0
 		or.w	D0,D3
 		bsr	skipspaces
@@ -4012,7 +4016,7 @@ shift_2		lsl.w	#8,D0
 
 sh_err		bra	error
 
-shift_mem	addq.l	#2,Addr(A5)
+shift_mem	addq.l	#2,Addr(a4)
 		moveq	#0,D0
 		move.b	D3,D0
 		lsl.w	#6,D0
@@ -4042,7 +4046,7 @@ a_s_asm		cmp.b	#'x',(A3)
 		bset	#8,D3
 		bra	ext_as_asm
 
-no_as_ext	addq.l	#2,Addr(A5)
+no_as_ext	addq.l	#2,Addr(a4)
 		cmp.b	#'q',(A3)
 		bne.s	no_as_quick
 		addq.l	#1,A3
@@ -4058,13 +4062,13 @@ no_as_ext	addq.l	#2,Addr(A5)
 		bset	#8,D0
 
 as_quick_1	or.w	#$5000,D0
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		move.w	D0,D3
 		bsr	SkipComma
 		bsr	GetEA
-		tst.w	size(A5)
+		tst.w	size(a4)
 		bne.s	as_quick_z1
 		cmp.w	#1,D1
 		beq.s	as_err
@@ -4100,7 +4104,7 @@ as_imm_1	bsr	PutImm
 		and.w	#$3f,d1
 		cmp.w	#$39,d1
 		bhi.s	as_err
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		bset	#10,D0
@@ -4111,7 +4115,7 @@ as_imm_1	bsr	PutImm
 
 as_addr_imm_1	lsl.w	#8,D0
 		lsl.w	#1,D0
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		beq.s	as_err
 		subq.w	#1,D1
 		lsl.w	#8,D1
@@ -4137,7 +4141,7 @@ as_norm_1	bsr	GetSize
 as_norm_2	cmp.b	#'d',(A3)
 		beq.s	as_data_reg_source
 		bsr	GetEA
-		tst.w	size(A5)
+		tst.w	size(a4)
 		bne.s	as_norm_3
 		cmp.w	#1,D1		address register diret can't be used
 		beq.s	as_err2		with byte size
@@ -4155,7 +4159,7 @@ as_norm_3	lsl.w	#3,D1
 		lsl.w	#8,D0
 		lsl.w	#1,D0
 		or.w	D3,D0
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		bra.s	zcom_2
@@ -4167,7 +4171,7 @@ try_as_addr	bsr	getareg
 		lsl.w	#1,D0
 		or.w	D3,D0
 		or.w	#$C0,D0
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		beq.s	as_err2
 		subq.w	#1,D1
 		lsl.w	#8,D1
@@ -4206,7 +4210,7 @@ as_datasource_1	cmp.w	#1,D1
 		bhi.s	as_err2
 		or.w	D3,D0
 		bset	#8,D0
-as_ds_1		move.w	size(A5),D1
+as_ds_1		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		bra.s	zcom_2
@@ -4221,7 +4225,7 @@ as_special		;handle adda/suba
 		lsr.w	#1,D1
 		and.w	#7,D1
 		or.w	D1,D0
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		beq.s	cmp_err
 		subq.w	#1,D1
 		lsl.w	#8,D1
@@ -4258,7 +4262,7 @@ cmp_asm		cmp.b	#'m',(A3)
 ;#
 ;# cmpm size specifiers fixed 1989-08-28
 ;#
-		move.w	size(a5),d1
+		move.w	size(a4),d1
 		lsl.w	#6,d1
 		or.w	d1,d0
 		or.w	#$B108,D0
@@ -4266,7 +4270,7 @@ cmp_asm		cmp.b	#'m',(A3)
 
 cmp_err		bra	error
 
-no_mem_cmp	addq.l	#2,Addr(A5)
+no_mem_cmp	addq.l	#2,Addr(a4)
 		cmp.b	#'i',(A3)
 		bne.s	no_cmp_imm
 		addq.l	#1,A3
@@ -4284,7 +4288,7 @@ cmp_imm_1	bsr	PutImm
 		or.w	D1,D0
 		cmp.w	#$39,D0
 		bhi.s	cmp_err
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	#$0C00,D0
@@ -4292,7 +4296,7 @@ cmp_imm_1	bsr	PutImm
 
 cmp_addr_imm1	lsl.w	#8,D0
 		lsl.w	#1,D0
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		beq.s	cmp_err
 		subq.w	#1,D1
 		lsl.w	#8,D1
@@ -4316,7 +4320,7 @@ no_cmp_addr	bsr	GetSize
 cmp_1		bsr	GetEA
 		cmp.w	#1,D1
 		bne.s	cmp_2
-		tst.w	size(A5)
+		tst.w	size(a4)
 		beq.s	cmp_err2
 cmp_2		lsl.w	#3,D1
 		or.w	D1,D0
@@ -4327,7 +4331,7 @@ cmp_2		lsl.w	#3,D1
 		bne.s	cmp_addr
 		tst.l	D5
 		bne.s	cmp_err2
-		move.w	size(A5),D0
+		move.w	size(a4),D0
 		lsl.w	#6,D0
 		or.w	D3,D0
 		and.w	#7,D1
@@ -4339,7 +4343,7 @@ cmp_2		lsl.w	#3,D1
 
 cmp_err2	bra	error
 
-cmp_addr	move.w	size(A5),D0
+cmp_addr	move.w	size(a4),D0
 		beq.s	cmp_err2
 		subq.w	#1,D0
 		lsl.w	#8,D0
@@ -4357,7 +4361,7 @@ and_asm		move.w	#$C000,D3
 
 or_asm		move.w	#$8000,D3
 
-a_o_asm		addq.l	#2,Addr(A5)
+a_o_asm		addq.l	#2,Addr(a4)
 		cmp.b	#'i',(A3)
 		bne.s	a_o_2
 		addq.l	#1,A3
@@ -4380,7 +4384,7 @@ a_o_imm	bsr	PutImm
 		or.w	D1,D0
 		cmp.w	#$39,D0
 		bhi.s	a_o_err
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		cmp.w	#$C000,D3
@@ -4394,7 +4398,7 @@ a_o_2		bsr	GetSize
 		bsr	skipspaces
 		cmp.b	#'#',(A3)+
 		beq.s	a_o_imm
-		move.w	size(A5),D0
+		move.w	size(a4),D0
 		lsl.w	#6,D0
 		or.w	D0,D3
 		subq.l	#1,A3
@@ -4458,7 +4462,7 @@ abcd_asm	move.w	#$C100,D3
 
 sbcd_asm	move.w	#$8100,D3
 
-bcd_asm		clr.w	size(A5)
+bcd_asm		clr.w	size(a4)
 ext_as_asm	bsr	skipspaces
 		cmp.b	#'d',(A3)
 		bne.s	bcd_mem
@@ -4469,7 +4473,7 @@ ext_as_asm	bsr	skipspaces
 bcd_1		lsl.w	#8,D1
 		lsl.w	#1,D1
 		or.w	D3,D1
-		move.w	size(A5),D0
+		move.w	size(a4),D0
 		lsl.w	#6,D0
 		or.w	D1,D0
 		bra	one_word_instr
@@ -4495,7 +4499,7 @@ bcd_mem		cmp.b	#'-',(A3)
 err_bcd		bra	error
 
 *** EOR ***
-eor_asm		addq.l	#2,Addr(A5)
+eor_asm		addq.l	#2,Addr(a4)
 		moveq	#0,D5
 		cmp.b	#'i',(A3)
 		bne.s	eor_1
@@ -4520,7 +4524,7 @@ eor_1		bsr	GetSize
 		or.w	D1,D0
 		cmp.w	#$39,D0
 		bhi.s	err_bcd
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	#$0A00,D0
@@ -4541,7 +4545,7 @@ no_eor_imm	tst.l	D5
 		lsl.w	#8,D3
 		lsl.w	#1,D3
 		or.w	D3,D0
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	#$B100,D0
@@ -4552,7 +4556,7 @@ logical_status	or.w	#$3C,D3
 		bsr	skipspaces
 		cmp.b	#'#',(A3)+
 		bne.s	move_err
-		move.w	#WSIZE,size(A5)
+		move.w	#WSIZE,size(a4)
 		bsr	PutImm
 		bsr	SkipComma
 		cmp.b	#'s',(A3)
@@ -4647,7 +4651,7 @@ move_from_usp	;MOVE	usp,An
 		bra	one_word_instr
 
 move_status	;MOVE sr,EA
-		addq.l	#2,Addr(A5)
+		addq.l	#2,Addr(a4)
 		addq.l	#1,A3
 		cmp.b	#'r',(A3)+
 		bne.s	move_err2
@@ -4663,8 +4667,8 @@ move_status	;MOVE sr,EA
 		bra.s	zcom_5
 
 move_to_status_or_ccr	;MOVE EA,sr, MOVE EA,ccr
-		move.w	#WSIZE,size(A5)
-		addq.l	#2,Addr(A5)
+		move.w	#WSIZE,size(a4)
+		addq.l	#2,Addr(a4)
 		bsr	GetEA
 		lsl.w	#3,D1
 		or.w	D0,D1
@@ -4691,10 +4695,10 @@ try_move_ccr	moveq	#'c',D0
 zcom_5		bra	zzcom
 
 normal_move	moveq	#0,D5
-normal_move_2	addq.l	#2,Addr(A5)
+normal_move_2	addq.l	#2,Addr(a4)
 		bsr	GetSize
 		bsr	GetEA
-		tst.w	size(A5)
+		tst.w	size(a4)
 		bne.s	nm_1
 		cmp.w	#1,D1
 		beq.s	move_err2
@@ -4714,7 +4718,7 @@ nm_1		lsl.w	#3,D1
 		bne.s	norm_move_2
 movea01		cmp.w	#1,D1
 		bne.s	move_err2	;MOVEA destination must be addr reg
-movea02		tst.w	size(A5)
+movea02		tst.w	size(a4)
 		beq.s	move_err2	;MOVEA size can't be BYTE
 norm_move_2
 		lsl.w	#6,D1
@@ -4722,7 +4726,7 @@ norm_move_2
 		lsl.w	#1,D0
 		or.w	D1,D0
 		or.w	D3,D0
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		bne.s	not_byte_move
 		or.w	#$1000,D0
 		bra.s	zump1
@@ -4736,9 +4740,9 @@ zump1		bra	zzcom
 
 *** MOVEP ***
 move_peripheral	addq.l	#1,A3
-		addq.l	#2,Addr(A5)
+		addq.l	#2,Addr(a4)
 		bsr	GetSize
-		tst.w	size(A5)
+		tst.w	size(a4)
 		beq.s	move_err3
 		bsr	skipspaces
 		cmp.b	#'d',(A3)
@@ -4754,7 +4758,7 @@ move_peripheral	addq.l	#1,A3
 		or.w	D3,D0
 		or.w	#$0188,D0
 
-move_per_1	move.w	size(A5),D1
+move_per_1	move.w	size(a4),D1
 		subq.w	#1,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
@@ -4778,9 +4782,9 @@ move_err3	bra	error
 
 *** MOVEM ***
 movem_asm	addq.l	#1,A3
-		addq.l	#4,Addr(A5)
+		addq.l	#4,Addr(a4)
 		bsr	GetSize
-		tst.w	size(A5)
+		tst.w	size(a4)
 		beq.s	move_err3
 		bsr	skipspaces
 		cmp.b	#'d',(A3)
@@ -4815,11 +4819,11 @@ juzumps		lsr.w	#1,D3	;reverse bit order
 regs_to_mem_1	lsl.w	#3,D1
 		or.w	D1,D0
 		or.w	#$4880,D0
-zumpsis		move.w	size(A5),D1
+zumpsis		move.w	size(a4),D1
 		subq.w	#1,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
-		move.l	EndAddr(A5),A0
+		move.l	EndAddr(a4),A0
 		move.w	D0,(A0)+
 		move.w	D3,(A0)
 		bra	assem9
@@ -4855,16 +4859,16 @@ bclr_asm	moveq	#2,D3
 
 bset_asm	moveq	#3,D3
 
-bit_ins_1	clr.w	size(a5)		for btst Dn,#imm
-		addq.l	#2,Addr(A5)
+bit_ins_1	clr.w	size(a4)		for btst Dn,#imm
+		addq.l	#2,Addr(a4)
 		lsl.w	#6,D3
 		bsr	skipspaces
 		cmp.b	#'#',(A3)+
 		bne.s	bit_reg_mode
 		bsr	get_expr
-		move.l	Addr(A5),A0
+		move.l	Addr(a4),A0
 		move.w	D0,(A0)+
-		move.l	A0,Addr(A5)
+		move.l	A0,Addr(a4)
 		bset	#11,D3
 		bra.s	bit_get_ea
 ;#
@@ -4915,8 +4919,8 @@ mul_div		bsr	skipspaces
 		bne.s	bits_err
 		bset	#8,D3
 
-mul_div1	move.w	#WSIZE,size(A5)
-		addq.l	#2,Addr(A5)
+mul_div1	move.w	#WSIZE,size(a4)
+		addq.l	#2,Addr(a4)
 		bsr	GetEA
 		cmp.w	#1,D1
 		beq.s	bits_err
@@ -4932,7 +4936,7 @@ mul_div1	move.w	#WSIZE,size(A5)
 		bra.s	zzcom
 
 *** TAS ***
-tas_asm		addq.l	#2,Addr(A5)
+tas_asm		addq.l	#2,Addr(a4)
 		bsr	GetEA
 		cmp.w	#1,D1
 		beq.s	zz_err
@@ -4946,7 +4950,7 @@ tas_asm		addq.l	#2,Addr(A5)
 *** PEA ***
 pea_asm		move.w	#$4840,D3
 
-pp_1		addq.l	#2,Addr(A5)
+pp_1		addq.l	#2,Addr(a4)
 		bsr	GetEA
 		cmp.w	#2,D1
 		beq.s	pea_A_ok
@@ -4961,7 +4965,7 @@ pea_A_ok	lsl.w	#3,D1
 		bra.s	zzcom
 
 *** LEA ***
-lea_asm		addq.l	#2,Addr(A5)
+lea_asm		addq.l	#2,Addr(a4)
 		bsr	GetEA
 		cmp.w	#2,D1
 		beq.s	lea_A_ok
@@ -4981,7 +4985,7 @@ lea_A_ok	lsl.w	#3,D1
 		or.w	d2,d0
 		or.w	#$41C0,D0
 
-zzcom		move.l	EndAddr(A5),A0
+zzcom		move.l	EndAddr(a4),A0
 		move.w	D0,(A0)
 		bra	assem9
 
@@ -4989,7 +4993,7 @@ zz_err		bra	error
 
 *** EXT ***
 ext_asm		bsr	GetSize
-		move.w	size(A5),D2
+		move.w	size(a4),D2
 		beq.s	zz_err
 		addq.w	#1,D2
 		lsl.w	#6,D2
@@ -5013,15 +5017,15 @@ jsr_asm		move.w	#$4E80,D3
 		bra	pp_1
 
 *** NBCD ***
-nbcd_asm	addq.l	#2,Addr(A5)
-		clr.w	size(A5)
+nbcd_asm	addq.l	#2,Addr(a4)
+		clr.w	size(a4)
 		move.w	#$4800,D3
 		bra.s	one_arg_2
 
 *** CLR ***
 clr_asm		move.w	#$4200,D3
 
-one_arg_com	addq.l	#2,Addr(A5)
+one_arg_com	addq.l	#2,Addr(a4)
 		bsr	GetSize
 
 one_arg_2	bsr	GetEA
@@ -5031,11 +5035,11 @@ one_arg_2	bsr	GetEA
 		or.w	D1,D0
 		cmp.w	#$39,D0		check dest addr mode (no pcrel)
 		bhi.s	qlumps_err
-		move.w	size(A5),D1
+		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	D3,D0
-		move.l	EndAddr(A5),A0
+		move.l	EndAddr(a4),A0
 		move.w	D0,(A0)
 		bra	assem9
 
@@ -5089,9 +5093,9 @@ trapv_asm	move.w	#$4E76,D0
 *** RTR ***
 rtr_asm		move.w	#$4E77,D0
 
-one_word_instr	move.l	Addr(A5),A0
+one_word_instr	move.l	Addr(a4),A0
 		move.w	D0,(A0)+
-		move.l	A0,Addr(A5)
+		move.l	A0,Addr(a4)
 		bra	assem9
 
 *** ILLEGAL ***
@@ -5134,10 +5138,10 @@ stop_asm	bsr	skipspaces
 		bsr	get_expr
 		move.w	D0,D1
 		move.w	#$4E72,D0
-two_words_instr	move.l	Addr(A5),A0
+two_words_instr	move.l	Addr(a4),A0
 		move.w	D0,(A0)+
 		move.w	D1,(A0)+
-		move.l	A0,Addr(A5)
+		move.l	A0,Addr(a4)
 		bra	assem9
 
 zump_err	bra	error
@@ -5234,7 +5238,7 @@ g_r_2		rts	;register returned in D1
 
 check_sp	cmp.b	#'p',1(a3)
 		bne.s	greg_err
-		move.w	#$0f,d1
+		move.w	#$0f,d1		;can't use moveq
 		addq.l	#2,a3
 		rts
 
@@ -5281,8 +5285,8 @@ SkipComma	bsr	skipspaces
 		rts
 
 GetEA: ;get effective address, mode=D1,reg=D0
-* put displacements etc. in memory at address pointed by Addr(A5)
-* and increment Addr(A5)
+* put displacements etc. in memory at address pointed by Addr(a4)
+* and increment Addr(a4)
 		bsr	skipspaces
 		cmp.b	#'d',(a3)
 		beq.s	reg_direct
@@ -5333,8 +5337,8 @@ no_predecrement	cmp.b	#'#',(a3)
 		addq.l	#1,A3
 
 PutImm		bsr	get_expr
-		move.l	Addr(A5),A0
-		move.w	size(A5),D1
+		move.l	Addr(a4),A0
+		move.w	size(a4),D1
 		bne.s	sz1
 		and.w	#$FF,D0
 		move.w	D0,(A0)+
@@ -5344,7 +5348,7 @@ sz1		cmp.w	#1,D1
 		move.w	D0,(A0)+
 		bra.s	sz9
 sz2		move.l	D0,(A0)+
-sz9		move.l	A0,Addr(A5)
+sz9		move.l	A0,Addr(a4)
 		moveq	#7,D1
 		moveq	#4,D0
 		rts
@@ -5364,9 +5368,9 @@ no_immediate	bsr	get_expr
 		beq.s	indirect_with_index
 		cmp.b	#')',-1(A3)
 		bne	error
-		move.l	Addr(A5),A0
+		move.l	Addr(a4),A0
 		move.w	D2,(A0)+
-		move.l	A0,Addr(A5)
+		move.l	A0,Addr(a4)
 		moveq	#5,D1
 		rts
 
@@ -5385,10 +5389,10 @@ no_displacement_or_index
 		bne	error
 		cmp.b	#')',(A3)+
 		bne.s	pcrel_indx_1
-		sub.l	Addr(A5),D2
-		move.l	Addr(A5),A0
+		sub.l	Addr(a4),D2
+		move.l	Addr(a4),A0
 		move.w	D2,(A0)+
-		move.l	A0,Addr(A5)
+		move.l	A0,Addr(a4)
 		move.w	d2,d0
 		ext.l	d0
 		cmp.l	d0,d2
@@ -5402,7 +5406,7 @@ no_displacement_or_index
 ;
 pcrel_indx_1	cmp.b	#',',-1(a3)
 		bne	error
-pcrel_indx_2	sub.l	Addr(A5),D2
+pcrel_indx_2	sub.l	Addr(a4),D2
 		move.b	d2,d0
 		ext.w	d0
 		ext.l	d0
@@ -5417,21 +5421,21 @@ absolute_mode	move.w	D2,D1
 		ext.l	D1
 		cmp.l	D2,D1
 		beq.s	abs_short_mode
-		move.l	Addr(A5),A0
+		move.l	Addr(a4),A0
 		move.l	D2,(A0)+
-		move.l	A0,Addr(A5)
+		move.l	A0,Addr(a4)
 		moveq	#7,D1
 		moveq	#1,D0
 		rts
 
-abs_short_mode	move.l	Addr(A5),A0
+abs_short_mode	move.l	Addr(a4),A0
 		move.w	D2,(A0)+
-		move.l	A0,Addr(A5)
+		move.l	A0,Addr(a4)
 		moveq	#7,D1
 		moveq	#0,D0
 		rts
 
-*** GET SIZE (put it in size(A5), 0=B, 1=W, 2=L) ***
+*** GET SIZE (put it in size(a4), 0=B, 1=W, 2=L) ***
 GetSize		cmp.b	#'.',(A3)+
 		bne	error
 		move.b	(A3)+,D0
@@ -5446,7 +5450,7 @@ siz1		cmp.b	#'w',D0
 siz2		cmp.b	#'l',D0
 		bne	error
 		moveq	#LSIZE,d0
-siz3		move.w	d0,size(a5)
+siz3		move.w	d0,size(a4)
 		rts
 
 GetIndex	;displacement value in d2
@@ -5470,9 +5474,9 @@ GetIndex	;displacement value in d2
 		bset	#11,D1
 index_2		cmp.b	#')',(A3)+
 		bne.s	index_error
-		move.l	Addr(A5),A0
+		move.l	Addr(a4),A0
 		move.w	D1,(A0)+
-		move.l	A0,Addr(A5)
+		move.l	A0,Addr(a4)
 		rts
 index_error
 ;#		addq.l	#8,sp
@@ -5484,12 +5488,12 @@ regs		bsr	skipspaces
 		bne.s	changeregs
 
 displayregs_d	bsr	displayregs
-		move.l	RegPC(a5),D0
+		move.l	RegPC(a4),D0
 		beq.s	rr9
 		btst	#0,D0
 		bne.s	rr9
-		move.l	D0,A4
-		tst.w	(a4)
+		move.l	D0,a5
+		tst.w	(a5)
 		beq.s	rr9
 		startline
 		bsr	disassemble
@@ -5513,7 +5517,7 @@ changeregs	move.b	(A3)+,D0	;** CHANGE REGISTERS **
 		bne.s	nopc
 		bsr.s	skipequal
 		bsr	get_expr
-		move.l	D0,RegPC(a5)
+		move.l	D0,RegPC(a4)
 		bra.s	regs_mainloop_jmp
 
 ;#
@@ -5528,7 +5532,7 @@ nopc		cmp.w	#'cc',D0	;condition code register
 		addq.l	#1,a3
 01$		bsr.s	skipequal
 		bsr	get_expr
-		move.b	D0,RegCCR_B(a5)
+		move.b	D0,RegCCR_B(a4)
 regs_mainloop_jmp
 		bra	mainloop
 
@@ -5541,7 +5545,7 @@ nocc		cmp.w	#'d0',D0
 		move.w	D0,D2
 		bsr	skipequal
 		bsr	get_expr
-		lea	DataRegs(a5),A0
+		lea	DataRegs(a4),A0
 		move.l	D0,0(A0,D2.W)
 		bra.s	regs_mainloop_jmp
 
@@ -5558,7 +5562,7 @@ setareg		lsl.w	#2,D0
 		move.w	D0,D2
 		bsr	skipequal
 		bsr	get_expr
-		lea	AddrRegs(a5),A0
+		lea	AddrRegs(a4),A0
 		move.l	D0,0(A0,D2.W)
 		bra.s	regs_mainloop_jmp
 
@@ -5568,11 +5572,11 @@ setareg		lsl.w	#2,D0
 ;#
 displayregs	startline
 		move.l	#' PC=',(A3)+
-		move.l	RegPC(a5),D0
+		move.l	RegPC(a4),D0
 		bsr	phex1_8
 		move.l	#' CCR',(A3)+
 		putchr	<'='>
-		move.b	RegCCR_B(a5),D0
+		move.b	RegCCR_B(a4),D0
 		move.b	D0,D2
 		moveq	#2,d1
 		bsr	put_hexnum1
@@ -5595,7 +5599,7 @@ flag1		move.b	D0,(A3)+
 		bpl.s	flagloop
 		endline
 		bsr	printstring
-		lea	DataRegs(a5),A2
+		lea	DataRegs(a4),A2
 		move.l	#' D0=',D2
 		bsr.s	PrintRegLine
 		bsr.s	PrintRegLine
@@ -5630,13 +5634,13 @@ xbase		bsr	skipspaces
 		moveq	#36,d1
 		cmp.b	d1,d0
 		bhi.s	base_err
-		move.b	d0,defbase(a5)
+		move.b	d0,defbase(a4)
 mloop_bx	bra	mainloop
 
 base_err	bra	error
 
 showbase	moveq	#0,d0
-		move.b	defbase(a5),d0
+		move.b	defbase(a4),d0
 		lea	basefmt(pc),a0
 		bsr	printf_window
 		bra.s	mloop_bx
@@ -5657,21 +5661,21 @@ breaks		bsr	skipspaces
 		bsr	get_expr
 		btst	#0,D0
 		bne.s	brk_err
-		move.l	D0,A4
+		move.l	D0,a5
 		bsr	find_break
 		bpl.s	brk_err
 		move.l	A1,D3
 		moveq	#brk_SIZE,D0
 		move.l	#MEMF_CLEAR!MEMF_PUBLIC,D1
-		call	ExecBase,AllocMem
+		lib	Exec,AllocMem
 		tst.l	D0
 		beq	OutOfMem
 		move.l	D0,A0
-		move.l	A4,brk_Address(A0)
+		move.l	a5,brk_Address(A0)
 		tst.l	D3
 		bne.s	no_start_of_list
-		move.l	BreakList(A5),(A0)
-		move.l	A0,BreakList(A5)
+		move.l	BreakList(a4),(A0)
+		move.l	A0,BreakList(a4)
 		bra.s	brset9
 
 no_start_of_list
@@ -5698,18 +5702,18 @@ break_rem1	bsr	get_expr
 		bmi.s	brk_err
 		move.l	A1,D0
 		bne.s	no_remove_from_start_of_list
-		move.l	(A0),BreakList(A5)
+		move.l	(A0),BreakList(a4)
 		bra.s	break_remove_1
 no_remove_from_start_of_list
 		move.l	(A0),(A1)
 break_remove_1	move.l	A0,A1
 		moveq	#brk_SIZE,D0
-		call	ExecBase,FreeMem
+		lib	Exec,FreeMem
 		bra.s	brset9
 
 *** LIST BREAKPOINTS ***
 * note: the list is automatically in order
-break_list	move.l	BreakList(A5),D2
+break_list	move.l	BreakList(a4),D2
 		bne.s	break_list_1
 		lea	noBrkTxt(pc),A0
 		bsr	printstring_a0_window
@@ -5718,13 +5722,13 @@ break_list_1	lea	brklistTx(pc),A0
 		bsr	printstring_a0
 break_list_loop	tst.l	D2
 		beq.s	brset9
-		move.l	D2,A4
-		move.l	brk_Address(A4),D0
+		move.l	D2,a5
+		move.l	brk_Address(a5),D0
 		lea	hexfmt(pc),a0
 		bsr	printf
 		bsr	CheckKeys
 		bne	brset9
-		move.l	brk_Next(A4),D2
+		move.l	brk_Next(a5),D2
 		bra.s	break_list_loop
 
 *** FIND BREAKPOINT FROM LINKED LIST ***
@@ -5732,8 +5736,8 @@ break_list_loop	tst.l	D2
 * if N=1 then not found, A1 points to where new node should be inserted
 *  if A1=0 then insert to start of the list
 * if N=0 then found, A0 points to the node, A1 points to predecessor
-find_break	sub.l	A1,A1	;A1=0
-		move.l	BreakList(A5),D1
+find_break	clra	a1
+		move.l	BreakList(a4),D1
 find_br_1	beq.s	break_not_found
 		move.l	D1,A0
 		cmp.l	brk_Address(A0),D0
@@ -5750,18 +5754,18 @@ brk_ret		rts
 remove_all_breaks
 * executed before exit of when the 'br all' command is given
 ; this changes d2 and a6
-		move.l	ExecBase,a6
-		move.l	BreakList(A5),D2
+		getbase	Exec
+		move.l	BreakList(a4),D2
 
 all_breaks_loop	tst.l	D2
 		beq.s	brk_ret2
 		move.l	D2,A1
 		move.l	brk_Next(A1),D2
 		moveq	#brk_SIZE,D0
-		call	FreeMem
+		lib	FreeMem
 		bra.s	all_breaks_loop
 
-brk_ret2	clr.l	BreakList(A5)
+brk_ret2	clr.l	BreakList(a4)
 		rts
 
 *** PUT THE ILLEGAL ($4AFC) INSTRUCTION TO BREAKPOINTS ***
@@ -5777,23 +5781,23 @@ brk_ret2	clr.l	BreakList(A5)
 ;# in the register d0. if it is zero, no temporary breakpoint is used.
 ;# temporary breakpoint is used by the e-command.
 ;#
-SetBreaks	bset	#MONB_BRKACTIVE,flags(a5)
+SetBreaks	bset	#MONB_BRKACTIVE,flags(a4)
 		tst.l	d0
 		beq.s	SetBr0
-		move.l	d0,TmpBrkAddr(a5)
-		bset	#MONB_TMPBRK,flags(a5)
+		move.l	d0,TmpBrkAddr(a4)
+		bset	#MONB_TMPBRK,flags(a4)
 		move.l	d0,a0
-		move.w	(a0),TmpBrkSave(a5)
+		move.w	(a0),TmpBrkSave(a4)
 		move.w	#ILLEGAL,(a0)
 
-SetBr0		move.l	BreakList(A5),D2
+SetBr0		move.l	BreakList(a4),D2
 SetBr1		tst.l	D2
 		beq.s	brk_ret
 		move.l	D2,A1
 		move.l	brk_Address(A1),A0
-		cmp.l	RegPC(a5),a0
+		cmp.l	RegPC(a4),a0
 		bne.s	01$
-		move.l	a1,GoBrkPtr(a5)
+		move.l	a1,GoBrkPtr(a4)
 		bra.s	SetBr2
 01$		move.w	(A0),brk_Content(A1)
 		move.w	#ILLEGAL,(A0)
@@ -5801,9 +5805,9 @@ SetBr2		move.l	(A1),D2
 		bra.s	SetBr1
 
 *** RESTORE ORIGINAL CONTENTS OF BREAKPOINTS ***
-RemBreaks	bclr	#MONB_BRKACTIVE,flags(a5)
+RemBreaks	bclr	#MONB_BRKACTIVE,flags(a4)
 		beq.s	brk_ret
-RemBr0		move.l	BreakList(A5),D2
+RemBr0		move.l	BreakList(a4),D2
 RemBr1		tst.l	D2
 		beq.s	RemBr3
 		move.l	D2,A1
@@ -5813,11 +5817,11 @@ RemBr1		tst.l	D2
 RemBr2		move.l	(A1),D2
 		bra.s	RemBr1
 
-RemBr3		bclr	#MONB_TMPBRK,flags(a5)
+RemBr3		bclr	#MONB_TMPBRK,flags(a4)
 		beq.s	RemBr9
 
-		move.l	TmpBrkAddr(a5),a0
-		move.w	TmpBrkSave(a5),(a0)
+		move.l	TmpBrkAddr(a4),a0
+		move.w	TmpBrkSave(a4),(a0)
 
 RemBr9		rts
 
@@ -5825,12 +5829,12 @@ RemBr9		rts
 ; check stack pointer and reset it if necessary
 ; now resets also if stack pointer is odd
 ;
-check_stackptr	move.l	RegSP(a5),d0
+check_stackptr	move.l	RegSP(a4),d0
 		btst	#0,d0
 		bne.s	reset_stack
 		move.l	d0,a2
 
-		move.l	StackHigh(a5),a0
+		move.l	StackHigh(a4),a0
 		cmp.l	a0,a2
 		bhi.s	reset_stack
 		lea	-MONSTACK(a0),a1
@@ -5843,14 +5847,14 @@ reset_stack	move.l	a0,a2
 		lea	stackreset_txt(pc),a0
 		bsr	printstring_a0_window
 
-stack_set	move.l	a2,RegSP(a5)		;sp
+stack_set	move.l	a2,RegSP(a4)		;sp
 rts_001		rts
 
 *** QUICK TRACE ***
 ;executes code in trace mode until a flow control-instruction is encountered
 quicktrace	bsr.s	check_stackptr
 		bsr.s	getpc
-		bset	#MONB_QTRACE,flags(a5)
+		bset	#MONB_QTRACE,flags(a4)
 		moveq	#0,d0
 		bsr	SetBreaks
 		bra.s	walk_001
@@ -5867,8 +5871,8 @@ getpc		bsr	skipspaces
 		tst.b	(a3)
 		beq.s	01$
 		bsr	get_expr
-		move.l	d0,RegPC(a5)
-01$		btst	#0,RegPC+3(a5)		;error if current
+		move.l	d0,RegPC(a4)
+01$		btst	#0,RegPC+3(a4)		;error if current
 		beq.s	rts_001			;PC is odd
 
 oddaddr_error	lea	oddaddr_txt(pc),a0
@@ -5882,10 +5886,10 @@ oddaddr_error	lea	oddaddr_txt(pc),a0
 ;
 skip_one	bsr	check_stackptr
 		bsr.s	getpc
-		move.l	RegPC(a5),a4
-		lea	OutputBuffer(a5),a3
+		move.l	RegPC(a4),a5
+		lea	OutputBuf(a4),a3
 		bsr	disassemble
-		move.l	a4,RegPC(a5)
+		move.l	a5,RegPC(a4)
 		lea	skip_txt(pc),a0
 		bsr	printstring_a0
 		bra	displayregs_d
@@ -5900,10 +5904,10 @@ skip_one	bsr	check_stackptr
 ;
 exe_one		bsr	check_stackptr
 		bsr.s	getpc
-		move.l	RegPC(a5),a4
-		lea	OutputBuffer(a5),a3
+		move.l	RegPC(a4),a5
+		lea	OutputBuf(a4),a3
 		bsr	disassemble
-		move.l	a4,d0
+		move.l	a5,d0
 		bra.s	go_com
 
 **** EXECUTE MACHINE CODE (GO) ****
@@ -5919,10 +5923,10 @@ jumpsr		bsr	check_stackptr
 ;
 ; put return address in stack
 ;
-		move.l	RegSP(a5),a0
+		move.l	RegSP(a4),a0
 		lea	returncode(pc),A1
 		move.l	a1,-(a0)
-		move.l	a0,RegSP(a5)
+		move.l	a0,RegSP(a4)
 
 ;
 ; common code for jump/go/execute/skip
@@ -5930,17 +5934,17 @@ jumpsr		bsr	check_stackptr
 ;  breakpoint is used
 ;
 go_com		bsr	SetBreaks
-		move.l	RegPC(a5),d0
+		move.l	RegPC(a4),d0
 		bsr	find_break
 		bpl.s	go_special
 
-		move.l	RegSP(a5),sp
-		move.l	RegPC(a5),-(sp)
+		move.l	RegSP(a4),sp
+		move.l	RegPC(a4),-(sp)
 ;
 ; move <ea>,ccr size is WORD! assemblers should check size specifiers better.
 ;
-		move.w	RegCCR_W(a5),ccr
-		movem.l	DataRegs(a5),D0-D7/A0-A6
+		move.w	RegCCR_W(a4),ccr
+		movem.l	DataRegs(a4),D0-D7/A0-A6
 		rts	;this really jumps to the user program
 
 go_special	or	#2,ccr		set overflow flag
@@ -5948,21 +5952,22 @@ go_special	or	#2,ccr		set overflow flag
 special_go_here
 
 *** CONTROLS RETURNS HERE AFTER THE Jsr COMMAND ***
-returncode	movem.l	d0-d2/a0-a1/a5-a6,-(sp)
-		call	ExecBase,GetCC
+returncode	movem.l	d0-d2/a0-a1/a4/a6,-(sp)
+		lib	Exec,GetCC
 		move.l	d0,d2
-		suba.l	a1,a1
-		call	FindTask
+		clra	a1
+		lib	FindTask
 		move.l	d0,a1
-		move.l	TC_Userdata(a1),a5
-		move.b	d2,RegCCR_B(a5)
+		move.l	TC_Userdata(a1),a4
+		move.b	d2,RegCCR_B(a4)
 		movem.l	(sp)+,d0-d2/a0-a1
-		movem.l	d0-d7/a0-a4,DataRegs(a5)
-		move.l	(sp)+,AddrRegs+4*5(a5)		a5
-		move.l	(sp)+,AddrRegs+4*6(a5)		a6
-		move.l	sp,RegSP(a5)		sp
+		movem.l	d0-d7/a0-a3,DataRegs(a4)
+		move.l	a5,AddrRegs+4*5(a4)		a5
+		move.l	(sp)+,AddrRegs+4*4(a4)		a4
+		move.l	(sp)+,AddrRegs+4*6(a4)		a6
+		move.l	sp,RegSP(a4)			sp
 
-		move.l	StackPtr(a5),sp			restore monitor sp
+		move.l	StackPtr(a4),sp			restore monitor sp
 
 		bsr	RemBreaks
 
@@ -5972,25 +5977,25 @@ returncode	movem.l	d0-d2/a0-a1/a5-a6,-(sp)
 
 *** TASK TRAP CODE ***
 trapreturn	;Note! We are in supervisor mode!
-		movem.l	d0/a0/a5/a6,-(sp)
-		move.l	ExecBase,a6
-		move.l	ThisTask(a6),a5
-		move.l	TC_Userdata(a5),a5
+		movem.l	d0/a0/a4/a6,-(sp)
+		getbase	Exec,a6
+		move.l	ThisTask(a6),a4
+		move.l	TC_Userdata(a4),a4
 
 		cmp.l	#9,4*4(sp)			trace?
 		bne.s	noskipbrk
-		bclr	#MONB_BRKSKIP,flags(a5)
+		bclr	#MONB_BRKSKIP,flags(a4)
 		beq.s	noskipbrk
 ;
 ; we have just skipped a breakpoint in trace mode
 ;
 ; note: user stack pointer does not need to be initialized here
 ;
-		move.l	GoBrkPtr(a5),a5
-		move.l	brk_Address(a5),a0
-		move.w	(a0),brk_Content(a5)
+		move.l	GoBrkPtr(a4),a4
+		move.l	brk_Address(a4),a0
+		move.w	(a0),brk_Content(a4)
 		move.w	#ILLEGAL,(a0)
-		movem.l	(sp)+,d0/a0/a5/a6
+		movem.l	(sp)+,d0/a0/a4/a6
 		addq.l	#4,sp			remove exception # from stack
 		bclr	#7,(sp)			clear trace bit
 		rte				continue at full speed
@@ -6007,27 +6012,28 @@ noskipbrk	cmp.l	#7,4*4(sp)		is this a TRAPV-trap
 ; this is the special go-routine if the address we are going to enter
 ; the code contains a breakpoint. in that case we trace over the
 ; instruction and then continue at full speed
-		bset	#MONB_BRKSKIP,flags(a5)
+		bset	#MONB_BRKSKIP,flags(a4)
 
 ; fall to walk trap routine
 walk_trap	lea	4*4+4(sp),sp		clean up stack
-		move.l	RegPC(a5),2(sp)
+		move.l	RegPC(a4),2(sp)
 		move	sr,d0
-		move.b	RegCCR_B(a5),d0
+		move.b	RegCCR_B(a4),d0
 		bclr	#13,d0			supervisor mode off
 		bset	#15,d0			trace mode on
 		move.w	d0,(sp)
-		move.l	RegSP(a5),a0
+		move.l	RegSP(a4),a0
 		move.l	a0,usp
-		movem.l	DataRegs(a5),d0-d7/a0-a6
+		movem.l	DataRegs(a4),d0-d7/a0-a6
 		rte
 
 normtrap_1	movem.l	(sp)+,d0/a0
-		movem.l	d0-d7/a0-a4,DataRegs(a5)
-		move.l	(sp)+,AddrRegs+5*4(a5)		;a5
-		move.l	(sp)+,AddrRegs+6*4(a5)		;a6
+		movem.l	d0-d7/a0-a3,DataRegs(a4)
+		move.l	a5,AddrRegs+4*5(a4)		;a5
+		move.l	(sp)+,AddrRegs+4*4(a4)		;a4
+		move.l	(sp)+,AddrRegs+6*4(a4)		;a6
 		move	usp,a0
-		move.l	a0,RegSP(a5)
+		move.l	a0,RegSP(a4)
 
 		move.w	AttnFlags(A6),D1
 		move.l	(sp)+,D5
@@ -6039,11 +6045,11 @@ normtrap_1	movem.l	(sp)+,d0/a0
 					;by the 68000
 
 pop_SR_and_PC	move.w	(sp)+,D0	status register
-		move.b	D0,RegCCR_B(a5)
-		move.l	(sp)+,a4
-		cmp.w	#ILLEGAL,(a4)
+		move.b	D0,RegCCR_B(a4)
+		move.l	(sp)+,a5
+		cmp.w	#ILLEGAL,(a5)
 		seq	d7
-		move.l	a4,RegPC(a5)
+		move.l	a5,RegPC(a4)
 
 		btst	#AFB_68010,d1
 		beq.s	go_user_mode
@@ -6075,7 +6081,7 @@ drop_stack	add.w	d2,sp
 go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 		move	D0,SR		back to the user mode!
 
-		movea.l	StackPtr(a5),sp		restore monitor (user) stack pointer
+		movea.l	StackPtr(a4),sp		restore monitor (user) stack pointer
 ;
 ; if MONF_BRKSKIP is set when we enter here, some other exception has
 ; occurred before the trace-exception that should have cleared the
@@ -6083,14 +6089,14 @@ go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 ; breakpoint here (RemBreaks tries to remove it anyway, and that could
 ; cause problems...)
 ;
-		bclr	#MONB_BRKSKIP,flags(a5)
+		bclr	#MONB_BRKSKIP,flags(a4)
 		beq.s	01$
-		move.l	GoBrkPtr(a5),a1		activate breakpoint
+		move.l	GoBrkPtr(a4),a1		activate breakpoint
 		move.l	brk_Address(a1),a3
 		move.w	(a3),brk_Content(a1)
 		move.w	#ILLEGAL,(a3)
 01$
-		btst	#MONB_BRKACTIVE,flags(a5)
+		btst	#MONB_BRKACTIVE,flags(a4)
 		bne.s	02$
 		clr.b	d7
 02$
@@ -6108,16 +6114,16 @@ go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 
 		cmp.w	#9,d5		;trace ?
 		bne.s	450$
-		btst	#MONB_QTRACE,flags(a5)
+		btst	#MONB_QTRACE,flags(a4)
 		beq.s	450$
-		move.l	RegPC(a5),d0
+		move.l	RegPC(a4),d0
 		btst	#0,d0
 		bne.s	450$
-		move.l	d0,a4
-		move.w	(a4),d0
+		move.l	d0,a5
+		move.w	(a5),d0
 		bsr.s	is_flowctrl
 		bcc	walk_001
-		lea	OutputBuffer(a5),a3
+		lea	OutputBuf(a4),a3
 		bsr	disassemble
 		tst.w	d0
 		bne	walk_001
@@ -6125,10 +6131,10 @@ go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 		lea	qtrace_txt(pc),a0
 		bra.s	500$
 
-450$		move.l	RegPC(a5),D0
+450$		move.l	RegPC(a4),D0
 		cmp.w	#4,D5
 		bne.s	normal_trap
-		cmp.l	TmpBrkAddr(a5),d0
+		cmp.l	TmpBrkAddr(a4),d0
 		bne.s	480$
 		lea	etrace_txt(pc),a0
 		bra.s	500$
@@ -6145,11 +6151,11 @@ normal_trap	bsr.s	show_trap_name
 
 trap_dregs	bsr	RemBreaks
 		bsr	displayregs
-		move.l	RegPC(a5),D0
+		move.l	RegPC(a4),D0
 		btst	#0,D0
 		bne.s	tr99
-		move.l	D0,Addr(A5)
-		move.l	D0,A4
+		move.l	D0,Addr(a4)
+		move.l	D0,a5
 		startline
 		bsr	disassemble
 		bsr	printstring
@@ -6236,7 +6242,7 @@ showtrap	cmp.b	(a3),d0
 		bsr	show_trap_name
 		bra.s	mloop_jx
 dbug		lea	hexfmt(pc),a0
-		move.l	a5,d0
+		move.l	a4,d0
 		bsr	printf
 		bra.s	mloop_jx
 
@@ -6248,15 +6254,15 @@ cmdline		bsr	skipspaces
 		bsr	printstring_a0_window
 		moveq	#0,d0
 		bsr	GetInput
-01$		lea	CmdLineBuf(a5),a1
+01$		lea	CmdLineBuf(a4),a1
 		move.l	a1,a2
 02$		move.b	(a3)+,(a1)+
 		bne.s	02$
 		move.b	#LF,-1(a1)
 		clr.b	(a1)
 		sub.l	a2,a1
-		move.l	a1,DataRegs(a5)
-		move.l	a2,AddrRegs(a5)
+		move.l	a1,DataRegs(a4)
+		move.l	a2,AddrRegs(a4)
 mloop_jx	bra	mainloop
 
 calculator	bsr	skipspaces
@@ -6377,10 +6383,10 @@ ret99		rts
 
 printf		bsr.s	fmtstring
 ; fall to printstring
-printstring	lea	OutputBuffer(a5),a0
+printstring	lea	OutputBuf(a4),a0
 ; fall to printstring_a0
 *** Output a string (possibly redirected output) ***
-printstring_a0	move.l	OutputFile(a5),d1
+printstring_a0	move.l	OutputFile(a4),d1
 ;
 ; print text, line at time
 ; inputs: a0 - pointer to zero-terminated string
@@ -6388,7 +6394,7 @@ printstring_a0	move.l	OutputFile(a5),d1
 ;
 print_text	movem.l	d2-d4/a2/a6,-(sp)
 		move.l	d1,d4
-		move.l	DosBase(a5),a6
+		getbase	Dos
 		move.l	a0,a2
 
 print_loop	move.l	a2,d2
@@ -6403,7 +6409,7 @@ print_loop	move.l	a2,d2
 		bne.s	002$
 		subq.l	#1,d3
 		beq.s	003$
-002$		call	Write
+002$		lib	Write
 		tst.b	-1(a2)
 		bne.s	print_loop
 003$		movem.l	(sp)+,d2-d4/a2/a6
@@ -6411,11 +6417,11 @@ print_loop	move.l	a2,d2
 
 printf_window	bsr.s	fmtstring
 printstring_window
-		lea	OutputBuffer(a5),a0
+		lea	OutputBuf(a4),a0
 *** Output a string to the window ***
 * used in error messages etc.
 printstring_a0_window
-		move.l	WinFile(a5),d1
+		move.l	WinFile(a4),d1
 		bra.s	print_text
 
 ;
@@ -6423,7 +6429,7 @@ printstring_a0_window
 ;
 puts_stdout	movem.l	a2/a6,-(sp)
 		move.l	a0,a2
-		call	DosBase(a5),Output
+		lib	Dos,Output
 		move.l	d0,d1
 		beq.s	01$
 		move.l	a2,a0
@@ -6439,8 +6445,8 @@ fmtstring	movem.l	a2-a3/a6,-(sp)
 		movem.l	d0-d3,-(sp)
 		move.l	sp,a1
 		lea	putch(pc),a2
-		lea	OutputBuffer(a5),a3
-		call	ExecBase,RawDoFmt
+		lea	OutputBuf(a4),a3
+		lib	Exec,RawDoFmt
 		lea	16(sp),sp
 		movem.l	(sp)+,a2-a3/a6
 		rts
@@ -6450,26 +6456,26 @@ putch		move.b	d0,(a3)+
 		rts
 
 ; Output a character to the window
-ChrOutWin	move.l	WinFile(A5),D1
+ChrOutWin	move.l	WinFile(a4),D1
 		bra.s	xChrOut
 ; output a character to current output
-ChrOut		move.l	OutputFile(a5),d1
+ChrOut		move.l	OutputFile(a4),d1
 xChrOut		movem.l	D2-D3/a6,-(sp)
 		move.b	d0,-(sp)
 		move.l	sp,d2
 		moveq	#1,D3
-		call	DosBase(a5),Write
+		lib	Dos,Write
 		addq.l	#2,sp
 		movem.l	(sp)+,D2-D3/a6
 		rts
 
 **** Get a character ****
 GetChar		movem.l	D2-D3/a6,-(sp)
-		move.l	WinFile(A5),D1
+		move.l	WinFile(a4),D1
 		clr.b	-(sp)
 		move.l	sp,d2
 		moveq	#1,d3
-		call	DosBase(a5),Read
+		lib	Dos,Read
 		moveq	#0,D0
 		move.b	(sp)+,D0
 		movem.l	(sp)+,D2-D3/a6
@@ -6530,21 +6536,21 @@ ret9		rts
 * returns the special code or -1 if Ctrl-E pressed
 *********
 ; this may modify any register...
-GetInput	move.w	D0,inpspecial(A5)
+GetInput	move.w	D0,inpspecial(a4)
 		moveq	#0,D4
-		lea	InputBuffer(a5),a4
+		lea	InputBuf(a4),a5
 		moveq	#0,D5
 		moveq	#0,D7	;length
 		cmp.w	#2,D0
 		bne.s	inp0
 		lea	ClearEol(pc),a0		erase to end of line
 		bsr	printstring_a0_window
-		move.l	A4,A0
+		move.l	a5,A0
 		bsr	printstring_a0_window
-		move.l	A4,A0
+		move.l	a5,A0
 inp0len		tst.b	(A0)+
 		bne.s	inp0len
-		sub.l	A4,A0
+		sub.l	a5,A0
 		subq.l	#1,A0
 		move.l	A0,D7
 inp0		move.l	D7,D6	;current position
@@ -6553,10 +6559,10 @@ inp1		bsr	GetKey
 		beq	inp9
 		cmp.w	#CtrlE,D0
 		bne.s	noCtrlE
-		tst.w	inpspecial(A5)
+		tst.w	inpspecial(a4)
 		beq.s	noCtrlE
 		bsr	eraseline
-		move.w	#-1,inpspecial(A5)
+		move.w	#-1,inpspecial(a4)
 		bra	inp9
 
 noCtrlE		cmp.w	#CtrlX,D0	;Ctrl-x clears the input line
@@ -6612,7 +6618,7 @@ put_char_to_input
 		move.l	D7,D2
 
 ; make room for a new character
-080$		move.b	-1(A4,D2.L),0(A4,D2.L)
+080$		move.b	-1(a5,D2.L),0(a5,D2.L)
 		subq.l	#1,D2
 		cmp.l	D2,D6
 		bne.s	080$
@@ -6622,30 +6628,30 @@ iputchr		move.b	D0,D2
 		bsr	printstring_a0_window
 		move.b	D2,D0
 		bsr	ChrOutWin
-		move.b	D2,0(A4,D6.L)
+		move.b	D2,0(a5,D6.L)
 		addq.l	#1,D6
 		addq.l	#1,D7
 		tst.l	D5	;auto-CR flag
 		beq	inp1
 
-inp9		clr.b	0(A4,D7.L)
-		move.l	A4,A3
+inp9		clr.b	0(a5,D7.L)
+		move.l	a5,A3
 		bsr	skipspaces
 		tst.b	(A3)
 		beq.s	inp99
 
-		lea	History(a5),A0
+		lea	History(a4),A0
 		move.w	#(NLINES-1)*LEN/4-1,D0
 099$		move.l	LEN(A0),(A0)+
 		dbf	D0,099$		;scroll command line history to make space for current line
 
-100$		move.b	(A4)+,(a0)+	;add current line to command line history
+100$		move.b	(a5)+,(a0)+	;add current line to command line history
 		bne.s	100$
 
-inp99		tst.w	inpspecial(A5)
+inp99		tst.w	inpspecial(a4)
 		bmi.s	inp99a
 		emitwin	LF
-inp99a		move.w	inpspecial(A5),D0
+inp99a		move.w	inpspecial(a4),D0
 		rts
 
 rightedge	;Shift-Cursor right
@@ -6684,7 +6690,7 @@ delchar		cmp.l	D6,D7
 		beq	inp1
 		move.l	D6,D0
 
-105$		move.b	1(A4,D0.L),0(A4,D0.L)
+105$		move.b	1(a5,D0.L),0(a5,D0.L)
 		addq.l	#1,D0
 		cmp.l	D0,D7
 		bne.s	105$
@@ -6708,18 +6714,18 @@ prnxl1		add.b	D1,D4
 linct_neg	move.b	#NLINES-1,D4
 
 linct_ok	move.b	D4,D0
-		lea	History(a5),A0
+		lea	History(a4),A0
 		ext.w	D0
 		mulu	#LEN,D0
 		add.l	D0,A0
 
 prevloop	move.b	(A0)+,D0
 		beq.s	prev2
-		move.b	D0,0(A4,D7.L)
+		move.b	D0,0(a5,D7.L)
 		addq.l	#1,D7
 		bra.s	prevloop
-prev2		clr.b	0(A4,D7.L)
-		move.l	A4,A0
+prev2		clr.b	0(a5,D7.L)
+		move.l	a5,A0
 		bsr	printstring_a0_window
 		move.l	D7,D6
 		tst.l	D5
@@ -6747,7 +6753,7 @@ eraseline	bsr.s	gotoleftedge
 ;  now checks the window width from console unit
 ;
 puthex1_68
-		move.l	ConsoleUnit(a5),a0
+		move.l	ConsoleUnit(a4),a0
 		cmp.w	#65,cu_XMax(a0)
 		bcs.s	phex1_68
 		bra.s	phex1_8
@@ -6821,25 +6827,25 @@ PutLong		swap	D0
 * no name, priority 0
 MyCreatePort	movem.l	D2/A6,-(sp)
 		moveq	#-1,D0
-		call	ExecBase,AllocSignal
+		lib	Exec,AllocSignal
 		moveq	#-1,D1
 		cmp.l	D0,D1
 		beq.s	CrepFail
 		move.l	D0,D2
 		moveq	#MP_SIZE,D0
 		move.l	#MEMF_PUBLIC!MEMF_CLEAR,D1
-		call	AllocMem
+		lib	AllocMem
 		tst.l	D0
 		bne.s	Crep1
 		move.b	D2,D0
-		call	FreeSignal
+		lib	FreeSignal
 		bra.s	CrepFail
 Crep1		move.l	D0,A0
 ;#
 ;# no need to call FindTask here...get the pointer from MyTask-variable
 ;# changed in version 1.22  1990-01-06
 ;#
-		move.l	MyTask(a5),MP_SIGTASK(A0)
+		move.l	MyTask(a4),MP_SIGTASK(A0)
 		move.b	D2,MP_SIGBIT(A0)
 		move.b	#NT_MSGPORT,LN_TYPE(A0)
 ; PA_SIGNAL is zero...
@@ -6859,10 +6865,10 @@ MyDeletePort	;port addr in A1
 		moveq	#0,D0
 		move.b	MP_SIGBIT(A1),D0
 		move.l	A1,A2
-		call	ExecBase,FreeSignal
+		lib	Exec,FreeSignal
 		move.l	A2,A1
 		moveq	#MP_SIZE,D0
-		call	FreeMem
+		lib	FreeMem
 		movem.l	(sp)+,A2/A6
 		rts
 
@@ -6870,7 +6876,7 @@ MyDeletePort	;port addr in A1
 MyCreateIO	;port addr in A1, size in D0
 		movem.l	D0/A1/a6,-(sp)
 		move.l	#MEMF_PUBLIC!MEMF_CLEAR,D1
-		call	ExecBase,AllocMem
+		lib	Exec,AllocMem
 		movem.l	(sp)+,D1/A1/a6
 		tst.l	D0
 		beq.s	CreIO9	;no memory
@@ -6885,7 +6891,7 @@ MyDeleteIO	;IoRequest In A1
 		moveq	#0,D0
 		move.w	MN_LENGTH(A1),D0
 		move.l	a6,-(sp)
-		call	ExecBase,FreeMem
+		lib	Exec,FreeMem
 		move.l	(sp)+,a6
 		rts
 
@@ -6905,7 +6911,7 @@ MyDeleteIO	;IoRequest In A1
 *  d0/d1/a0/a1
 *
 sendpacket	movem.l	a2-a3/a6,-(sp)
-		move.l	ExecBase,a6		only exec will be called here
+		getbase	Exec			only exec will be called here
 		move.l	d0,a2			save packet type temporarily
 		move.l	a0,d0			check if handler port is zero
 		beq	sp9			if it is, just return zero
@@ -6914,7 +6920,7 @@ sendpacket	movem.l	a2-a3/a6,-(sp)
 		move.l	d1,-(sp)
 		moveq	#sp_SIZEOF+MP_SIZE,d0
 		move.l	#MEMF_CLEAR!MEMF_PUBLIC,d1
-		call	AllocMem
+		lib	AllocMem
 		move.l	(sp)+,d1
 		tst.l	d0
 		beq.s	sp9			branch if allocmem failed
@@ -6925,15 +6931,15 @@ sendpacket	movem.l	a2-a3/a6,-(sp)
 		movem.l	d1-d7,sp_Pkt+dp_Arg1(a2) save args in DosPacket structure
 
 		moveq	#-1,d0
-		call	AllocSignal
+		lib	AllocSignal
 		move.b	d0,sp_SIZEOF+MP_SIGBIT(a2)
 		bmi.s	sp8			branch if allocsignal failed
 
-; this was missing in original code....
-		suba.l	a1,a1
-		call	FindTask		find this task
-		move.l	d0,sp_SIZEOF+MP_SIGTASK(a2)
+;# FindTask()... was missing in original code....
+;# but here it is not needed, we can use MyTask-variable
+;# changed in version 1.30, 1990-08-22
 
+		move.l	MyTask(a4),sp_SIZEOF+MP_SIGTASK(a2)
 		lea	sp_SIZEOF+MP_MSGLIST(a2),a0
 		NEWLIST	a0
 
@@ -6945,22 +6951,22 @@ sendpacket	movem.l	a2-a3/a6,-(sp)
 
 		move.l	a3,a0
 		move.l	a2,a1			sp_Msg
-		call	PutMsg
+		lib	PutMsg
 		lea	sp_SIZEOF(a2),a0
-		call	WaitPort
+		lib	WaitPort
 		lea	sp_SIZEOF(a2),a0
-		call	GetMsg
+		lib	GetMsg
 
 		moveq	#0,d0
 		move.b	sp_SIZEOF+MP_SIGBIT(a2),d0
-		call	FreeSignal			free signal bit
+		lib	FreeSignal			free signal bit
 
 sp8		move.l	sp_Pkt+dp_Res2(a2),-(sp)	save result codes to stack
 		move.l	sp_Pkt+dp_Res1(a2),-(sp)	in reverse order
 
 		move.l	a2,a1
 		moveq	#sp_SIZEOF+MP_SIZE,d0
-		call	FreeMem				free StandardPacket & MsgPort
+		lib	FreeMem				free StandardPacket & MsgPort
 
 		movem.l	(sp)+,d0-d1			get result codes in d0/d1
 
