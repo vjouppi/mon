@@ -12,6 +12,7 @@
 * v1.17 -> last mod. 1989-12-09    *
 * v1.18 -> last mod. 1989-12-14    *
 * v1.19 -> last mod. 1989-12-21    *
+* v1.20 -> last mod. 1989-12-31    *
 *                                  *
 ************************************
 
@@ -238,12 +239,20 @@
 ;   1989-12-14 --> v1.18
 ;		- disassembler now uses new routines. shorter executable.
 ;
-;   1989-12-21 -->v1.19
+;   1989-12-21 --> v1.19
 ;		- disassembler now prints the dollar signs that were missing
 ;		  in previous version in immediate word/byte operands
 ;		  and trap numbers.
 ;
-
+;   1989-12-31 --> v1.20
+;		- '[register]'-syntax added to the expression parser
+;
+;  --> future: (next decade...)
+;	- change the whole thing to use include.i & macros.i etc.
+;	- use trlib
+;	- read symbols from executable files
+;	- display symbols in disassembly etc... (a real symbolic debugger...)
+;
 
 ;
 ; lots of includes...
@@ -271,7 +280,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION	macro
-	dc.b	'1.19'
+	dc.b	'1.20'
 	endm
 
 *** macro to generate 16-bit self-relative addresses ***
@@ -3013,9 +3022,50 @@ ex35	cmp.b	#'%',d0		;binary prefix '%'
 	moveq	#2,d0
 gnum_j	bra	get_num
 ex37	cmp.b	#'*',d0
-	bne.s	ex38
+	bne.s	ex37a
 	move.l	Addr(a5),d0
 	rts
+ex37a	cmp.b	#'[',d0
+	bne.s	ex38
+	move.b	(a3)+,d0
+	bsr	tolower
+	lsl.w	#8,d0
+	move.b	(a3)+,d0
+	bsr	tolower
+	lea	RegPC(a5),a0
+	cmp.w	#'pc',d0
+	beq.s	ex37x
+	cmp.b	#'cc',d0
+	bne.s	ex37b
+	move.b	(a3),d0
+	bsr	tolower
+	cmp.b	#'r',d0
+	bne.s	01$
+	addq.l	#1,a3
+01$	moveq	#0,d0
+	move.b	RegCC(a5),d0
+	bra.s	ex37z
+ex37b	lea	AddrRegs+4*7(a5),a0
+	cmp.b	#'sp',d0
+	beq.s	ex37x
+	sub.w	#'a0',d0
+	bcs.s	ex37_err
+	cmp.w	#7,d0
+	bhi.s	ex37c
+	lea	AddrRegs(a5),a0
+	bra.s	ex37r
+ex37c	sub.w	#'d0'-'a0',d0
+	bcs.s	ex37_err
+	cmp.w	#7,d0
+	bhi.s	ex37_err
+	lea	DataRegs(a5),a0
+ex37r	lsl.w	#2,d0
+	add.w	d0,a0
+ex37x	move.l	(a0),d0
+ex37z	cmp.b	#']',(a3)+
+	beq.s	exrt01
+ex37_err
+	bra	expr_error
 ex38	subq.l	#1,a3
 	bsr	get_token
 	tst.l	d0
@@ -3043,7 +3093,7 @@ ex38b	move.b	(a3),d0
 	bcs.s	ex39
 	move.b	d1,(a0)
 	move.l	a0,a3
-	rts
+exrt01	rts
 
 ex39	move.b	d1,(a0)
 ex39b	moveq	#10,d0

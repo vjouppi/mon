@@ -1,5 +1,5 @@
 
-                 Amiga Monitor 1.19 instructions
+                 Amiga Monitor 1.20 instructions
                  ===============================
 
   The monitor can be started both from CLI and from workbench. If you want
@@ -61,7 +61,9 @@
 
  parenthesis can be used to group the operations in the expressions.
 
- '*'   represents the 'current address'.
+ '*'           represents the 'current address'.
+
+ [reg_name]    represents the value of register 'reg_name'.
 
  All calculations are done in 32-bit integer arithmetic. No overflow
  checking is done.
@@ -105,6 +107,10 @@
     ''''  -- this means one single quote
     'both',$0A,'text',10,'and','numbers'
 
+
+New features and bug fixes in version 1.20
+------------------------------------------
+ - added the '[register]'-syntax in the expression parser
 
 New features and bug fixes in version 1.18 & 1.19
 -------------------------------------------------
@@ -491,10 +497,10 @@ x -- exit
  and exits the monitor.
 
 
-version 1.19 of the monitor (and this document) --> 1989-12-21
+version 1.20 of the monitor (and this document) --> 1989-12-31
 
- Timo Rossi
- Kellankoski			internet e-mail:
- 44300 Konnevesi		trossi@jyu.fi
- FINLAND
+  Timo Rossi
+  Kellankoski			internet e-mail:
+  44300 Konnevesi		trossi@jyu.fi
+  FINLAND
 
