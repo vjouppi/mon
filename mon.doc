@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.34 instructions
+                 Amiga Monitor v1.37 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -125,9 +125,9 @@
 		avail($20000) return largest available block.
 
   The following functions can be used to examine exec library, device,
-  resource and task lists. Note that the pointers returned by these
-  functions may become invalid any time if the library/device/task is
-  expunged/removed from the system.
+  resource, task and port lists. Note that the pointers returned by these
+  functions may become invalid any time if the library/device/task/port
+  is expunged/removed from the system.
 
   lib("libname.library")   --	returns base address of a named library or
 				zero if not found. note that this does not
@@ -149,6 +149,10 @@
 				is not in use.
   task(0)		  --	returns pointer to current task (the CLI
 				process that runs the monitor)
+
+  port("portname")	  --	returns pointer to the public message port
+				names "portname" or zero if no such port
+				can be found.
 
   Function names are not case sensitive.
 
@@ -234,8 +238,9 @@ o -- Redirect output
  for example, to send the output to printer use 'o PRT:'.
 
 ? [expr]  --  Calculator
-  Displays the value of the expression in hex, decimal, octal and binary.
-  If the number is negative, displays it as signed and unsigned.
+  Displays the value of the expression in hex, decimal, octal, binary
+  and ASCII characters.  If the number is negative, displays it as signed
+  and unsigned.
 
 set [var[=expr]] -- Set/show variables
   The set-command without parameters displays the values of all currently
@@ -531,12 +536,30 @@ dev -- set/show current disk device
  Displays old and new checksums. This command is useful if use use the
  monitor as a disk editor. Addr must be even.
 
+ New in 1.37: extended usage: = <addr> <len> <offs>
+ where <len> is block length to be checksummed and <offs> is the offset
+ of the checksum longword from the start of the block. The checksum is
+ calculated to that the sum of the longwords in the block is zero.
+
+ Checksum for hard disk RigidDiskBlocks can be calculated with:
+ = <addr> $100 $08
+
+
 #  -- Corrects bootblock checksum
  Usage:
   # <addr> -- if there is a disk bootblock (2 disk blocks, 1024 bytes) read
  into memory at <addr>, calculates a new checksum for the bootblock and stores
  it in the bootblock (in memory). Displays old and new checksums.
  Addr must be even.
+
+ New in 1.37: extended usage: # <addr> <len> <offs>
+ where <len> is block length to be checksummed and <offs> is the offset
+ of the checksum longword from the start of the block. The checksum is
+ calculated to that the sum of the longwords with carry in the block
+ is $ffffffff.
+
+ Checksum for pre-2.0 kickstart images can be calculated with:
+ # <addr> $40000 $3ffe8
 
 !  -- Play digisound
  Usage:
@@ -568,6 +591,13 @@ x -- Exit
 
 Version history:
 ----------------
+1.37 -> lots of new features...
+ - major source code reorganization
+ - extended checksum commands
+ - calculator 'ascii' output
+ - memoryinfo displays hunk offsets
+ - breakpoint numbers
+ - added 'port()' to expression parser
 1.34 ->
  - added 'narrow disassembly' option.
  - digisound player now defaults to play the sample once.
@@ -677,10 +707,12 @@ Version history:
 
 
 
-Amiga Monitor v1.34 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.37 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the zoo-file 'mon134.zoo' or lharc-file 'mon134.lzh'.
+way of distribution is the zoo-file 'mon137.zoo' or lharc-file 'mon137.lzh'.
+Special Permission is given to Fred Fish to distribute this program on
+his 'Fish disks'.
 
 Send suggestions, bug reports etc. to:
 

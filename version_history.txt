@@ -1,0 +1,374 @@
+************************************
+*                                  *
+*   Amiga machine code monitor     *
+* Timo Rossi  1987-1988-1989-1990  *
+*                                  *
+* v1.06 -> last mod. 1988-05-02    *
+* v1.07 -> last mod. 1989-08-28    *
+* v1.08 -> last mod. 1989-08-29    *
+* v1.12 -> last mod. 1989-11-28    *
+* v1.14 -> last mod. 1989-11-29    *
+* v1.15 -> last mod. 1989-11-30    *
+* v1.17 -> last mod. 1989-12-09    *
+* v1.18 -> last mod. 1989-12-14    *
+* v1.19 -> last mod. 1989-12-21    *
+* v1.20 -> last mod. 1989-12-31    *
+* v1.22 -> last mod. 1990-01-07    *
+* v1.23 -> last mod. 1990-01-08    *
+* v1.24 -> last mod. 1990-01-13    *
+* v1.26 -> last mod. 1990-05-25    *
+* v1.27 -> last mod. 1990-06-26    *
+* v1.28 -> last mod. 1990-07-13	   *
+* v1.29 -> last mod. 1990-08-07	   *
+* v1.30 -> last mod. 1990-08-22	   *
+* v1.31 -> last mod. 1990-11-02	   *
+* v1.32 -> last mod. 1990-12-06	   *
+* v1.33 -> last mod. 1990-12-07	   *
+* v1.37 -> last mod. 1991-04-08    *
+************************************
+
+;DEBUG	set	1
+
+;
+; there seems to be problems tracing traps (and chk & trapv instructions
+; and divisions by zero). a trace exception occurs in the trap handler
+; routine (in supervisor mode) and that can't be caught by TC_TRAPCODE
+; because exec calls directly the guru alert routine if an exception
+; happens in supervisor mode.
+; now the problem exists also when you go or jump to a breakpoint, because
+; the monitor internally tries to trace over it...
+; there is nothing that can be done to this problem if you don't change
+; the processor exception vector (and that is against the rules...)
+;
+
+;
+; created a separate program, patchtrace to help with the trap-trace
+; problem. it changes to processor trace-exception vector to point to
+; a new routine that checks the supervisor mode bit and just executes rte
+; if the trace exception happens in supervisor mode. this program will be
+; included with the monitor.
+;
+
+;
+; something still not done...
+;  - assembler should handle size specifiers better
+;  - 68010 support
+;  - 68020/68881 support (quite difficult...)
+;
+
+;#
+;# here are the starting comments from dis.a (the new disassembler routine)
+;#
+;
+; dis.a  --  68000 disassembler
+;
+; created  1989-08-20  TR
+;
+; version 1.0 -- 1989-08-25
+;
+; 1989-08-24  TR  -->	now works quite well, tested, no bugs found!!
+;			prints signed offsets, hex output leading zero
+;			elimination works ok. zero word padding does not
+;			confuse the disassembler any more...
+;			now understands btst Dn,#immediate mode...
+;			also changed hex output to use lower case letters.
+;
+;		  -->	it seems that you never find the last bug...just
+;			when I though this was practically bug-free code
+;			I received a letter from John van Dijk telling
+;			that my monitor disassembler does not correctly
+;			disassemble exg Dn,An-instruction. after little
+;			examination I found that the bug was really in
+;			my 68000 documents, I had made no error in the
+;			program...at least it now works correctly in this
+;			disassembler. and maybe I'll make a new version
+;			of the monitor too...
+;
+; 1989-08-25  TR  -->	changed usp, sr & ccr to lower case, absolute
+;			short addresses are now displayed as signed numbers
+;
+
+;
+; modifications in versions 1.07+:
+;
+;   1989-08-24  --> v1.07
+;		- changed startline/endline/printstring so that there is
+;		  no need to keep line buffer address in a0 all the time...
+;		- fixed the exg-instruction handling in both assembler and
+;		  disassembler
+;		- added signed offsets and a new hex output routine
+;		- stack pointer is now printed as 'sp' and 'sp' is also
+;		  accepted in the assembler.
+;		- number output routines changed to use RawDoFmt
+;		- help and info texts are now printed one line at time
+;		- go now traces over breakpoint in current pc address
+;   1989-08-25  - disk read/write can now be used with non-chip memory
+;		- dosbase is no longer held in a6 all the time
+;		- assembler addressing mode parser works again...
+;		- absolute short address is now displayed as signed
+;		- trackdisk errors 'no disk' and 'write protected' are
+;		  now displayed as text, not error number
+;   1989-08-26	- changed register order in exg Dn,An, helps comparing
+;		  with new disassembler. also disassembler now understands
+;		  zero word paddings (by the linker, for example) and
+;		  does not get "out of sync".
+;		- added "play n times" option to play digisound command
+;		- window width and height are now gotten from intuition
+;		  using GetScreenData(). should work with morerows etc...
+;		- edited GetInput, now all number output is done with
+;		  printf_window, removed NumOut-routine.
+;		- added a new command to set up a CLI command line
+;		- added 6/8-digit hex output routine
+;		- now default and Jump stack pointers are long word aligned
+;		- print_text no longer outputs ascii NULLs at end of text
+;   1989-08-27	- now uses 6-digit hex numbers in memdisplay & disassemble
+;		  addresses only if preferences default font is topaz60
+;		  now also comprare/hunt decide how many number to print
+;		  on one line according the default font.
+;		- tested the disassembler once again. no bugs found
+;		  after fixing long immediate data output.
+;		- removed one unnecessary test in RegisterList
+;		- fixed some minor bugs in assembler
+;		- added 'out of range' error message and range checking
+;		  in pcrelative indexed addressing mode.
+;   1989-08-28	- reformatted help text to use tabs, a little smaller
+;		  executable size...
+;		- the assembler no longer accepts extra garbage characters
+;		  after a valid instruction
+;		- the assembler now understands blo/bhs/slo/shs/dblo/sbhs
+;		  and assembles them as bcs/bcc/scs/scc/dbcs/dbcc
+;		- fixed some small bugs in the assembler (it accepted
+;		  some illegal addressing modes and cmpm-instruction size
+;		  specifiers did not work)
+;
+;	      --> version 1.07 ready for release. will include patchtrace
+;		  program. updated document file.
+;
+;   1989-08-29 --> v1.08
+;		- fixed the exception (trap) handling on 68010/68020
+;		  (previously left an extra word on the supervisor stack)
+;
+;   1989-08-31 --> v1.09a
+;		- gets pointers to window and consoleunit at startup. uses
+;		  window height in m/d window parameters. also does not
+;		  any more call GetPrefs to set 60/80col flag, this
+;		  information is not gotten from conunit.
+;
+;   1989-09-03 --> v1.09b
+;		- better handler for 68010/20 stack frames
+;
+;   1989-09-26 --> v1.09c
+;		- now should handle most 68010/20 stack frame types
+;		  correctly.
+;----
+;   1989-11-25 --> v1.10
+;		- now hunt doesn't find anything inside the monitor
+;		  code/data area.
+;		- show seglist now displays hunk numbers
+;		- added expresion evaluation and user-defined default
+;		  input number base.
+;		- changed chip memory allocation syntax to '( length C'
+;		- added hunk() and hlen() functions to expression
+;		  evaluation routine
+;
+;		--> document: remove n cmd, help is h, ? is calc
+;		     decimal is default, ba set/show defbase, chipmem alloc
+;		--> future: read symbolds from load files,
+;		     display hunk types (understand split data/bss hunks)
+;
+;   1989-11-26 --> v1.11
+;		- added variables, set-command
+;		- added avail()-function to expression parser
+;
+;	       --> v1.12
+;		- all monitor variables are now in the bss-section
+;		  (start address kept in a5)
+;
+;   1989-11-29 --> v1.14
+;		- fixed a bug in isalpha that prevented the use
+;		  of the '_'-character in variable names
+;		- added 'memory info'-command
+;		- variables beginning with '_' can now be used
+;		  (possible conflict with decimal number prefix...)
+;		- variables are now sorted alphabetically
+;		- optimized code size
+;
+;   1989-11-30 --> v1.15
+;		- more code size optimization (specifically in error
+;		  handling code, because now mainloop restores stack pointer)
+;		- move sp,usp now works
+;		- exg Rn,sp now works (getreg must not
+;		  change high word of d1)
+;
+;   1989-12-04 --> v1.16
+;		- code is now re-entrant (can be made resident)
+;		- monitor data area is now allocated with AllocMem()
+;		- TC_TRAPDATA points to monitor data area
+;		- default number base changed to hex again
+;		- removed SkipBreakFlag, now all flags are in
+;		  the flags-variable
+;		- corrected some errors in comments
+;
+;   1989-12-09 --> v1.17
+;		- register display now displays condition
+;		  code register as 'ccr' and it is also accepted in
+;		  the register set command.
+;		- condition code register set/display now works again
+;		- transfer from location zero now works. this bug was in
+;		  the original code. strange that nobody noticed it...
+;
+;   1989-12-14 --> v1.18
+;		- disassembler now uses new routines. shorter executable.
+;
+;   1989-12-21 --> v1.19
+;		- disassembler now prints the dollar signs that were missing
+;		  in previous version in immediate word/byte operands
+lm;		  and trap numbers.
+;
+;   1989-12-31 --> v1.20
+;		- '[register]'-syntax added to the expression parser
+;
+;  --> future: (next decade...)
+;	- change the whole thing to use include.i & macros.i etc.
+;	- use trlib
+;	- read symbols from executable files
+;	- display symbols in disassembly etc... (a real symbolic debugger...)
+;
+;
+;   1990-01-02	- noticed some little problems. variables with upper case
+;		  letters can't be used in the assembler because the
+;		  assembler converts the entire command line to lower case.
+;		  and variables beginning with 's' ,'d' and 'a' don't seem
+;		  to work in the assembler even in lower case...because
+;		  the addressing mode parser checks these letters for
+;		  register names... ***NOT FIXED YET*** (but see below...)
+;
+;   1990-01-06 --> v1.21
+;		- variables are no longer case sensitive. this fixes the
+;		  upper case variable problem with the assembler.
+;		  (variables beginning with a,d or s still can't be
+;		   used in some assembler instructions...)
+;		- disassemble 'valid instruction'-return code
+;		  is set correctly with line-[af] and ILLEGAL ($4afc).
+;		- reformatted source code
+;		- uses 'new' include files
+;		- added ^^-command for debugging. this command displays
+;		  the monitor data area pointer.
+;
+; 1990-01-06..07 --> v1.22
+;		- removed some unused strings...they were left
+;		  when the disassembler routines were changed...
+;		- added e-command (execute one instruction)
+;		  this command can be used as trace command that doesn't
+;		  enter subroutines.
+;		  it executes the instruction by placing a temporary
+;		  breakpoint after the instruction.
+;		- memdisplay now reads memory as bytes and can be started
+;		  at odd address.
+;		- the monitor window initial size is now full 200 lines
+;		  on NTSC machines (full help text fits in the window).
+;		- edited help and info texts.
+;		- cleaned up monitor TC_TRAPDATA routine and go/jump-
+;		  routines (especially stack pointer handling).
+;		- j, g, w and e-commands now reset stack pointer
+;		  if necessary.
+;
+;   1990-01-08 --> v1.23
+;		- the monitor now reserves 2000 bytes of stack for its own
+;		  use and the rest can be used by the program that is
+;		  being debugged.
+;		- stack pointer is now also reset if it is odd
+;		- added q-command (quicktrace) that executes code
+;		  in trace mode until a flow control instruction
+;		  is encountered.
+;		- changed instruction name handling so that instruction
+;		  name address table is not needed.
+;
+;   1990-01-13 --> v1.24
+;		- the assembler/disassembler accidentally exchanged
+;		  the tas and trap-instructions. now fixed.
+;		  (this version was posted in comp.binaries.amiga, and
+;		   is also on Fred Fish's fish disk 310)
+;
+;   1990-05-24 --> v1.25 (Now using A68k v2.6)
+;		- now uses TC_Userdata instead of TC_TRAPDATA (because
+;		  TC_TRAPDATA is marked as private in 1.4/2.0 includes...)
+;		  (but not so in some later includes....)
+;		- '\'-command first tries to start a shell, and if that
+;		  fails, then a CLI (Must check IoErr() code, Execute()
+;		  seems to return -1 even if the command can not be executed)
+;		- disk read/write commands can now be used with devices
+;		  other than trackdisk.device, for example hard disks.
+;		  * noticed a problem with the 2090 hd controller. it doesn't
+;		    set io_Actual correctly...changed disk read/write
+;		    routines to ignore io_Actual.
+;		- fixed condition code register setting with j & g-
+;		  commands (move <ea>,ccr size is WORD).
+;
+;   1990-05-24/25 --> v1.26
+;		- added hend() and nhunks-functions to the expression parser
+;		- added error message if window cannot be opened
+;		- changed LoadSeg() message, now gives number of hunks.
+;		- new command line handling:
+;		  * window width/height can be set from command line
+;		    options -w<width> and -h<height>
+;		  * initial file name to load from command line
+;		  * usage message
+;
+;   1990-06-26 --> v1.27
+;		- disk block check and bootblock checksum now check
+;		  properly for odd addresses.
+;		- jump/go/trace now report error if current PC is odd
+;		  (check added in getpc-routine)
+;		- added 'skip next instruction'-command 'z'
+;		- if a program calls Exit() when it is being run from the
+;		  monitor, control returns back to the monitor.
+;
+;   1990-07-13 --> v1.28
+;		- modified patchtrace to work with relocated
+;		  vector base register
+;   1990-07-15	- monitor now opens its screen 5 pixels from screen topedge
+;		  (but still opens full height window on ntsc machine)
+;
+;   1990-08-07 --> v1.29
+;		- added new functions to expression parser:
+;			lib("libname"), dev("devname"), res("resname")
+;			and task("taskname")
+;		- task(clinum) can also be used to find CLI processes,
+;		  task(0) finds current task.
+;
+;   1990-08-22 --> v1.30
+;		- uses new macros, variables are relative to a4
+;
+;   1990-11-02 --> v1.31
+;		- it was possible to try to assemble at an odd address.
+;		  now the address in the assemble-command in always rounded
+;		  to an even address.
+;
+;   1990-12-06 --> v1.32
+;		- now works with CLI window, can also be used on
+;		  a serial terminal. Opens window if started with 'run'
+;		  or window dimension options are given on the
+;		  command line.
+;
+;   1990-12-07 --> v1.33
+;		- digisound now plays the sound only once if repeatcount
+;		  is not given. also correctly uses AbortIO()/WaitIO()
+;		  (ConMan RAW:-mode and AUX:-handler do not seem to
+;		  send SIGBREAKF_CTRL_C signals, so aborting the audio
+;		  output may be difficult...)
+;		- added option flags.
+;
+;   1990-12-08 --> v1.34
+;		- now checks BREAK status also with SIGBREAKF_CTRL_C
+;		  for compatablity with the GMC screen handler.
+;
+;   1990-12-08 .... --> v1.36 1991-04-08..v1.37
+;		- major source reorganization, split to multiple files,
+;		  new makefile etc.
+;		- lists breakpoints with numbers
+;		- added brk(n) function to the expression parser
+;		- memoryinfo displays hunk number and offset
+;		- calculator output contains 'ascii'-representation
+;		- added port("name") function to the expression parser
+;

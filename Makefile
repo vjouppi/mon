@@ -1,28 +1,42 @@
-#
-# Makefile for Amiga monitor
-# created for v1.25 by TR on 1990-05-24
-#
-# mod. 1990-08-22
-#
-
 .SUFFIXES: .asm .o
 
-VER = 1.30
 ASM = a68k
-AOPTS = -iai: -f -q100
+AOPTS = -iai: -iasminc: -q100 -f
+
+#ASM = genim2
+#AOPTS = -l -iai: o+
+
+#ASM = assem
+#AOPTS = -i ai:
+
 LNK = blink
-LOPTS = nodebug verbose
+LNKOPTS = verbose nodebug
 
 .asm.o:
-	$(ASM) $(AOPTS) $*.asm
+	$(ASM) $(AOPTS) $*.asm #-o $*.o 
 
-all:	mon patchtrace
+OBJS = mon_main.o assemble.o disassemble.o disk_io.o eval.o execute.o \
+	memory.o mon_dos.o mon_io.o mon_util.o registers.o sound.o \
+	variables.o misc_cmd.o mon_misc.o
 
-mon:	mon.o
-	$(LNK) $(LOPTS) from mon.o to mon
+mon:	$(OBJS)
+	$(LNK) $(LNKOPTS) FROM $(OBJS) TO mon
 
-patchtrace:	patchtrace.o
-	$(LNK) $(LOPTS) from patchtrace.o to patchtrace
+assemble.o:	assemble.asm monitor.i instructions.i
+disassemble.o:	disassemble.asm monitor.i instructions.i
+disk_io.o:	disk_io.asm monitor.i
+eval.o:		eval.asm monitor.i
+execute.o:	execute.asm monitor.i
+memory.o:	memory.asm monitor.i
+mon_dos.o:	mon_dos.asm monitor.i
+mon_io.o:	mon_io.asm monitor.i
+mon_main.o:	mon_main.asm monitor.i
+mon_misc.o:	mon_misc.asm monitor.i
+mon_util.o:	mon_util.asm monitor.i
+register.o:	registers.asm monitor.i
+sound.o:	sound.asm monitor.i
+variables.o:	variables.asm monitor.i
 
-mon$(VER).zoo:	mon mon.doc patchtrace
-	zoo a mon$(VER).zoo mon mon.doc patchtrace
+clean:
+		-delete \#?.o
+
