@@ -1,5 +1,5 @@
 
-                 Amiga Monitor 1.15 instructions
+                 Amiga Monitor 1.17 instructions
                  ===============================
 
   The monitor can be started both from CLI and from workbench. If you want
@@ -28,13 +28,13 @@
 
  Numbers:
  --------
-  Default number base is decimal but it can be changed with the ba-
+  Default number base is hexadecimal but it can be changed with the ba-
   command (the argument of the ba-command is always decimal).
   the prefixes used to identify number bases are:
    '$'   hexadecimal
    '@'   octal
    '%'   binary
-   '_'   decimal  (necesary only if you have changed the default base)
+   '_'   decimal
 
   Numbers can also be entered as ASCII strings, for example:
    'FORM'  -->  hex 464f524d
@@ -105,6 +105,14 @@
     ''''  -- this means one single quote
     'both',$0A,'text',10,'and','numbers'
 
+
+New features and bug fixes in version 1.16 & 1.17
+-------------------------------------------------
+ - monitor is now re-entrant and can be made resident
+
+ - transfer no longer crashes if you transfer from location zero
+
+ - default base is again hexadecimal
 
 New features and bug fixes in version 1.14 & 1.15
 -------------------------------------------------
@@ -225,8 +233,8 @@ cv -- clear all variables
 ba [num]  --  set/show current number base
   ba without parameters displays the current number base. ba [num] sets
   the base to [num] which is always decimal. this is the default base
-  used in number input if no base prefix is specified. initially it is 10
-  (decimal).
+  used in number input if no base prefix is specified. initially it is 16
+  (hexadecimal).
 
 mi [addr] -- display information about memory locations
   the mi-command tells you if the address 'addr' is in the system memory
@@ -478,7 +486,7 @@ x -- exit
  and exits the monitor.
 
 
-version 1.15 of the monitor (and this document) --> 1989-11-30
+version 1.17 of the monitor (and this document) --> 1989-12-09
 
  Timo Rossi
  Kellankoski			internet e-mail:

@@ -9,6 +9,7 @@
 * v1.12 -> last mod. 1989-11-28	   *
 * v1.14 -> last mod. 1989-11-29	   *
 * v1.15 -> last mod. 1989-11-30	   *
+* v1.17 -> last mod. 1989-12-09    *
 *                                  *
 ************************************
 
@@ -181,7 +182,24 @@
 ;		  handling code, because now mainloop restores stack pointer)
 ;		- move sp,usp now works
 ;		- exg Rn,sp now works (getreg must not
-;		   change high word of d1)
+;		  change high word of d1)
+;
+;   1989-12-04 --> v1.16
+;		- code is now re-entrant (can be made resident)
+;		- monitor data area is now allocated with AllocMem()
+;		- TC_TRAPDATA points to monitor data area
+;		- default number base changed to hex again
+;		- removed SkipBreakFlag, now all flags are in
+;		  the flags-variable
+;		- corrected some errors in comments
+;
+;   1989-12-09 --> v1.17
+;		- register display now displays condition
+;		  code register as 'ccr' and it is also accepted in
+;		  the register set command.
+;		- condition code register set/display now works again
+;		- transfer from location zero now works. this bug was in
+;		  the original code. strange that nobody noticed it...
 ;
 
 ;
@@ -210,7 +228,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION	macro
-	dc.b	'1.15'
+	dc.b	'1.17'
 	endm
 
 *** macro to generate 16-bit self-relative addresses ***
@@ -341,6 +359,7 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 	 APTR	WBenchMsg	;Workbench startup message pointer
 	 APTR	MyTask		;pointer to TCB of monitor process
 	 APTR	OldTrapCode	;task trap code when monitor was started
+	 APTR	OldTrapData	;task trap data when monitor was started
 	 BPTR	WinFile		;main window file handle
 	 APTR	ConsoleUnit	;console device unit pointer for main window
 	 APTR	StackPtr	;saved monitor stack pointer
@@ -366,15 +385,22 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 	 STRUCT	AddrRegs,8*4		address registers
 	 APTR	RegPC			program counter
 	 UBYTE	RegCC			condition code register
-	 UBYTE	SkipBreakFlag	bit #0 indicates skipping a brkpoint
+	 UBYTE	pad
 
 ; now word and byte variables
 	 UWORD	opcode		;opcode for disassembler
 	 UWORD	size		;current instruction size
 	 UWORD	inpspecial	;input special mode for GetInput
-	 UBYTE	flags		;breakpoints active flag: bit 0
+	 UBYTE	flags		;flags, see below for bitdefs...
 	 UBYTE	defbase		;current default number base for input
 	LABEL MonitorData_SIZE
+
+;
+; monitor flags
+;
+
+	BITDEF	MON,BRKACTIVE,0
+	BITDEF	MON,BRKSKIP,1
 
 	section	MonitorCode,CODE
 
@@ -394,20 +420,9 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 
 *** THIS IS THE WORKBENCH/CLI STARTUP CODE ***
 monitor_code_start
-	lea	monitor_bss_start,a5	set data pointer
-
-;
-; clear data area
-; not absolutely necessary, the bss-hunk sholuld contain all zero anyway
-;
-	move.l	a5,a0
-	move.w	#(monitor_bss_end-monitor_bss_start)/2,d1
-01$	clr.w	(a0)+
-	dbf	d1,01$
-
-	suba.l	A1,A1			;A1:=0
+	moveq	#0,d5
+	move.l	d5,a1
 	callexe	FindTask		;find our task
-	move.l	D0,MyTask(A5)
 	move.l	D0,A4
 	tst.l	pr_CLI(A4)		;started from CLI ?
 	bne.s	main			;branch if yes
@@ -415,13 +430,21 @@ monitor_code_start
 	callsys	WaitPort		;wait for WB startup message
 	lea	pr_MsgPort(A4),A0
 	callsys	GetMsg			;get it
-	move.l	D0,WBenchMsg(A5)
+	move.l	D0,d5
 
-main
+main	move.l	#MonitorData_SIZE,d0
+	move.l	#MEMF_PUBLIC!MEMF_CLEAR,d1
+	callsys	AllocMem
+	tst.l	d0
+	beq	exit10
+	move.l	d0,a5
+
+	move.l	d5,WBenchMsg(a5)
+	move.l	a4,MyTask(a5)
 ;
-; set default number base, currently decimal, but may be changed to hex...
+; set default number base, currently hex....
 ;
-	move.b	#10,defbase(a5)
+	move.b	#16,defbase(a5)
 ;
 ; Find the width and height of workbench screen before opening the window
 ; so this program works ok with NTSC & PAL & LACEWB & MoreRows etc..
@@ -471,12 +494,14 @@ main
 	move.l	D0,OutputFile(A5) 	;default output is monitor window
 
 ;
-; set the the task trap code pointer
+; set the the task trap code and data pointers
 ;
 	lea	trapreturn(pc),A1
 	move.l	MyTask(A5),A0
 	move.l	TC_TRAPCODE(A0),OldTrapCode(A5)	;save old TrapCode
+	move.l	TC_TRAPDATA(a0),OldTrapData(a5)
 	move.l	A1,TC_TRAPCODE(A0)		;and set a new one
+	move.l	a5,TC_TRAPDATA(a0)
 
 ;
 ; find pointer to intuition window structure of the monitor output window
@@ -565,6 +590,7 @@ info	lea	infotext(pc),A0
 *** EXIT FROM MONITOR ***
 exit	move.l	MyTask(A5),A0
 	move.l	OldTrapCode(A5),TC_TRAPCODE(A0)	;restore old TrapCode
+	move.l	OldTrapData(a5),TC_TRAPDATA(a0)	; and TrapData
 	bsr	FreeAllMem		;free all memory allocated by commands & and (
 	bsr	remove_all_breaks	;remove all breakpoints (free memory)
 	bsr	clear_all_variables
@@ -585,6 +611,12 @@ exit8	move.l	A6,A1
 	callexe	CloseLibrary		;close dos library
 
 exit9	move.l	WBenchMsg(A5),D3	;started from workbench??
+
+	move.l	a5,a1
+	move.l	#MonitorData_SIZE,d0
+	callsys	FreeMem
+
+exit10	tst.l	d3
 	beq.s	exit99
 	callsys	Forbid		;forbid, so WB can't UnloadSeg before exit
 	move.l	D3,A1
@@ -1232,12 +1264,12 @@ showrange	;start addr in D5, length in D6
 	bra	printf
 
 *** READ & WRITE DISK ***
-;
-; v1.07->
-;  disk read and write use now a buffer in chip memory, and copy data
-;  from/to that buffer, so the actual transfer address does not need
-;  to be in chip memory.
-;
+;#
+;# v1.07->
+;#  disk read and write use now a buffer in chip memory, and copy data
+;#  from/to that buffer, so the actual transfer address does not need
+;#  to be in chip memory.
+;#
 disk_read
 	moveq	#0,D7	;D7 is read/write flags
 	bra.s	disk_rw
@@ -1656,18 +1688,32 @@ memtransfer
 	move.l	D0,A2
 	cmp.l	A2,A0
 	bcs.s	backwards	;if destination > source, transfer backwards
-
+;#
+;# this may fail if the end address is $ffffffff. normally this is not
+;# true, so it is not so much a problem...
+;#
 trf1	cmp.l	A1,A0
 	bhi.s	huntfilltrf2
 	move.b	(A0)+,(A2)+
 	bra.s	trf1
-
+;#
+;# here is a problem if the start address (here really end address)
+;# is zero, because after the subtraction of the pointers, the address
+;# is -1 or $ffffffff unsigned and that is greater than zero. so the
+;# test for the transfer to end never succeeds....
+;#
+;# this was fixed in version 1.17 -- 1989-12-09
+;# (note the extra compare instruction in case the start address is
+;# greater than end address)
+;#
 backwards
 	add.l	A1,A2
 	sub.l	A0,A2
-trf2	cmp.l	A0,A1
+	cmp.l	A0,A1
 	bcs.s	huntfilltrf2
-	move.b	(A1),(A2)
+trf2	move.b	(A1),(A2)
+	cmp.l	a0,a1
+	bls.s	huntfilltrf2
 	subq.l	#1,A1
 	subq.l	#1,A2
 	bra.s	trf2
@@ -1743,7 +1789,7 @@ huntfound
 hunt_ck1
 	cmp.l	a5,a1
 	bcs.s	huntprint
-	lea	monitor_bss_end-monitor_bss_start(a5),a0
+	lea	MonitorData_SIZE(a5),a0
 	cmp.l	a0,a1
 	bcs.s	huntf2
 
@@ -5514,7 +5560,6 @@ exg_9	bra	one_word_instr
 
 *** GET REGISTER LIST (for MOVEM) ***
 ; result is returned in d2
-; the N-flag is set on error
 getreglist
 	clr.w	D2
 reglist1
@@ -5581,7 +5626,7 @@ check_sp
 greg_err
 	bra	error
 ;
-; get address register, return in d1, set N-flag on error
+; get address register, return in d1
 ;
 getareg	bsr	getreg
 	bmi.s	01$
@@ -5590,7 +5635,7 @@ getareg	bsr	getreg
 01$	rts
 
 ;
-; get data register, return in d1, set N-flag on error
+; get data register, return in d1
 ;
 getdreg	bsr	getreg
 	bmi.s	01$
@@ -5863,11 +5908,19 @@ changeregs
 	move.l	D0,RegPC(a5)
 	bra.s	regs_mainloop_jmp
 
+;#
+;# now 'ccr' can be used instead of 'cc' -- 1989-12-09
+;#
 nopc	cmp.w	#'cc',D0	;condition code register
 	bne.s	nocc
-	bsr.s	skipequal
+	move.b	(a3),d0
+	bsr	tolower
+	cmp.b	#'r',d0
+	bne.s	01$
+	addq.l	#1,a3
+01$	bsr.s	skipequal
 	bsr	get_expr
-	move.b	D0,RegCC
+	move.b	D0,RegCC(a5)
 regs_mainloop_jmp
 	bra	mainloop
 
@@ -5902,13 +5955,17 @@ setareg	lsl.w	#2,D0
 	bra.s	regs_mainloop_jmp
 
 *** DISPLAY REGISTERS ***
+;#
+;# condition code register is now displayed as ccr, not cc
+;#
 displayregs
 	startline
 	move.l	#' PC=',(A3)+
 	move.l	RegPC(a5),D0
 	bsr	phex1_8
-	move.l	#' CC=',(A3)+
-	move.b	RegCC,D0
+	move.l	#' CCR',(A3)+
+	putchr	<'='>
+	move.b	RegCC(a5),D0
 	move.b	D0,D2
 	moveq	#2,d1
 	bsr	put_hexnum1
@@ -6118,7 +6175,7 @@ brk_ret2
 ; can be activated from the trap handler...
 ;
 SetBreaks
-	or.b	#1,flags(A5)
+	bset	#MONB_BRKACTIVE,flags(a5)
 	move.l	BreakList(A5),D2
 SetBr1	tst.l	D2
 	beq.s	brk_ret
@@ -6135,7 +6192,7 @@ SetBr2	move.l	(A1),D2
 
 *** RESTORE ORIGINAL CONTENTS OF BREAKPOINTS ***
 RemBreaks
-	bclr	#0,flags(a5)
+	bclr	#MONB_BRKACTIVE,flags(a5)
 	beq.s	brk_ret
 	move.l	BreakList(A5),D2
 RemBr1	tst.l	D2
@@ -6196,68 +6253,87 @@ special_go_here
 
 *** CONTROLS RETURNS HERE AFTER THE Jsr COMMAND ***
 returncode
-	addq.l	#4,sp			this does not change the flags
-	movem.l	D0-D7/A0-A7,monitor_bss_start+DataRegs	...nor does this...
-	lea	monitor_bss_start,a5	or this...  restore data pointer
-	movea.l	StackPtr(a5),sp		or this..
-; the movea-instruction that is a part of the callexe macro does not
-; change the flags either...
-	callexe	GetCC			get the flags and save them
-	move.b	D0,RegCC(a5)
+	movem.l	d0-d2/a0-a1/a5-a6,-(sp)
+	callexe	GetCC
+	move.l	d0,d2
+	suba.l	a1,a1
+	callsys	FindTask
+	move.l	d0,a1
+	move.l	TC_TRAPDATA(a1),a5
+	move.b	d2,RegCC(a5)
+	movem.l	(sp)+,d0-d2/a0-a1
+	movem.l	d0-d7/a0-a4,DataRegs(a5)
+	move.l	(sp)+,AddrRegs+4*5(a5)		;a5
+	move.l	(sp)+,AddrRegs+4*6(a5)		;a6
+	addq.l	#4,sp
+	move.l	sp,AddrRegs+4*7(a5)		;sp
+
+	move.l	StackPtr(a5),sp
+
 	bsr	RemBreaks
+
 	lea	rettx(pc),A0
 	bsr	printstring_a0
 	bra	displayregs_d
 
 *** TASK TRAP CODE ***
 trapreturn	;Note! We are in supervisor mode!
-	cmp.l	#9,(sp)		trace?
+	movem.l	d0/a0/a5/a6,-(sp)
+	move.l	_ExecBase,a6
+	move.l	ThisTask(a6),a5
+	move.l	TC_TRAPDATA(a5),a5
+
+	cmp.l	#9,4*4(sp)		trace?
 	bne.s	noskipbrk
-	bclr	#0,monitor_bss_start+SkipBreakFlag
+	bclr	#MONB_BRKSKIP,flags(a5)
 	beq.s	noskipbrk
 ;
 ; we have just skipped a breakpoint in trace mode
 ;
+	move.l	GoBrkPtr(a5),a5
+	move.l	brk_Address(a5),a0
+	move.w	(a0),brk_Content(a5)
+	move.w	#ILLEGAL,(a0)
+	movem.l	(sp)+,d0/a0/a5/a6
 	addq.l	#4,sp			remove exception number from stack
 	bclr	#7,(sp)			clear trace bit
-	movem.l	a0/a1,-(sp)
-	move.l	monitor_bss_start+GoBrkPtr,a1
-	move.l	brk_Address(a1),a0	activate breakpoint
-	move.w	(a0),brk_Content(a1)
-	move.w	#ILLEGAL,(a0)
-	movem.l	(sp)+,a0/a1
 	rte				continue at full speed
 
 noskipbrk
-	cmp.l	#7,(sp)	;is this a TRAPV-trap (possibly by the walk routine)
-	bne.s	normtrap
-	cmp.l	#walk_here,6(sp)	;check program counter
+	cmp.l	#7,4*4(sp)	;is this a TRAPV-trap (possibly by the walk routine)
+	bne.s	normtrap_1
+	lea	walk_here(pc),a0
+	cmp.l	4*4+6(sp),a0		;check program counter
 	beq.s	walk_trap
-	cmp.l	#special_go_here,6(sp)
-	bne.s	normtrap
+	lea	special_go_here(pc),a0
+	cmp.l	4*4+6(sp),a0
+	bne.s	normtrap_1
 
 ; this is the special go-routine if the address we are going to enter
 ; the code contains a breakpoint. in that case we trace over the
 ; instruction and then continue at full speed
-	bset	#0,monitor_bss_start+SkipBreakFlag
+	bset	#MONB_BRKSKIP,flags(a5)
 ; fall to walk trap routine
 walk_trap
-	lea	10(sp),sp	;yes, it was the walk routine, so clean up the stack
-	move.l	monitor_bss_start+RegPC,-(sp)
-	move	SR,D0		;this is legal bacause supervisor mode
-	move.b	monitor_bss_start+RegCC,D0
-	bclr	#13,D0		;supervisor mode bit off
-	bset	#15,D0		;trace mode bit on
-	move.w	D0,-(sp)
-	movem.l	monitor_bss_start+DataRegs,D0-D7/A0-A6
-	rte	;back to user mode and user program...
+	move.l	RegPC(a5),4*4+6(sp)
+	move	sr,d0
+	move.b	RegCC(a5),d0
+	bclr	#13,d0			supervisor mode off
+	bset	#15,d0			trace mode on
+	move.w	d0,4*4+4(sp)
 
-normtrap
-	movem.l	D0-D7/A0-A6,monitor_bss_start+DataRegs
-	lea	monitor_bss_start,a5
-	move	usp,A0
-	move.l	A0,AddrRegs+7*4(a5)	;save user stack pointer
-	move.l	_ExecBase,A6
+	lea	4*4+4(sp),sp
+	movem.l	DataRegs(a5),d0-d7/a0-a6
+	rte
+
+normtrap_1
+	movem.l	(sp)+,d0/a0
+	movem.l	d0-d7/a0-a4,DataRegs(a5)
+	move.l	(sp)+,AddrRegs+5*4(a5)		;a5
+	move.l	(sp)+,AddrRegs+6*4(a5)		;a6
+	move	usp,a0
+	move.l	a0,AddrRegs+7*4(a5)		;sp
+
 	move.w	AttnFlags(A6),D1
 	move.l	(sp)+,D5
 	cmp.w	#3,D5
@@ -6314,14 +6390,14 @@ go_user_mode
 ; breakpoint here (RemBreaks tries to remove it anyway, and that could
 ; cause problems...)
 ;
-	bclr	#0,SkipBreakFlag(a5)
+	bclr	#MONB_BRKSKIP,flags(a5)
 	beq.s	01$
 	move.l	GoBrkPtr(a5),a1		activate breakpoint
 	move.l	brk_Address(a1),a3
 	move.w	(a3),brk_Content(a1)
 	move.w	#ILLEGAL,(a3)
 01$
-	btst	#0,flags(a5)
+	btst	#MONB_BRKACTIVE,flags(a5)
 	bne.s	02$
 	clr.b	d7
 02$
@@ -7381,9 +7457,8 @@ infotext dc.b CLS,LF
 	dc.b	" Pressing the HELP-key displays a list of commands.",LF,LF
 	dc.b	" Note1: Some of the assembler commands require the",LF
 	dc.b	" size specifier (.B, .W or .L), but it can't be used by some others.",LF,LF
-	dc.b	" Note2: the default number base is now decimal, use '$' for hex",LF
-	dc.b	" or change the default with the ba-command. The decimal",LF
-	dc.b	" number prefix is now '_'",LF
+	dc.b	" Note2: the default number base is again hex, use '_' as prefix",LF
+	dc.b	" for decimal or change the base with the ba-command.",LF
 	dc.b	" You can now use expressions in most places where",LF
 	dc.b	" numbers are needed.",LF,LF
 	dc.b	" This program can be freely distributed for non-commercial purposes.",LF
@@ -7513,15 +7588,5 @@ trapnamtabl
 	rw	TRAPnam		;10
 
 monitor_code_end
-
-*** UNINITIALIZED DATA SEGMENT ***
-
-	section Monitor_Uninitialized_Data,BSS
-
-monitor_bss_start
-
-	ds.b	MonitorData_SIZE
-
-monitor_bss_end
 
 	END
