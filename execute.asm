@@ -6,19 +6,16 @@
 		xdef	trapreturn
 		xdef	returncode
 
-		xdef	oddaddr_error
-
 		xdef	remove_all_breaks
 		xdef	find_brk_num
-
 
 		xref	get_expr
 		xref	displayregs
 		xref	displayregs_d
 		xref	mainloop
-		xref	errcom
-		xref	error
-		xref	OutOfMem
+
+		xref	generic_error
+		xref	out_memory_error
 
 ;
 ;*** SET BREAKPOINT ***
@@ -36,7 +33,7 @@
 		move.l	#MEMF_CLEAR!MEMF_PUBLIC,D1
 		lib	Exec,AllocMem
 		tst.l	D0
-		beq	OutOfMem
+		beq	out_memory_error
 		move.l	D0,A0
 		move.l	a5,brk_Address(A0)
 		tst.l	D3
@@ -51,7 +48,7 @@ no_start_of_list
 		move.l	A0,(A1)
 brset9		rts
 
-brk_err		bra	error
+brk_err		bra	generic_error
 
 ;
 ;*** REMOVE BREAKPOINT ***
@@ -289,9 +286,6 @@ getpc		call	skipspaces
 01$		btst	#0,RegPC+3(a4)		;error if current
 		beq.s	rts_001			;PC is odd
 
-oddaddr_error	lea	oddaddr_txt(pc),a0
-		bra	errcom
-
 *** SKIP ONE INSTRUCTION
 ;
 ; find the length of the current instruction by disassembling it
@@ -395,7 +389,8 @@ returncode	movem.l	d0-d2/a0-a1/a4/a6,-(sp)
 
 		lea	returned_txt(pc),A0
 		call	printstring_a0
-		bra	displayregs_d
+		bsr	displayregs_d
+		bra	mainloop
 
 *** TASK TRAP CODE ***
 trapreturn	;Note! We are in supervisor mode!

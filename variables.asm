@@ -9,8 +9,9 @@
 		xref	GetKey
 		xref	ChrOut
 		xref	ChrOutWin
-		xref	OutOfMem
-		xref	error
+
+		xref	generic_error
+		xref	out_memory_error
 
 ; clear all variables
 ; called before exit and when the cv-command is executed
@@ -62,7 +63,7 @@ xvar_end	rts
 
 set_variable	move.b	(a3),d0
 		call	isalpha
-		bcc	error
+		bcc	generic_error
 		move.l	a3,a5
 01$		move.b	(a3)+,d0
 		call	isalnum
@@ -70,7 +71,7 @@ set_variable	move.b	(a3),d0
 		subq.l	#1,a3
 		move.l	a3,a2
 		cmp.l	a3,a5
-		beq	error
+		beq	generic_error
 		call	skipspaces
 		tst.b	(a3)
 		beq.s	remvar
@@ -120,7 +121,7 @@ addvar		movem.l	d2/a2-a3/a6,-(sp)
 		move.l	#MEMF_CLEAR!MEMF_PUBLIC,d1
 		lib	Exec,AllocMem
 		tst.l	d0
-		beq	OutOfMem
+		beq	out_memory_error
 		move.l	d0,a3
 		move.w	d2,var_Length(a3)
 		lea	var_Name(a3),a0

@@ -12,7 +12,7 @@
 BETA		equ	0	;special 'Beta version' flag
 
 VERSION		macro
-		dc.b	'1.37'
+		dc.b	'1.41'
 		ifne	BETA
 		dc.b	'b'
 		endc
@@ -295,7 +295,6 @@ RegSP		equ	AddrRegs+7*4
 		 UWORD	opcode		;opcode for disassembler
 
 		 UWORD	size		;current instruction size
-		 UWORD	inpspecial	;input special mode for GetInput
 		 UBYTE	flags		;flags, see below for bitdefs...
 		 UBYTE	defbase		;current default number base for input
 		 UBYTE	MonOptions	;option flags
@@ -318,4 +317,4 @@ RegSP		equ	AddrRegs+7*4
 ; Monitor option flags
 ;
 		BITDEF	OPT,NARROWDIS,1
-
+		BITDEF	OPT,NOTPRCHR,2

@@ -4,22 +4,30 @@
 
 		include	"monitor.i"
 
-		xdef	error
-		xdef	errcom
 		xdef	mainloop
 
 		xdef	help
 
-		xref	getdecnum
 		xref	ChrOut
 		xref	ChrOutWin
+		xref	getdecnum
 		xref	FreeAllMem
 		xref	remove_all_breaks
 		xref	clear_all_variables
 		xref	loadseg1
+		xref	set_cmdline		;from misc_cmd.asm
 
 		xref	trapreturn	;execute.asm
 		xref	returncode	;execute.asm
+
+		xdef	generic_error
+		xdef	odd_address_error
+		xdef	out_range_error
+		xdef	out_memory_error
+		xdef	expression_error
+		xdef	addrmode_error
+
+		xdef	out_range_txt
 
 		xdef	monitor_code_start
 
@@ -101,7 +109,7 @@ main		move.l	#MonitorData_SIZE,d0
 handle_cli_start
 		move.l	pr_CurrentDir(a5),OldCD(a4)
 
-		clr.b	-1(a3,d3.l)		null-terminate command line
+		clr.b	-1(a3,d3.l)		;null-terminate command line
 parse_cmdline	call	skipspaces
 		tst.b	(a3)
 		beq.s	cmdline_done
@@ -133,6 +141,9 @@ put_usage	lea	usage_txt(pc),a0
 no_opt		call	GetName
 		move.l	d0,InitialFileName(a4)
 
+		call	skipspaces
+		bsr	set_cmdline	; set a0/d0 for cmdline...
+					; (rest of actual monitor command line)
 cmdline_done
 ;
 ; set default number base, currently hex....
@@ -305,31 +316,37 @@ mainloop	move.l	StackPtr(a4),sp		;restore stack pointer
 
 execute_command	call	skipspaces
 		lea	command_names(pc),a0
-		moveq	#-1,d2
-01$		addq.w	#1,d2
-		move.l	a3,a1
-02$		move.b	(a0)+,d1
-		beq.s	cmd_found
-		move.b	(a1)+,d0
-		call	tolower
-		cmp.b	d0,d1
-		beq.s	02$
-03$		tst.b	(a0)+
-		bne.s	03$
-		tst.b	(a0)
-		bne.s	01$
-		bra	error	; command not found
+		call	find_name
 
-cmd_found	move.l	a1,a3
+		tst.l	d0
+		bmi	generic_error
+
+		move.l	a1,a3
 		call	skipspaces
 		lea	command_table(pc),a0
-		lsl.w	#2,d2
-		add.w	d2,a0
+		lsl.w	#2,d0
+		add.w	d0,a0
 		jsr	(a0)
 		bra	mainloop
 
-error		lea	errtx(pc),A0	;command not found, print error message
-errcom		call	printstring_a0_window
+;#
+;# error handling routines
+;#
+error_routines
+generic_error		bsr.s	errorhandler
+odd_address_error	bsr.s	errorhandler
+out_range_error		bsr.s	errorhandler
+out_memory_error	bsr.s	errorhandler
+expression_error	bsr.s	errorhandler
+addrmode_error		bsr.s	errorhandler
+		nop
+errorhandler	lea	error_routines+2(pc),a0
+		move.l	(sp)+,d0
+		sub.l	a0,d0
+		lsr.l	#1,d0
+		lea	error_messages(pc),a0
+		call	getnth
+		call	printstring_a0_window
 		emitwin	LF
 		bra	mainloop
 
@@ -339,7 +356,7 @@ errcom		call	printstring_a0_window
 		cmd	clear_screen
 
 		lea	cls_str(pc),a0
-		bra.s	errcom
+		call	JUMP,printstring_a0_window
 
 ;
 ;*** THE HELP COMMAND ***
@@ -630,10 +647,17 @@ welcometxt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
 
 main_prompt	dc.b	'-> ',0
 
-usage_txt	dc.b	'Usage: mon [-w<winwidth>] [-h<winheight>] [filename]',LF,0
+usage_txt	dc.b	'Usage: [run] mon [-w<winwidth>] [-h<winheight>] [filename [cmdline]]',LF,0
 win_openerr_txt	dc.b	'Can''t open window',LF,0
-errtx		dc.b	'???',0
 
 cls_str		dc.b	ESC,'[H',ESC,'[J',0
+
+
+error_messages	dc.b	'???',0			; 0
+		dc.b	'odd address',0		; 1
+out_range_txt	dc.b	'out of range',0	; 2
+		dc.b	'out of memory',0	; 3
+		dc.b	'expr error',0		; 4
+		dc.b	'illegal addrmode',0	; 5
 
 		end

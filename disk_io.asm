@@ -5,12 +5,14 @@
 
 		xref	ChrOut
 		xref	ChrOutWin
-		xref	error
-		xref	OutOfMem
-		xref	oddaddr_error
-		xref	outrangetxt
 
 		xref	showrange
+
+		xref	generic_error
+		xref	odd_address_error
+		xref	out_memory_error
+
+		xref	out_range_txt
 
 *** READ & WRITE DISK ***
 ;#
@@ -30,21 +32,21 @@
 
 disk_rw		call	get_expr
 		btst	#0,D0
-		bne	oddaddr_error
+		bne	odd_address_error
 		move.l	D0,Addr(a4)
-		beq	error
+		beq	generic_error
 		call	get_expr
 		move.l	D0,D3		;Unit number (drive)
 		call	get_expr
 		move.l	D0,D4		;starting sector
 		call	get_expr
 		move.l	D0,D5		;length
-		beq	error		;error: zero length
+		beq	generic_error		;error: zero length
 		move.l	#DISKBLOCKSIZE,d0
 		move.l	#MEMF_CLEAR!MEMF_CHIP,d1
 		lib	Exec,AllocMem
 		tst.l	d0
-		beq	OutOfMem
+		beq	out_memory_error
 		move.l	d0,a5
 		call	MyCreatePort
 		move.l	D0,D6
@@ -124,7 +126,7 @@ disk_wr		move.l	Addr(a4),a0
 disk_io_err	;Print TrackDisk error number
 		cmp.b	#IOERR_BADLENGTH,d0
 		bne.s	00$
-		lea	outrangetxt(pc),a0
+		lea	out_range_txt(pc),a0
 		bra.s	02$
 00$		cmp.b	#TDERR_DiskChanged,d0
 		bne.s	01$
@@ -175,7 +177,7 @@ d_mloop_1	rts
 
 		call	GetName
 		tst.l	d0
-		beq	error
+		beq	generic_error
 
 		move.l	d0,a0
 		lea	DevNameBuf(a4),a1
@@ -197,7 +199,7 @@ get_sum_params	call	get_expr
 		tst.l	d0
 		beq.s	errx02
 		btst	#0,d0		;error if odd address
-		bne	oddaddr_error
+		bne	odd_address_error
 		move.l	D0,a5
 		move.l	D0,a2
 ;
@@ -246,7 +248,7 @@ bl_check	add.l	(a5)+,D0
 		move.l	(a2),D7
 		bra.s	ShowSum
 
-errx02		bra	error
+errx02		bra	generic_error
 
 *** BOOTBLOCK CHECKSUM ***
 ;

@@ -5,6 +5,7 @@
 
 		xref	monitor_code_start
 		xref	monitor_code_end
+		xref	mainloop
 
 		xdef	FreeAllMem
 
@@ -14,10 +15,11 @@
 		xref	ChrOut
 		xref	puthex_68
 		xref	getstring
-		xref	error
 
 		xref	loctext
 		xref	memlistfmt
+
+		xref	generic_error
 
 ;
 ;*** MEMORY LIST ***
@@ -131,7 +133,7 @@ allocfailed		;error 'allocation failed'
 		move.l	D0,D7	;(next block pointer & length)
 		call	get_expr
 		move.l	D0,D5
-		beq	error
+		beq	generic_error
 		addq.l	#8,D0	;add 8 to length
 		move.l	D7,A1
 		lib	Exec,AllocAbs
@@ -274,7 +276,7 @@ do_free		move.l	4(A1),D0
 		move.l	SegList(a4),d0
 		moveq	#0,d4
 500$		lsl.l	#2,d0
-		beq.s	599$
+		beq.s	ret_01
 		move.l	d0,a2
 		lea	4(a2),a0
 		cmp.l	a0,d5
@@ -294,7 +296,7 @@ do_free		move.l	4(A1),D0
 		addq.l	#1,d4
 		bra.s	500$
 
-599$		rts
+ret_01		rts
 
 **** TRANSFER MEMORY ****
 		cmd	memtransfer
@@ -312,7 +314,7 @@ do_free		move.l	4(A1),D0
 ;# true, so it is not so much a problem...
 ;#
 trf1		cmp.l	A1,A0
-		bhi.s	huntfilltrf2
+		bhi.s	ret_01
 		move.b	(A0)+,(A2)+
 		bra.s	trf1
 ;#
@@ -328,10 +330,10 @@ trf1		cmp.l	A1,A0
 backwards	add.l	A1,A2
 		sub.l	A0,A2
 		cmp.l	A0,A1
-		bcs.s	huntfilltrf2
+		bcs.s	ret_01
 trf2		move.b	(A1),(A2)
 		cmp.l	a0,a1
-		bls.s	huntfilltrf2
+		bls.s	ret_01
 		subq.l	#1,A1
 		subq.l	#1,A2
 		bra.s	trf2
@@ -348,17 +350,15 @@ trf2		move.b	(A1),(A2)
 		bsr	getstring
 		move.l	(sp)+,A1
 		tst.l	D2
-		beq.s	huntfilltrf2
+		beq.s	ret_01
 fill0		moveq	#0,D0
 fill1		cmp.l	A2,A1
-		bhi.s	huntfilltrf2
+		bhi.s	ret_01
 		move.b	0(A0,D0.L),(A1)+
 		addq.l	#1,D0
 		cmp.l	D2,D0
 		bcs.s	fill1
 		bra.s	fill0
-
-huntfilltrf2	rts
 
 **** HUNT MEMORY ****
 		cmd	memhunt
@@ -377,11 +377,11 @@ huntfilltrf2	rts
 		bsr	getstring
 		move.l	(sp)+,A1
 		tst.l	D2	;string length
-		beq.s	huntfilltrf2
+		beq	ret_01
 
 hunt0		move.b	(A0),D0
 hunt1		cmp.l	A2,A1
-		bhi.s	hunt99
+		bhi.s	lf_and_exit
 		cmp.b	(A1)+,D0
 		bne.s	hunt1
 		moveq	#0,D1
@@ -421,15 +421,14 @@ huntprint	move.l	A1,D0
 		emit	LF
 		move.w	d6,d7
 huntf1		call	CheckKeys
-		bne.s	huntbreak
+		bne.s	lf_and_exit
 
 huntf2		movem.l	(sp)+,A0-A1
 		bra.s	hunt0
 
-huntbreak
-;#		addq.l	#8,sp		;stack pointer is reset in main loop
-hunt99		moveq	#LF,d0
-		bra	ChrOut
+lf_and_exit	moveq	#LF,d0
+		bsr	ChrOut
+		bra	mainloop
 
 **** COMPARE MEMORY ****
 		cmd	memcomp
@@ -444,7 +443,7 @@ hunt99		moveq	#LF,d0
 		move.l	D0,A2
 
 comp1		cmp.l	A1,A0
-		bhi.s	comp99
+		bhi	lf_and_exit
 		cmpm.b	(A0)+,(A2)+
 		beq.s	comp1
 		movem.l	A0-A1,-(sp)
@@ -458,18 +457,13 @@ comp1		cmp.l	A1,A0
 		move.w	d6,D7
 
 compf1		call	CheckKeys
-		bne.s	compbreak
+		bne	lf_and_exit
 		movem.l	(sp)+,A0-A1
 		bra.s	comp1
 
-compbreak
-;#	addq.l	#8,sp	;stack pointer i reset in start of main loop
-comp99		moveq	#LF,d0
-		bra	ChrOut
-
 ;
 ; find out how many addresses can be printed on one line
-; in the c and h commands
+; in the c and h commands. return result in d6.
 ;
 get_n_per_line	moveq	#80,d6
 		move.l	ConsoleUnit(a4),d0

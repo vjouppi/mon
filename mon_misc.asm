@@ -19,12 +19,10 @@
 		xref	clear_all_variables
 
 		xref	puthex1_68
-		xref	put_hexnum1
 		xref	phex1_8
 		xref	getdecnum
 		xref	ChrOutWin
 		xref	GetKey
-		xref	error
 
 		xdef	monitor_code_end
 

@@ -4,8 +4,6 @@
 
 		include	"monitor.i"
 
-		xdef	OutOfMem
-
 		xdef	loadseg1
 
 		xref	seghead
@@ -15,8 +13,10 @@
 
 		xref	putch
 		xref	showrange
-		xref	error
-		xref	errcom
+
+		xref	generic_error
+		xref	out_memory_error
+
 
 *** DIRECTORY ***
 		cmd	directory
@@ -27,7 +27,7 @@
 		move.l	#MEMF_PUBLIC!MEMF_CLEAR,D1
 		lib	Exec,AllocMem
 		tst.l	D0
-		beq	OutOfMem
+		beq	out_memory_error
 		move.l	D0,a5		;we keep the fib-pointer in a5
 
 		call	GetName
@@ -83,10 +83,6 @@ dir8		move.l	a5,A1
 		move.l	#fib_SIZEOF,D0
 		jlib	Exec,FreeMem		;free FileInfoBlock
 
-OutOfMem	;print error message 'out of memory'
-		lea	memerr(pc),A0
-		bra	errcom
-
 *** PRINT ONE LINE OF DIREECTORY ***
 DisplayDirLine	;fib-pointer in a5
 		startline
@@ -138,7 +134,7 @@ DOSErr		;error number in D0
 
 		call	GetName
 		move.l	d0,d1
-		beq	error
+		beq	generic_error
 
 loadseg1	lib	Dos,LoadSeg
 		move.l	D0,SegList(a4)
@@ -232,7 +228,7 @@ mjump2		rts
 
 		call	GetName
 		move.l	d0,d1
-		beq	error
+		beq	generic_error
 
 		move.l	#MODE_NEWFILE,D2
 		lib	Dos,Open
@@ -257,7 +253,7 @@ abs_save_1	move.l	D7,D1
 
 		call	GetName
 		move.l	d0,d1
-		beq	error
+		beq	generic_error
 
 		move.l	#MODE_OLDFILE,D2
 		lib	Dos,Open	;open file
@@ -290,7 +286,7 @@ redir1		call	skipspaces
 
 		call	GetName
 		move.l	d0,d1
-		beq	error
+		beq	generic_error
 
 		move.l	#MODE_NEWFILE,D2
 		lib	Open	;open redirection file
@@ -327,7 +323,7 @@ redir9		rts
 
 		call	GetName
 		move.l	d0,d1
-		beq	error
+		beq	generic_error
 
 		lib	Dos,DeleteFile
 		tst.l	D0
@@ -338,7 +334,6 @@ redir9		rts
 		cmd	current_dir
 
 		getbase	Dos
-		addq.l	#1,A3
 		call	GetName
 		move.l	d0,d1
 		beq.s	cd_2	;if no name set currentdir to zero lock
@@ -369,7 +364,6 @@ NewShellCom	dc.b	'NewShell',0
 NewCLICom	dc.b	'NewCLI',0
 
 nosegmes	dc.b	'No segment loaded',LF,0
-memerr		dc.b	'Out of memory',0
 
 dnam		dc.b	'(dir)',0
 freeblkfmt	dc.b	'%ld Blocks free.',LF,0

@@ -20,7 +20,7 @@ OBJS = mon_main.o assemble.o disassemble.o disk_io.o eval.o execute.o \
 	variables.o misc_cmd.o mon_misc.o
 
 mon:	$(OBJS)
-	$(LNK) $(LNKOPTS) FROM $(OBJS) TO mon
+	$(LNK) $(LNKOPTS) FROM $(OBJS) TO mon MAP mon.map
 
 assemble.o:	assemble.asm monitor.i instructions.i
 disassemble.o:	disassemble.asm monitor.i instructions.i
@@ -33,7 +33,7 @@ mon_io.o:	mon_io.asm monitor.i
 mon_main.o:	mon_main.asm monitor.i
 mon_misc.o:	mon_misc.asm monitor.i
 mon_util.o:	mon_util.asm monitor.i
-register.o:	registers.asm monitor.i
+registers.o:	registers.asm monitor.i
 sound.o:	sound.asm monitor.i
 variables.o:	variables.asm monitor.i
 

@@ -1,4 +1,4 @@
- ;
+;
 ; Monitor Disassembly module
 ;
 ;
@@ -8,8 +8,6 @@
 		xdef	instr_names
 		xdef	ccodes
 
-		xref	put_hexnum
-		xref	put_hexnum1
 		xref	puthex1_68
 		xref	puthex_68
 
@@ -129,7 +127,7 @@ disasmloop	startline
 		bsr	put_str
 		moveq	#0,d0
 		moveq	#2,d1
-		bsr	put_hexnum
+		call	put_hexnum
 		moveq	#-1,d0
 		bra	dis_end
 
@@ -271,7 +269,7 @@ GetWord		movem.l	d1/a3,-(sp)
 		move.l	a4,a3
 		move.w	d0,-(sp)
 		moveq	#4,d1
-		bsr	put_hexnum1
+		call	put_hexnum1
 		move.w	(sp)+,d0
 		move.b	#SPACE,(a3)+
 		move.l	a3,a4
@@ -285,7 +283,7 @@ GetLong		movem.l	d1/a3,-(sp)
 		move.l	a4,a3
 		move.l	d0,-(sp)
 		moveq	#8,d1
-		bsr	put_hexnum1
+		call	put_hexnum1
 		move.l	(sp)+,d0
 		move.b	#SPACE,(a3)+
 		move.l	a3,a4
@@ -353,7 +351,7 @@ invalid		move.l	d4,d0		restore stack pointer
 		moveq	#0,d0
 		move.w	-2(a5),d0
 		moveq	#4,d1
-		bsr	put_hexnum
+		call	put_hexnum
 		move.l	a6,a5
 		bra.s	02$
 
@@ -384,11 +382,11 @@ immsizes	bra.s	invalid
 
 imm_byte	bsr	GetWord
 		moveq	#2,d1
-		bra	put_hexnum
+		call	JUMP,put_hexnum
 
 imm_word	bsr	GetWord
 		moveq	#4,d1
-		bra	put_hexnum
+		call	JUMP,put_hexnum
 
 immoffs		bsr	GetWord
 sword		ext.l	d0
@@ -476,7 +474,7 @@ trapnum		move.b	#'#',(a3)+
 		move.w	d7,d0
 		and.w	#$0f,d0
 		moveq	#2,d1
-		bra	put_hexnum
+		call	JUMP,put_hexnum
 
 bit_instr_type	move.w	d7,d0
 		lsr.w	#4,d0

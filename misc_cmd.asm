@@ -7,8 +7,11 @@
 		xref	getdecnum
 		xref	puthex1_68
 		xref	phex1_8
-		xref	error
 		xref	mainloop
+
+		xref	generic_error
+
+		xdef	set_cmdline
 
 **** DISPLAY MEMORY ****
 ;#
@@ -48,12 +51,8 @@ disploop	startline
 100$		moveq	#16-1,D2
 
 02$		move.b	(a5)+,D0	;printable codes are $20-$7F and $A0-$FF
-		cmp.b	#SPACE+$80,D0
-		bcc.s	03$
-		cmp.b	#SPACE,D0
-		bge.s	03$		;note: signed comparison handles correctly codes >= $80
-		move.b	#'.',D0
-03$		move.b	D0,(A3)+
+		call	to_printable
+		move.b	D0,(A3)+
 		dbf	D2,02$
 
 		tst.b	d6
@@ -86,7 +85,7 @@ disploop	startline
 		move.b	d0,defbase(a4)
 mloop_bx	bra	mainloop
 
-base_err	bra	error
+base_err	bra	generic_error
 
 showbase	moveq	#0,d0
 		move.b	defbase(a4),d0
@@ -97,23 +96,25 @@ showbase	moveq	#0,d0
 *** enter command line ***
 		cmd	cmdline
 
-		call	tolower
 		tst.b	(a3)
 		bne.s	01$
 		lea	cmdline_prompt(pc),a0
 		call	printstring_a0_window
 		moveq	#0,d0
 		call	GetInput
-01$		lea	CmdLineBuf(a4),a1
+01$		bsr.s	set_cmdline
+		bra	mainloop
+
+set_cmdline	lea	CmdLineBuf(a4),a1
 		move.l	a1,a2
 02$		move.b	(a3)+,(a1)+
 		bne.s	02$
 		move.b	#LF,-1(a1)
 		clr.b	(a1)
 		sub.l	a2,a1
-		move.l	a1,DataRegs(a4)
-		move.l	a2,AddrRegs(a4)
-		bra	mainloop
+		move.l	a1,DataRegs(a4)		;set d0
+		move.l	a2,AddrRegs(a4)		;set a0
+		rts
 
 
 *** Calculator command ***
@@ -127,6 +128,9 @@ showbase	moveq	#0,d0
 		moveq	#0,d0
 		call	GetInput
 01$		call	get_expr
+
+		tst.b	(a3)
+		bne	generic_error
 
 *** DISPLAY NUMBER IN HEX, DECIMAL, OCTAL, BINARY and ASCII ***
 		move.l	D0,D5
@@ -149,13 +153,9 @@ showbase	moveq	#0,d0
 		addq.l	#4,a3
 		move.l	a3,a0
 		moveq	#4-1,d1
-2$		cmp.b	#SPACE+$80,d5
-		bcc.s	4$
-		cmp.b	#SPACE,d5
-		bge.s	4$
-
-3$		move.b	#'.',d5
-4$		move.b	d5,-(a0)
+2$		move.b	d5,d0
+		call	to_printable
+		move.b	d0,-(a0)
 		lsr.l	#8,d5
 		dbf	d1,2$
 		move.b	#'''',(a3)+
@@ -227,7 +227,7 @@ num_A2		rts
 		cmp.b	#'+',d0
 		beq.s	add_option
 		cmp.b	#'-',d0
-		bne	error
+		bne	generic_error
 ; remove option
 		call	get_expr
 		bclr	d0,MonOptions(a4)

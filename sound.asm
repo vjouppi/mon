@@ -3,8 +3,9 @@
 ;
 		include	"monitor.i"
 
-		xref	oddaddr_error
-		xref	error
+		xref	generic_error
+		xref	odd_address_error
+
 
 *** PLAY DIGITIZED SOUND ***
 		cmd	digisound
@@ -12,14 +13,14 @@
 dummy_label_here	;_because_devpac_doesnt_work_without_it
 		call	get_expr
 		btst	#0,d0
-		bne	oddaddr_error
+		bne	odd_address_error
 
 		move.l	D0,D5
 		call	get_expr
 		tst.l	D0
-		beq	error		;error: zero length
+		beq	generic_error		;error: zero length
 		btst	#0,D0
-		bne	error
+		bne	generic_error
 		move.l	D0,D6
 		call	get_expr	;period (speed)
 		move.w	D0,D7

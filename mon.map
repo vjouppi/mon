@@ -1,0 +1,18 @@
+mon                     22-May-91 20:50:16  Hunk Section                Page 1-1
+
+ num hunk         size filename         punit    type         base  alv
+   0              5168 mon_main.o       <noname> code            0    0
+                       assemble.o       <noname> code          dec    0
+                       disassemble.o    <noname> code         1f50    0
+                       disk_io.o        <noname> code         2b18    0
+                       eval.o           <noname> code         2dcc    0
+                       execute.o        <noname> code         3338    0
+                       memory.o         <noname> code         3a0c    0
+                       mon_dos.o        <noname> code         3e64    0
+                       mon_io.o         <noname> code         4218    0
+                       mon_util.o       <noname> code         458c    0
+                       registers.o      <noname> code         48c4    0
+                       sound.o          <noname> code         4a24    0
+                       variables.o      <noname> code         4b4c    0
+                       misc_cmd.o       <noname> code         4d44    0
+                       mon_misc.o       <noname> code         4fd4    0

@@ -5,12 +5,11 @@
 
 		xdef	getdecnum
 
-		xref	error
 		xref	findvar
-		xref	oddaddr_error
-		xref	errcom
 		xref	find_brk_num
 
+		xref	expression_error
+		xref	odd_address_error
 ;
 ;
 ; The expression evaluation routines
@@ -91,7 +90,7 @@ ex11		cmp.b	#'/',d0
 		bne.s	ex12
 		bsr.s	get_ex2
 		tst.l	d0
-		beq	expr_error		;divide by zero
+		beq	expression_error		;divide by zero
 		move.l	d2,d1
 		bsr	divide
 		move.l	d0,d2
@@ -103,7 +102,7 @@ ex12		cmp.b	#'%',d0
 		addq.l	#1,a3
 		bsr.s	get_ex2
 		tst.l	d0
-		beq	expr_error		;divide by zero
+		beq	expression_error		;divide by zero
 		move.l	d2,d1
 		bsr	modulo
 		move.l	d0,d2
@@ -131,14 +130,14 @@ get_ex2_loop	call	skipspaces
 		cmp.b	#'<',d0
 		bne.s	ex21
 		cmp.b	#'<',(a3)+
-		bne	expr_error		;syntax error
+		bne	expression_error		;syntax error
 		bsr.s	get_ex3
 		lsl.l	d0,d2
 		bra.s	get_ex2_loop
 ex21		cmp.b	#'>',d0
 		bne.s	ex22
 		cmp.b	#'>',(a3)+
-		bne	expr_error		;syntax error
+		bne	expression_error		;syntax error
 		bsr.s	get_ex3
 		lsr.l	d0,d2
 		bra.s	get_ex2_loop
@@ -154,7 +153,7 @@ get_ex3		call	skipspaces
 		call	get_expr
 		call	skipspaces
 		cmp.b	#')',(a3)+
-		bne	expr_error		;right parenthesis expected
+		bne	expression_error		;right parenthesis expected
 		rts
 ex31		cmp.b	#'-',d0
 		bne.s	ex32
@@ -225,7 +224,7 @@ ex37r		lsl.w	#2,d0
 ex37x		move.l	(a0),d0
 ex37z		cmp.b	#']',(a3)+
 		beq.s	exrt01
-ex37_err	bra	expr_error
+ex37_err	bra	expression_error
 ex38		subq.l	#1,a3
 		bsr	get_token
 		tst.l	d0
@@ -372,7 +371,7 @@ r_nhunks	moveq	#0,d0
 gethunk		bsr	get_first_arg
 		move.l	SegList(a4),d1
 01$		lsl.l	#2,d1
-		beq	expr_error		;hunk not found
+		beq	expression_error		;hunk not found
 		tst.l	d0
 		beq.s	g_rts
 		move.l	d1,a0
@@ -395,7 +394,7 @@ r_peek		bsr	get_first_arg
 
 r_peekw		bsr	get_first_arg
 		btst	#0,d0
-		bne	oddaddr_error
+		bne	odd_address_error
 		move.l	d0,a0
 		moveq	#0,d0
 		move.w	(a0),d0
@@ -403,7 +402,7 @@ r_peekw		bsr	get_first_arg
 
 r_peekl		bsr	get_first_arg
 		btst	#0,d0
-		bne	oddaddr_error
+		bne	odd_address_error
 		move.l	d0,a0
 		move.l	(a0),d0
 		bra	no_more_args
@@ -425,10 +424,10 @@ r_dev		move.w	#DeviceList,d1
 r_res		move.w	#ResourceList,d1
 r_execlist	call	skipspaces
 		cmp.b	#'(',(a3)+
-		bne	expr_error
+		bne	expression_error
 		call	GetName
 		tst.l	d0
-		beq	expr_error
+		beq	expression_error
 		move.l	d0,a1
 		lib	Exec,Forbid	;Forbid() & Permit are quaranteed
 		lea	0(a6,d1.w),a0	;to preserve all registers
@@ -441,7 +440,7 @@ r_execlist	call	skipspaces
 ;
 r_task		call	skipspaces
 		cmp.b	#'(',(a3)+
-		bne	expr_error
+		bne	expression_error
 		call	skipspaces
 		cmp.b	#'"',(a3)
 		beq	r_taskname
@@ -456,7 +455,7 @@ r_task		call	skipspaces
 		add.l	a0,a0
 		move.l	(a0),d1		; max. number of CLI processes
 		cmp.l	d1,d0
-		bhi	expr_error
+		bhi	expression_error
 		lsl.l	#2,d0
 		move.l	0(a0,d0.l),d0
 		beq	no_more_args
@@ -466,7 +465,7 @@ r_task		call	skipspaces
  
 r_taskname	call	GetName
 		tst.l	d0
-		beq	expr_error
+		beq	expression_error
 r_ftask		move.l	d0,a1
 		lib	Exec,FindTask
 		bra	no_more_args
@@ -475,28 +474,28 @@ r_brk		bsr	get_first_arg
 		bsr	find_brk_num
 		moveq	#-1,d1
 		cmp.l	d0,d1
-		beq	expr_error
+		beq	expression_error
 		bra	no_more_args
 
 get_first_arg	call	skipspaces
 		cmp.b	#'(',(a3)+
-		bne	expr_error		;left parenhesis expected
+		bne	expression_error		;left parenhesis expected
 		call	JUMP,get_expr
 
 ;get_arg	call	skipspaces
 ;		cmp.b	#',',(a3)+
-;		bne	expr_error		;comma expected
+;		bne	expression_error		;comma expected
 ;		call	JUMP,get_expr
 
 no_more_args	;D0 not changed!
 		call	skipspaces
 		cmp.b	#')',(a3)+
-		bne	expr_error		;right parenthesis expected
+		bne	expression_error		;right parenthesis expected
 		rts
 
 get_num		;radix in D0
 		bsr.s	getnum0
-		bcs	expr_error
+		bcs	expression_error
 		rts
 
 getdecnum	call	skipspaces
@@ -538,7 +537,7 @@ getnum9		subq.l	#1,a3
 
 get_strnum	moveq	#0,d0
 strnum1		move.b	(a3)+,d1
-		beq.s	expr_error		;syntax error
+		beq	expression_error		;syntax error
 		cmp.b	#'''',d1
 		beq.s	strnum2
 strnum1a	lsl.l	#8,d0
@@ -581,9 +580,6 @@ gt_nf		moveq	#-1,d0
 gt_ret		movem.l	(sp)+,d2/a2
 		rts
 
-expr_error	lea	expr_errtxt(pc),a0
-		bra	errcom
-
 tokfuncs	rw	r_hunk
 		rw	r_hlen
 		rw	r_hend
@@ -616,9 +612,5 @@ tokentable	dc.b	'hunk',0
 		dc.b	'port',0
 		dc.b	'brk',0
 		dc.b	0
-
-		ds.w	0		;word alignment
-
-expr_errtxt	dc.b	'expr error',0
 
 		end

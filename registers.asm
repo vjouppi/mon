@@ -7,9 +7,9 @@
 		xdef	displayregs
 		xdef	displayregs_d
 
-		xref	put_hexnum1
 		xref	phex1_8
-		xref	error
+
+		xref	generic_error
 
 *** DISPLAY & CHANGE REGISTERS ***
 		cmd	setshow_regs
@@ -84,9 +84,9 @@ nodr		cmp.w	#'sp',d0
 		moveq	#7,d0
 		bra.s	setareg
 nosp		cmp.w	#'a0',D0
-		bcs	error
+		bcs	generic_error
 		cmp.w	#'a7',D0
-		bhi	error
+		bhi	generic_error
 		sub.w	#'a0',D0
 setareg		lsl.w	#2,D0
 		move.w	D0,D2
@@ -109,7 +109,7 @@ displayregs	startline
 		move.b	RegCCR_B(a4),D0
 		move.b	D0,D2
 		moveq	#2,d1
-		bsr	put_hexnum1
+		call	put_hexnum1
 		moveq	#4,D1
 
 flagloop	putchr	SPACE

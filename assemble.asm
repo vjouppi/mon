@@ -4,18 +4,17 @@
 
 		include	"monitor.i"
 
-		xdef	outrangetxt
-
 		xref	ccodes
 		xref	instr_names
 
 		xref	UpAndClearEol
 
-		xref	error
-		xref	errcom
-		xref	oddaddr_error
 		xref	getstring
 
+		xref	generic_error
+		xref	odd_address_error
+		xref	out_range_error
+		xref	addrmode_error
 
 *** ASSEMBLE ***
 * command format:
@@ -38,7 +37,7 @@
 		bra.s	assem_02
 assem_01	call	get_expr
 		btst	#0,D0
-		bne	oddaddr_error	;assembling to odd address is illegal
+		bne	odd_address_error	;assembling to odd address is illegal
 		move.l	D0,Addr(a4)
 assem_02	move.l	D0,EndAddr(a4)
 		call	skipspaces
@@ -54,6 +53,7 @@ assem1		move.l	Addr(a4),D0
 assem1a0	call	GetInput
 		tst.w	D0		;check for Ctrl-E (GetInput returns -1)
 		bpl.s	assem1a1	;branch if not Ctrl-E
+
 *** disassemble at current address and put result in input buffer ***
 		move.l	Addr(a4),a5
 		startline
@@ -70,60 +70,51 @@ assem1a1	tst.b	(A3)
 		bne.s	assem1a
 		rts
 
-assem1a		move.l	A3,A1
-		moveq	#0,D1		;quote mode flag
-lowerloop			;convert to lower case when not in quotes
-		move.b	(A1),D0
-		beq.s	asmlow9
-		cmp.b	#'''',D0
-		bne.s	noquote
-		not.b	d1
-noquote		tst.b	D1
-		bne.s	asmlow1
+assem1a		lea	instr_names(pc),a0
+		call	find_name
+		tst.l	d0
+		bmi	try_branch
+
+;
+; instruction found from list, execute its assembly routine...
+;
+		move.l	A1,A3
+		add.w	D0,D0
+		lea	instrjumps(pc),A0
+		add.w	D0,A0
+		add.w	(A0),A0
+		jmp	(A0)
+
+	;if instruction not found in table, it can be
+	;a branch, DBcc, Scc or dc.?
+try_branch	move.b	(a3)+,d0
 		call	tolower
-asmlow1		move.b	D0,(A1)+
-		bra.s	lowerloop
-
-asmlow9		moveq	#0,d1		find instruction from table
-		lea	instr_names(pc),a0
-01$		move.l	a3,a1
-02$		tst.b	(a0)
-		beq.s	instr_found
-		cmpm.b	(a0)+,(a1)+
-		beq.s	02$
-03$		tst.b	(a0)+
-		bne.s	03$
-		tst.b	(a0)
-		beq.s	try_branch
-		addq.w	#1,d1
-		bra.s	01$
-
-try_branch			;if instruction not found in table, it can be
-		cmp.b	#'b',(A3)	;a branch, DBcc, Scc or dc.?
+		cmp.b	#'b',d0
 		bne.s	try_Scc
-		addq.l	#1,A3
 		bsr	check_cond
 		tst.w	D1
 		bpl.s	branch_1
-br_err		bra	error
+br_err		bra	generic_error
 
 branch_1	lsl.w	#8,D1
 		or.w	#$6000,D1
 		cmp.b	#'.',(A3)
 		bne.s	long_branch
 		addq.l	#1,A3
-		cmp.b	#'l',(A3)+
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'l',d0
 		beq.s	long_branch
-		cmp.b	#'s',-1(A3)
+		cmp.b	#'s',d0
 		bne.s	br_err
-		call	get_expr
+		call	get_expr	;short branch
 		sub.l	Addr(a4),D0
 		subq.l	#2,D0
 		move.b	D0,D2
 		ext.w	D2
 		ext.l	D2
 		cmp.l	D0,D2
-		bne.s	out_of_range
+		bne	out_range_error
 		and.w	#$FF,D0		short branch can't branch zero bytes
 		beq.s	br_err
 		or.w	D1,D0
@@ -135,28 +126,19 @@ long_branch	call	get_expr
 		move.w	D0,D2
 		ext.l	D2
 		cmp.l	D0,D2
-		bne.s	out_of_range
+		bne	out_range_error
 		exg	D0,D1
 		bra	two_words_instr
 
-instr_found	move.l	A1,A3
-		add.w	D1,D1
-		lea	instrjumps(pc),A0
-		add.w	D1,A0
-		add.w	(A0),A0
-		jmp	(A0)
-
-out_of_range	lea	outrangetxt(pc),a0
-		bra	errcom
-
-try_Scc		cmp.b	#'s',(A3)
+try_Scc		cmp.b	#'s',d0
 		bne.s	try_DBcc
-		addq.l	#1,A3
-		cmp.b	#'f',(A3)+
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'f',d0
 		bne.s	Scc_1
 		moveq	#1,D1
 		bra.s	Scc_3
-Scc_1		cmp.b	#'t',-1(A3)
+Scc_1		cmp.b	#'t',d0
 		bne.s	Scc_2
 		moveq	#0,D1
 		bra.s	Scc_3
@@ -167,30 +149,28 @@ Scc_2		subq.l	#1,A3
 		cmp.w	#2,D1
 		bcs.s	cc_err
 Scc_3		move.w	D1,D3
-		addq.l	#2,Addr(a4)
-		bsr	GetEA
-		cmp.w	#1,D1
-		beq.s	cc_err
 		lsl.w	#8,D3
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	cc_err
+		addq.l	#2,Addr(a4)
+		bsr	Get_Dest_EA
 		or.w	D3,D0
 		or.w	#$50C0,D0
-		bra	zzcom
+		bra	set_instr_word
 
-cc_err		bra	error
+cc_err		bra	generic_error
 
-try_DBcc	cmp.b	#'d',(A3)+
+try_DBcc	cmp.b	#'d',d0
 		bne.s	cc_err
-		cmp.b	#'b',(A3)+
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'b',d0
 		bne.s	try_dc
-		cmp.b	#'t',(A3)+
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'t',d0
 		bne.s	DBcc_1
 		moveq	#0,D1
 		bra.s	DBcc_3
-DBcc_1		cmp.b	#'f',-1(A3)
+DBcc_1		cmp.b	#'f',d0
 		bne.s	DBcc_2
 DBcc_1a		moveq	#1,D1
 		bra.s	DBcc_3
@@ -215,10 +195,14 @@ DBcc_3		move.w	D1,D3
 		move.l	D0,D1
 		ext.l	D0
 		cmp.l	D0,D1
-		bne	out_of_range
+		bne	out_range_error
 		move.w	D3,D0
 		bra	two_words_instr
-try_dc		cmp.b	#'c',-1(A3)
+
+;
+; define constant byte/word/longword
+;
+try_dc		cmp.b	#'c',d0
 		bne.s	cc_err
 		bsr	GetSize	;*** DC.B, DC.W, DC.L ***
 		call	skipspaces
@@ -251,7 +235,7 @@ dc_exit1	move.l	D0,Addr(a4)
 
 assem9		call	skipspaces
 		tst.b	(a3)
-		bne	error
+		bne	generic_error
 
 		lea	UpAndClearEol(pc),A0	;move cursor to previous line and clear the line
 		call	printstring_a0_window
@@ -265,8 +249,10 @@ dc_exit2	bra	assem1
 ; result returned in D1, condition number or -1 if not found
 ; now unserstands hs and lo-conditions (same as cc and cs)
 check_cond	move.b	(A3)+,D0
+		call	tolower
 		lsl.w	#8,D0
 		move.b	(A3)+,D0
+		call	tolower
 		lea	ccodes(pc),A0
 		moveq	#0,D1
 
@@ -294,11 +280,13 @@ rox_asm		moveq	#$10,D3
 rot_asm		moveq	#$18,D3
 
 shift_instr	or.w	#$e000,d3
-		cmp.b	#'r',(A3)+		get direction
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'r',d0			;get direction
 		beq.s	shift_1
-		cmp.b	#'l',-1(A3)
+		cmp.b	#'l',d0
 		bne.s	sh_err
-		bset	#8,D3
+		bset	#8,D3			;left shift
 shift_1		cmp.b	#'.',(A3)
 		bne.s	shift_mem
 		bsr	GetSize
@@ -324,7 +312,7 @@ shift_2		lsl.w	#8,D0
 		or.w	D3,D0
 		bra	one_word_instr
 
-sh_err		bra	error
+sh_err		bra	generic_error
 
 shift_mem	addq.l	#2,Addr(a4)
 		moveq	#0,D0
@@ -333,15 +321,12 @@ shift_mem	addq.l	#2,Addr(a4)
 		or.w	D0,D3
 		and.w	#$F7C0,D3
 		or.w	#$C0,D3
-		bsr	GetEA
-		cmp.w	#2,D1
-		bcs.s	sh_err
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	sh_err
+		bsr	Get_Dest_EA
+		move.w	d0,d1
+		and.w	#$38,d1
+		beq	addrmode_error
 		or.w	D3,D0
-		bra.s	zcom_1
+		bra	set_instr_word
 
 *** ADD & SUB ***
 add_asm		move.w	#$D000,D3
@@ -349,7 +334,9 @@ add_asm		move.w	#$D000,D3
 
 sub_asm		move.w	#$9000,D3
 
-a_s_asm		cmp.b	#'x',(A3)
+a_s_asm		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'x',d0
 		bne.s	no_as_ext
 		addq.l	#1,A3
 		bsr	GetSize
@@ -357,13 +344,15 @@ a_s_asm		cmp.b	#'x',(A3)
 		bra	ext_as_asm
 
 no_as_ext	addq.l	#2,Addr(a4)
-		cmp.b	#'q',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'q',d0
 		bne.s	no_as_quick
 		addq.l	#1,A3
 		bsr	GetSize
 		call	skipspaces
 		cmp.b	#'#',(A3)+
-		bne.s	as_err
+		bne	addrmode_error
 		bsr	get_expr_1_8
 		lsl.w	#8,D0
 		lsl.w	#1,D0
@@ -383,37 +372,31 @@ as_quick_1	or.w	#$5000,D0
 		cmp.w	#1,D1
 		beq.s	as_err
 
-as_quick_z1	lsl.w	#3,D1
-		or.w	D1,D0
 ;#
 ;# fixed addq/subq addressing mode checking 1989-08-28
 ;#
-		cmp.w	#$39,d0
-		bhi.s	as_err
+as_quick_z1	bsr	Do_EA_1
 		or.w	D3,D0
-zcom_1		bra	zzcom
+zcom_1		bra	set_instr_word
 
-as_err		bra	error
+as_err		bra	generic_error
 
-no_as_quick	cmp.b	#'i',(A3)
+no_as_quick	move.b	(a3),d0
+		call	tolower
+		cmp.b	#'i',d0
 		bne.s	no_as_imm
 		addq.l	#1,A3
 		bsr	GetSize
 		call	skipspaces
 		cmp.b	#'#',(A3)+
-		bne.s	as_err
+		bne	addrmode_error
 
 as_imm_1	bsr	PutImm
 		bsr	SkipComma
 		bsr	GetEA
 		cmp.w	#1,D1
 		beq.s	as_addr_imm_1
-		lsl.w	#3,D1
-		or.w	D1,D0
-		move.w	d0,d1
-		and.w	#$3f,d1
-		cmp.w	#$39,d1
-		bhi.s	as_err
+		bsr	Do_EA_1
 		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
@@ -435,7 +418,9 @@ as_addr_imm_1	lsl.w	#8,D0
 		bra.s	zcom_1
 
 no_as_imm	moveq	#0,D5
-		cmp.b	#'a',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'a',d0
 		bne.s	as_norm_1
 		moveq	#-1,D5
 		addq.l	#1,A3
@@ -448,19 +433,23 @@ as_norm_1	bsr	GetSize
 		beq.s	as_imm_1
 		subq.l	#1,A3
 
-as_norm_2	cmp.b	#'d',(A3)
+as_norm_2	move.b	(a3),d0
+		call	tolower
+		cmp.b	#'d',d0
 		beq.s	as_data_reg_source
 		bsr	GetEA
 		tst.w	size(a4)
 		bne.s	as_norm_3
-		cmp.w	#1,D1		address register diret can't be used
-		beq.s	as_err2		with byte size
+		cmp.w	#1,D1		;address register direct can't be used
+		beq	addrmode_error	;with byte size
 
 as_norm_3	lsl.w	#3,D1
 		or.w	D1,D0
 		or.w	D0,D3
 		bsr	SkipComma
-		cmp.b	#'d',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'d',d0
 		bne.s	try_as_addr
 		tst.l	D5
 		bne.s	as_err2
@@ -473,7 +462,7 @@ as_norm_3	lsl.w	#3,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		bra.s	zcom_2
-as_err2		bra	error
+as_err2		bra	generic_error
 
 try_as_addr	bsr	getareg
 		move.w	d1,d0
@@ -486,7 +475,7 @@ try_as_addr	bsr	getareg
 		subq.w	#1,D1
 		lsl.w	#8,D1
 		or.w	D1,D0
-zcom_2		bra	zzcom
+zcom_2		bra	set_instr_word
 
 as_data_reg_source
 		bsr	getdreg
@@ -514,10 +503,7 @@ as_datasource_1	cmp.w	#1,D1
 		beq.s	as_special
 		tst.l	d5
 		bne.s	as_err2
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	as_err2
+		bsr	Do_EA_1
 		or.w	D3,D0
 		bset	#8,D0
 as_ds_1		move.w	size(a4),D1
@@ -525,7 +511,7 @@ as_ds_1		move.w	size(a4),D1
 		or.w	D1,D0
 		bra.s	zcom_2
 
-as_special		;handle adda/suba
+as_special	;handle adda/suba
 		lsl.w	#8,D0
 		lsl.w	#1,D0
 		move.w	D3,D1
@@ -541,10 +527,12 @@ as_special		;handle adda/suba
 		lsl.w	#8,D1
 		or.w	D1,D0
 		or.w	#$C0,D0
-		bra	zzcom
+		bra	set_instr_word
 
 *** CMP ***
-cmp_asm		cmp.b	#'m',(A3)
+cmp_asm		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'m',d0
 		bne.s	no_mem_cmp
 		addq.l	#1,A3
 		bsr	GetSize	;CMPM
@@ -578,31 +566,30 @@ cmp_asm		cmp.b	#'m',(A3)
 		or.w	#$B108,D0
 		bra	one_word_instr
 
-cmp_err		bra	error
+cmp_err		bra	generic_error
 
 no_mem_cmp	addq.l	#2,Addr(a4)
-		cmp.b	#'i',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'i',d0
 		bne.s	no_cmp_imm
 		addq.l	#1,A3
 		bsr	GetSize
 		call	skipspaces
 		cmp.b	#'#',(A3)+
-		bne.s	cmp_err
+		bne	addrmode_error
 
 cmp_imm_1	bsr	PutImm
 		bsr	SkipComma
 		bsr	GetEA
 		cmp.w	#1,D1
 		beq.s	cmp_addr_imm1
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	cmp_err
+		bsr	Do_EA_1
 		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	#$0C00,D0
-		bra	zzcom
+		bra	set_instr_word
 
 cmp_addr_imm1	lsl.w	#8,D0
 		lsl.w	#1,D0
@@ -612,10 +599,12 @@ cmp_addr_imm1	lsl.w	#8,D0
 		lsl.w	#8,D1
 		or.w	D1,D0
 		or.w	#$B0FC,D0
-		bra	zzcom
+		bra	set_instr_word
 
 no_cmp_imm	moveq	#0,D5
-		cmp.b	#'a',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'a',d0
 		bne.s	no_cmp_addr
 		addq.l	#1,A3
 		moveq	#-1,D5
@@ -649,9 +638,9 @@ cmp_2		lsl.w	#3,D1
 		lsl.w	#1,D1
 		or.w	D1,D0
 		or.w	#$B000,D0
-		bra	zzcom
+		bra	set_instr_word
 
-cmp_err2	bra	error
+cmp_err2	bra	generic_error
 
 cmp_addr	move.w	size(a4),D0
 		beq.s	cmp_err2
@@ -663,7 +652,7 @@ cmp_addr	move.w	size(a4),D0
 		lsl.w	#1,D1
 		or.w	D1,D0
 		or.w	#$B0C0,D0
-		bra	zzcom
+		bra	set_instr_word
 
 *** AND & OR ***
 and_asm		move.w	#$C000,D3
@@ -672,7 +661,9 @@ and_asm		move.w	#$C000,D3
 or_asm		move.w	#$8000,D3
 
 a_o_asm		addq.l	#2,Addr(a4)
-		cmp.b	#'i',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'i',d0
 		bne.s	a_o_2
 		addq.l	#1,A3
 		cmp.b	#'.',(A3)
@@ -684,16 +675,10 @@ a_o_asm		addq.l	#2,Addr(a4)
 a_o_0		bsr	GetSize
 		call	skipspaces
 		cmp.b	#'#',(A3)+
-		bne.s	a_o_err
-a_o_imm	bsr	PutImm
+		bne	addrmode_error
+a_o_imm		bsr	PutImm
 		bsr	SkipComma
-		bsr	GetEA
-		cmp.w	#1,D1
-		beq.s	a_o_err
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	a_o_err
+		bsr	Get_Dest_EA
 		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
@@ -701,8 +686,6 @@ a_o_imm	bsr	PutImm
 		bne.s	zcom_3
 		bset	#9,D0
 		bra.s	zcom_3
-
-a_o_err		bra	error
 
 a_o_2		bsr	GetSize
 		call	skipspaces
@@ -712,7 +695,9 @@ a_o_2		bsr	GetSize
 		lsl.w	#6,D0
 		or.w	D0,D3
 		subq.l	#1,A3
-		cmp.b	#'d',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'d',d0
 		bne.s	reg_dest
 		bsr	getdreg
 		lsl.w	#8,D1
@@ -723,14 +708,11 @@ a_o_2		bsr	GetSize
 		tst.w	D1
 		beq.s	a_o_3a
 		cmp.w	#1,D1
-		beq.s	a_o_err
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	a_o_err
+		beq	addrmode_error
+		bsr	Do_EA_1
 		bset	#8,D0
 		or.w	D3,D0
-zcom_3		bra	zzcom
+zcom_3		bra	set_instr_word
 
 a_o_3a		move.w	D0,D7
 		move.w	D3,D0
@@ -748,13 +730,13 @@ a_o_3a		move.w	D0,D7
 
 reg_dest	bsr	GetEA
 		cmp.w	#1,D1
-		beq.s	a_o_err2
+		beq	addrmode_error
 		lsl.w	#3,D1
 		or.w	D1,D0
 ;# this check prevented the use of pcrelative addressing modes
 ;# with and/or - fixed 1989-08-27
-;#		cmp.w	#$39,D0
-;#		bhi.s	a_o_err2
+;#	cmp.w	#$39,D0
+;#	bhi.s	a_o_err2
 		or.w	D0,D3
 		bsr	SkipComma
 		bsr	getdreg
@@ -764,8 +746,6 @@ reg_dest	bsr	GetEA
 		or.w	D3,D0
 		bra.s	zcom_3
 
-a_o_err2	bra	error
-
 *** ABCD & SBCD & ADDX & SUBX ***
 abcd_asm	move.w	#$C100,D3
 		bra.s	bcd_asm
@@ -774,7 +754,9 @@ sbcd_asm	move.w	#$8100,D3
 
 bcd_asm		clr.w	size(a4)
 ext_as_asm	call	skipspaces
-		cmp.b	#'d',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'d',d0
 		bne.s	bcd_mem
 		bsr	getdreg
 		or.w	D1,D3
@@ -788,9 +770,8 @@ bcd_1		lsl.w	#8,D1
 		or.w	D1,D0
 		bra	one_word_instr
 
-bcd_mem		cmp.b	#'-',(A3)
+bcd_mem		cmp.b	#'-',(A3)+
 		bne.s	err_bcd
-		addq.l	#1,a3
 		cmp.b	#'(',(A3)+
 		bne.s	err_bcd
 		bsr	getareg
@@ -806,12 +787,14 @@ bcd_mem		cmp.b	#'-',(A3)
 		bsr	getareg
 		cmp.b	#')',(A3)+
 		beq.s	bcd_1
-err_bcd		bra	error
+err_bcd		bra	generic_error
 
 *** EOR ***
 eor_asm		addq.l	#2,Addr(a4)
 		moveq	#0,D5
-		cmp.b	#'i',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'i',d0
 		bne.s	eor_1
 		addq.l	#1,A3
 		cmp.b	#'.',(A3)
@@ -827,13 +810,7 @@ eor_1		bsr	GetSize
 		addq.l	#1,A3
 		bsr	PutImm
 		bsr	SkipComma
-		bsr	GetEA
-		cmp.w	#1,D1
-		beq.s	err_bcd
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	err_bcd
+		bsr	Get_Dest_EA
 		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
@@ -845,13 +822,7 @@ no_eor_imm	tst.l	D5
 		bsr	getdreg
 		move.w	D1,D3
 		bsr	SkipComma
-		bsr	GetEA
-		cmp.w	#1,D1
-		beq	error
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi	error
+		bsr	Get_Dest_EA
 		lsl.w	#8,D3
 		lsl.w	#1,D3
 		or.w	D3,D0
@@ -859,43 +830,50 @@ no_eor_imm	tst.l	D5
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	#$B100,D0
-zcom_4		bra	zzcom
+zcom_4		bra	set_instr_word
 
 *** AND & OR & EOR SR & CCR ***
 logical_status	or.w	#$3C,D3
 		call	skipspaces
 		cmp.b	#'#',(A3)+
-		bne.s	move_err
+		bne	addrmode_error
 		move.w	#WSIZE,size(a4)
 		bsr	PutImm
 		bsr	SkipComma
-		cmp.b	#'s',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'s',d0
 		bne.s	no_log_sr
 		addq.l	#1,A3
-		cmp.b	#'r',(A3)+
-		bne.s	move_err
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'r',d0
+		bne	generic_error
 		or.w	#$40,D3
 		bra.s	log_st1
 
-no_log_sr	moveq	#'c',D0
-		cmp.b	(A3)+,D0
-		bne.s	move_err
-		cmp.b	(A3)+,D0
-		bne.s	move_err
-		cmp.b	#'r',(a3)+
-		bne.s	move_err
+no_log_sr	lea	ccr_str(pc),a0
+		bsr	checkstring
 
 log_st1		move.w	D3,D0
 		bra.s	zcom_4
 
 *** MOVE ***
-move_asm	cmp.b	#'q',(A3)
+move_asm	move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'q',d0
 		bne.s	no_move_quick
-		addq.l	#1,A3
 		call	skipspaces
 		cmp.b	#'#',(A3)+
-		bne.s	move_err
+		bne	addrmode_error
 		call	get_expr
+		moveq	#-$80,d1	; d1 := $ffffff80
+		cmp.l	d1,d0
+		blt	out_range_error
+		not.l	d1		; d1 := $0000007f
+		st	d1		; d1 := $000000ff
+		cmp.l	d1,d0
+		bgt	out_range_error
 		move.b	D0,D2
 		bsr	SkipComma
 		bsr	getdreg
@@ -906,54 +884,50 @@ move_asm	cmp.b	#'q',(A3)
 		move.b	D2,D0
 		bra	one_word_instr
 
-move_err	bra	error
-
-no_move_quick	cmp.b	#'p',(A3)
+no_move_quick	cmp.b	#'p',d0
 		beq	move_peripheral
-		cmp.b	#'a',(A3)
+		cmp.b	#'a',d0
 		bne.s	no_move_addr
 		moveq	#-1,D5
-		addq.l	#1,A3
 		bra	normal_move_2
 
-no_move_addr	cmp.b	#'m',(A3)
+no_move_addr	cmp.b	#'m',d0
 		beq	movem_asm
-		cmp.b	#'.',(A3)
+		cmp.b	#'.',d0
 		beq	normal_move
 		call	skipspaces
 ;#
 ;# move sp,usp didn't work because conflict with 's' in 'sr'
 ;# fixed in 1989-11-30
 ;#
-		cmp.b	#'s',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'s',d0
 		bne.s	01$
-		cmp.b	#'p',1(a3)
+		move.b	1(a3),d0
+		call	tolower
+		cmp.b	#'p',d0
 		bne.s	move_status
 		bra.s	move_to_usp
-01$		cmp.b	#'u',(A3)
+
+01$		cmp.b	#'u',d0
 		beq.s	move_from_usp
-		cmp.b	#'a',(A3)
+		cmp.b	#'a',d0
 		bne.s	move_to_status_or_ccr
 
 move_to_usp	bsr	getareg
 		move.w	d1,d3
 		bsr	SkipComma
-		cmp.b	#'u',(A3)+
-		bne.s	move_err
-		cmp.b	#'s',(A3)+
-		bne.s	move_err
-		cmp.b	#'p',(A3)+
-		bne.s	move_err
+		lea	usp_str(pc),a0
+		bsr	checkstring
 		move.w	D3,D0
 		or.w	#$4E60,D0
 		bra	one_word_instr
 
 move_from_usp	;MOVE	usp,An
 		addq.l	#1,A3
-		cmp.b	#'s',(A3)+
-		bne.s	move_err2
-		cmp.b	#'p',(A3)+
-		bne.s	move_err2
+		lea	sp_str(pc),a0
+		bsr	checkstring
 		bsr	SkipComma
 		bsr	getareg
 		move.w	d1,d0
@@ -963,16 +937,12 @@ move_from_usp	;MOVE	usp,An
 move_status	;MOVE sr,EA
 		addq.l	#2,Addr(a4)
 		addq.l	#1,A3
-		cmp.b	#'r',(A3)+
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'r',d0
 		bne.s	move_err2
 		bsr	SkipComma
-		bsr	GetEA
-		cmp.w	#1,D1
-		beq.s	move_err2
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	move_err2
+		bsr	Get_Dest_EA
 		or.w	#$40C0,D0
 		bra.s	zcom_5
 
@@ -983,55 +953,56 @@ move_to_status_or_ccr	;MOVE EA,sr, MOVE EA,ccr
 		lsl.w	#3,D1
 		or.w	D0,D1
 		bsr	SkipComma
-		cmp.b	#'s',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'s',d0
 		bne.s	try_move_ccr
 		addq.l	#1,A3
-		cmp.b	#'r',(A3)+
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'r',d0
 		bne.s	move_err2
 		move.w	D1,D0
 		or.w	#$46C0,D0
 		bra.s	zcom_5
-move_err2	bra	error
+move_err2	bra	generic_error
 
-try_move_ccr	moveq	#'c',D0
-		cmp.b	(A3)+,D0
-		bne.s	move_err2
-		cmp.b	(A3)+,D0
-		bne.s	move_err2
-		cmp.b	#'r',(A3)+
-		bne.s	move_err2
+try_move_ccr	lea	ccr_str(pc),a0
+		bsr	checkstring
 		move.w	D1,D0
 		or.w	#$44C0,D0
-zcom_5		bra	zzcom
+zcom_5		bra	set_instr_word
 
 normal_move	moveq	#0,D5
+		subq.l	#1,a3
 normal_move_2	addq.l	#2,Addr(a4)
 		bsr	GetSize
 		bsr	GetEA
 		tst.w	size(a4)
 		bne.s	nm_1
 		cmp.w	#1,D1
-		beq.s	move_err2
+		beq	addrmode_error
 nm_1		lsl.w	#3,D1
 		or.w	D1,D0
 		move.w	D0,D3
 		bsr	SkipComma
 		bsr	GetEA
-		move.l	D1,D2
-		lsl.w	#3,D2
-		or.w	D0,D2
-		cmp.w	#$39,D2
-		bhi.s	move_err2
+		move.w	d1,d2
+		lsl.w	#3,d2
+		or.w	d0,d2
+		cmp.w	#$39,d2		;checking only...
+		bhi	addrmode_error
 		tst.l	D5
 		bne.s	movea01
-		cmp.w	#1,d1
+		cmp.w	#1,d1		;addr reg direct -> MOVEA
 		bne.s	norm_move_2
+
 movea01		cmp.w	#1,D1
-		bne.s	move_err2	;MOVEA destination must be addr reg
+		bne	addrmode_error	;MOVEA destination must be addr reg
 movea02		tst.w	size(a4)
 		beq.s	move_err2	;MOVEA size can't be BYTE
-norm_move_2
-		lsl.w	#6,D1
+
+norm_move_2	lsl.w	#6,D1
 		lsl.w	#8,D0
 		lsl.w	#1,D0
 		or.w	D1,D0
@@ -1046,16 +1017,17 @@ not_byte_move	addq.w	#1,D1
 		lsl.w	#8,D1
 		lsl.w	#4,D1
 		or.w	D1,D0
-zump1		bra	zzcom
+zump1		bra	set_instr_word
 
 *** MOVEP ***
-move_peripheral	addq.l	#1,A3
-		addq.l	#2,Addr(a4)
+move_peripheral	addq.l	#2,Addr(a4)
 		bsr	GetSize
 		tst.w	size(a4)
 		beq.s	move_err3
 		call	skipspaces
-		cmp.b	#'d',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'d',d0
 		bne.s	move_from_peripheral
 		bsr	getdreg
 		lsl.w	#8,D1
@@ -1064,7 +1036,7 @@ move_peripheral	addq.l	#1,A3
 		bsr	SkipComma
 		bsr	GetEA
 		cmp.w	#5,D1
-		bne.s	move_err3
+		bne	addrmode_error
 		or.w	D3,D0
 		or.w	#$0188,D0
 
@@ -1072,12 +1044,12 @@ move_per_1	move.w	size(a4),D1
 		subq.w	#1,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
-		bra	zzcom
+		bra	set_instr_word
 
 move_from_peripheral
 		bsr	GetEA
 		cmp.w	#5,D1
-		bne.s	move_err3
+		bne	addrmode_error
 		move.w	D0,D3
 		bsr	SkipComma
 		bsr	getdreg
@@ -1088,20 +1060,21 @@ move_from_peripheral
 		or.w	#$0108,D0
 		bra.s	move_per_1
 
-move_err3	bra	error
+move_err3	bra	generic_error
 
 *** MOVEM ***
-movem_asm	addq.l	#1,A3
-		addq.l	#4,Addr(a4)
+movem_asm	addq.l	#4,Addr(a4)
 		bsr	GetSize
 		tst.w	size(a4)
 		beq.s	move_err3
 		call	skipspaces
-		cmp.b	#'d',(A3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'d',d0
 		beq.s	regs_to_mem
-		cmp.b	#'a',(A3)
+		cmp.b	#'a',d0
 		beq.s	regs_to_mem
-		cmp.b	#'s',(a3)
+		cmp.b	#'s',d0
 		bne.s	regs_from_mem
 
 regs_to_mem	bsr	getreglist
@@ -1109,27 +1082,27 @@ regs_to_mem	bsr	getreglist
 		bsr	SkipComma
 		bsr	GetEA
 		cmp.w	#2,D1
-		bcs.s	move_err3
+		bcs.s	addrmod_err1
 		cmp.w	#3,D1
-		beq.s	move_err3
+		beq.s	addrmod_err1
 		move.w	D1,D2
 		lsl.w	#3,D2
 		or.w	D0,D2
 		cmp.w	#$39,D2
-		bhi.s	move_err3
+		bhi.s	addrmod_err1
 		cmp.w	#4,D1
 		bne.s	regs_to_mem_1
 		moveq	#15,D2
 
-juzumps		lsr.w	#1,D3	;reverse bit order
+1$		lsr.w	#1,D3	;reverse bit order
 		roxl.w	#1,D4
-		dbf	D2,juzumps
+		dbf	D2,1$
 		move.w	D4,D3
 
 regs_to_mem_1	lsl.w	#3,D1
 		or.w	D1,D0
 		or.w	#$4880,D0
-zumpsis		move.w	size(a4),D1
+do_movem	move.w	size(a4),D1
 		subq.w	#1,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
@@ -1138,24 +1111,24 @@ zumpsis		move.w	size(a4),D1
 		move.w	D3,(A0)
 		bra	assem9
 
-move_err4	bra	error
+addrmod_err1	bra	addrmode_error
 
 regs_from_mem	bsr	GetEA
 		cmp.w	#2,D1
-		bcs.s	move_err4
+		bcs.s	addrmod_err1
 		cmp.w	#4,D1
-		beq.s	move_err4
+		beq.s	addrmod_err1
 		lsl.w	#3,D1
 		or.w	D1,D0
 		cmp.w	#$3B,D0
-		bhi.s	move_err4
+		bhi.s	addrmod_err1
 		move.w	D0,D3
 		bsr	SkipComma
 		bsr	getreglist
 		move.w	D3,D0
 		move.w	D2,D3
 		or.w	#$4C80,D0
-		bra.s	zumpsis
+		bra.s	do_movem
 
 *** BTST & BCHG & BCLR & BSET ***
 btst_asm	moveq	#0,D3
@@ -1194,23 +1167,23 @@ bit_reg_mode	subq.l	#1,a3
 bit_get_ea	bsr	SkipComma
 		bsr	GetEA
 		cmp.w	#1,D1
-		beq.s	bits_err
+		beq.s	addrmod_err2
 		lsl.w	#3,D1
 		or.w	D1,D0
 		move.w	D3,D1
 		and.w	#$C0,D1
 		beq.s	bit_ea_1
 		cmp.w	#$39,D0
-		bhi.s	bits_err
+		bhi.s	addrmod_err2
 
 bit_ea_1	cmp.w	#$3c,D0
-		bhi.s	bits_err
+		bhi	addrmod_err2
 		or.w	D3,D0
 		cmp.w	#$083c,d0
-		beq.s	bits_err
-		bra	zzcom
+		beq.s	addrmod_err2
+		bra	set_instr_word
 
-bits_err	bra	error
+addrmod_err2	bra	addrmode_error
 
 *** CHK ***
 chk_asm		move.w	#$4180,D3
@@ -1223,17 +1196,19 @@ mul_asm		move.w	#$C0C0,D3
 div_asm		move.w	#$80C0,D3
 
 mul_div		call	skipspaces
-		cmp.b	#'u',(A3)+
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'u',d0
 		beq.s	mul_div1
-		cmp.b	#'s',-1(A3)
-		bne.s	bits_err
-		bset	#8,D3
+		cmp.b	#'s',d0
+		bne	generic_error
+		bset	#8,D3		;signed multiply/divide
 
 mul_div1	move.w	#WSIZE,size(a4)
 		addq.l	#2,Addr(a4)
 		bsr	GetEA
 		cmp.w	#1,D1
-		beq.s	bits_err
+		beq.s	addrmod_err2
 		lsl.w	#3,D1
 		or.w	D1,D0
 		or.w	D0,D3
@@ -1243,50 +1218,49 @@ mul_div1	move.w	#WSIZE,size(a4)
 		lsl.w	#8,D0
 		lsl.w	#1,D0
 		or.w	D3,D0
-		bra.s	zzcom
+		bra.s	set_instr_word
 
 *** TAS ***
 tas_asm		addq.l	#2,Addr(a4)
-		bsr	GetEA
-		cmp.w	#1,D1
-		beq.s	zz_err
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0
-		bhi.s	zz_err
+		bsr	Get_Dest_EA
 		or.w	#$4AC0,D0
-		bra.s	zzcom
+		bra.s	set_instr_word
+
+*** JMP ***
+jmp_asm		move.w	#$4EC0,D3
+		bra.s	pp_1
+
+*** JSR ***
+jsr_asm		move.w	#$4E80,D3
+		bra.s	pp_1
 
 *** PEA ***
 pea_asm		move.w	#$4840,D3
 
 pp_1		addq.l	#2,Addr(a4)
-		bsr	GetEA
-		cmp.w	#2,D1
-		beq.s	pea_A_ok
-		cmp.w	#5,D1
-		bcs.s	zz_err
-
-pea_A_ok	lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$3C,D0
-		bcc.s	zz_err
+		bsr.s	get_jump_ea
 		or.w	D3,D0
-		bra.s	zzcom
+		bra.s	set_instr_word
+
+;
+; get addressing mode for lea, pea, jmp and jsr
+; allowed modes are in the CONTROL category
+;
+get_jump_ea	bsr	GetEA
+		cmp.w	#2,d1
+		beq.s	1$
+		cmp.w	#5,d1
+		bcs	addrmode_error
+1$		lsl.w	#3,d1
+		or.w	d1,d0
+		cmp.w	#$3c,d0
+		bcc	addrmode_error
+		rts
 
 *** LEA ***
 lea_asm		addq.l	#2,Addr(a4)
-		bsr	GetEA
-		cmp.w	#2,D1
-		beq.s	lea_A_ok
-		cmp.w	#5,D1
-		bcs.s	zz_err
-
-lea_A_ok	lsl.w	#3,D1
-		or.w	D0,D1
-		cmp.w	#$3C,D1
-		bcc.s	zz_err
-		move.w	d1,d2
+		bsr.s	get_jump_ea
+		move.w	d0,d2
 		bsr	SkipComma
 		bsr	getareg
 		move.w	d1,d0
@@ -1295,16 +1269,14 @@ lea_A_ok	lsl.w	#3,D1
 		or.w	d2,d0
 		or.w	#$41C0,D0
 
-zzcom		move.l	EndAddr(a4),A0
+set_instr_word	move.l	EndAddr(a4),A0
 		move.w	D0,(A0)
 		bra	assem9
-
-zz_err		bra	error
 
 *** EXT ***
 ext_asm		bsr	GetSize
 		move.w	size(a4),D2
-		beq.s	zz_err
+		beq	generic_error
 		addq.w	#1,D2
 		lsl.w	#6,D2
 		call	skipspaces
@@ -1318,14 +1290,6 @@ ext_asm		bsr	GetSize
 		or.w	#$4800,D0
 		bra	one_word_instr
 
-*** JMP ***
-jmp_asm		move.w	#$4EC0,D3
-		bra	pp_1
-
-*** JSR ***
-jsr_asm		move.w	#$4E80,D3
-		bra	pp_1
-
 *** NBCD ***
 nbcd_asm	addq.l	#2,Addr(a4)
 		clr.w	size(a4)
@@ -1338,13 +1302,7 @@ clr_asm		move.w	#$4200,D3
 one_arg_com	addq.l	#2,Addr(a4)
 		bsr	GetSize
 
-one_arg_2	bsr	GetEA
-		cmp.w	#1,D1		no address register direct mode
-		beq.s	qlumps_err
-		lsl.w	#3,D1
-		or.w	D1,D0
-		cmp.w	#$39,D0		check dest addr mode (no pcrel)
-		bhi.s	qlumps_err
+one_arg_2	bsr	Get_Dest_EA
 		move.w	size(a4),D1
 		lsl.w	#6,D1
 		or.w	D1,D0
@@ -1354,13 +1312,13 @@ one_arg_2	bsr	GetEA
 		bra	assem9
 
 *** NEG & NEGX ***
-neg_asm		cmp.b	#'x',(A3)
+neg_asm		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'x',d0
 		bne.s	no_negx
 		addq.l	#1,A3
 		move.w	#$4000,D3
 		bra.s	one_arg_com
-
-qlumps_err	bra	error
 
 no_negx		move.w	#$4400,D3
 		bra.s	one_arg_com
@@ -1380,28 +1338,24 @@ swap_asm	call	skipspaces
 		or.w	#$4840,D0
 		bra.s	one_word_instr
 
-*** RESET ***
-reset_asm	move.w	#$4E70,D0
-		bra.s	one_word_instr
+reset_asm	moveq	#$00,D0			;RESET
+		bra.s	instr_4e7x
 
-*** NOP ***
-nop_asm		move.w	#$4E71,D0
-		bra.s	one_word_instr
+nop_asm		moveq	#$01,D0			;NOP
+		bra.s	instr_4e7x
 
-*** RTE ***
-rte_asm		move.w	#$4E73,D0
-		bra.s	one_word_instr
+rte_asm		moveq	#$03,D0			;RTE
+		bra.s	instr_4e7x
 
-*** RTS ***
-rts_asm		move.w	#$4E75,D0
-		bra.s	one_word_instr
+rts_asm		moveq	#$05,D0			;RTS
+		bra.s	instr_4e7x
 
-*** TRAPV ***
-trapv_asm	move.w	#$4E76,D0
-		bra.s	one_word_instr
+trapv_asm	moveq	#$06,D0			;TRAPV
+		bra.s	instr_4e7x
 
-*** RTR ***
-rtr_asm		move.w	#$4E77,D0
+rtr_asm		moveq	#$07,D0			;RTR
+
+instr_4e7x	add.w	#$4e70,d0
 
 one_word_instr	move.l	Addr(a4),A0
 		move.w	D0,(A0)+
@@ -1412,10 +1366,12 @@ one_word_instr	move.l	Addr(a4),A0
 illegal_asm	move.w	#ILLEGAL_INSTR,D0
 		bra.s	one_word_instr
 
+addrmod_err3	bra	addrmode_error
+
 *** TRAP ***
 trap_asm	call	skipspaces
 		cmp.b	#'#',(A3)+
-		bne.s	zump_err
+		bne.s	addrmod_err3
 		call	get_expr
 		and.w	#$0f,D0
 		or.w	#$4E40,D0
@@ -1434,7 +1390,7 @@ link_asm	call	skipspaces
 		move.w	d1,d3
 		bsr	SkipComma
 		cmp.b	#'#',(A3)+
-		bne.s	zump_err
+		bne.s	addrmod_err3
 		call	get_expr
 		move.w	D0,D1
 		move.w	D3,D0
@@ -1444,7 +1400,7 @@ link_asm	call	skipspaces
 *** STOP ***
 stop_asm	call	skipspaces
 		cmp.b	#'#',(A3)+
-		bne.s	zump_err
+		bne.s	addrmod_err3
 		call	get_expr
 		move.w	D0,D1
 		move.w	#$4E72,D0
@@ -1453,8 +1409,6 @@ two_words_instr	move.l	Addr(a4),A0
 		move.w	D1,(A0)+
 		move.l	A0,Addr(a4)
 		bra	assem9
-
-zump_err	bra	error
 
 *** EXG ***
 exg_asm		bsr	getreg
@@ -1504,7 +1458,7 @@ reglistx	bsr.s	getreg
 		move.w	D1,D0
 		eor.w	D7,D0
 		btst	#3,D0
-		bne	error		;register in range are different types
+		bne	generic_error	;register in range are different types
 		cmp.w	D1,D7
 		bls.s	regr_01
 		exg	d1,d7		;register range out of order
@@ -1530,13 +1484,16 @@ reglist9	subq.l	#1,A3
 ;#
 getreg		clr.w	D1
 		call	skipspaces
-		cmp.b	#'s',(a3)
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'s',d0
 		beq.s	check_sp
-		cmp.b	#'d',(A3)+
+		cmp.b	#'d',d0
 		beq.s	g_r_1
-		cmp.b	#'a',-1(A3)
-		bne	error
+		cmp.b	#'a',d0
+		bne.s	greg_err
 		bset	#3,D1
+
 g_r_1		move.b	(A3)+,D0
 		sub.b	#'0',D0
 		bcs.s	greg_err
@@ -1546,13 +1503,14 @@ g_r_1		move.b	(A3)+,D0
 		or.b	D0,D1
 g_r_2		rts	;register returned in D1
 
-check_sp	cmp.b	#'p',1(a3)
+check_sp	move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'p',d0
 		bne.s	greg_err
 		move.w	#$0f,d1		;can't use moveq
-		addq.l	#2,a3
 		rts
 
-greg_err	bra	error
+greg_err	bra	generic_error
 ;
 ; get address register, return in d1
 ;
@@ -1574,15 +1532,12 @@ getdreg		bsr	getreg
 *** Get a number in range 1..8, used by 'quick' instructions and shifts ***
 * return -1 if error
 get_expr_1_8	call	get_expr
-		swap	D0
-		tst.w	D0
-		bne.s	greg_err
-		swap	D0
-		tst.w	D0
-		beq.s	greg_err
-		cmp.w	#8,D0
-		bhi.s	greg_err
-		and.w	#7,D0
+		tst.l	d0
+		beq	out_range_error
+		moveq	#8,d1
+		cmp.l	d1,d0
+		bhi	out_range_error
+		and.w	#$07,d0
 		rts
 
 *** SKIP COMMA & SPACES AROUND IT ***
@@ -1594,39 +1549,55 @@ SkipComma	call	skipspaces
 		moveq	#0,D0
 		rts
 
+;#
+;# get destination EA for some instructions
+;# addr. reg. direct, pcel and immediate are not allowed
+;# returns combined EA code in d0
+;#
+Get_Dest_EA	bsr.s	GetEA
+		cmp.w	#1,D1	; addr. reg. direct
+		beq	addrmode_error
+Do_EA_1		lsl.w	#3,D1
+		or.w	D1,D0
+		cmp.w	#$39,D0		; no pcrel or immediate
+		bhi	addrmode_error
+		rts
+
 GetEA: ;get effective address, mode=D1,reg=D0
 * put displacements etc. in memory at address pointed by Addr(a4)
 * and increment Addr(a4)
 		call	skipspaces
-		cmp.b	#'d',(a3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'d',d0
 		beq.s	reg_direct
-		cmp.b	#'a',(a3)
+		cmp.b	#'a',d0
 		beq.s	reg_direct
-		cmp.b	#'s',(a3)
+		cmp.b	#'s',d0
 		bne.s	no_reg_direct
 
 reg_direct	bsr	getreg
 		move.w	d1,d0
-		moveq	#0,d1
+		moveq	#0,d1		;data register direct
 		bclr	#3,d0
 		beq.s	reg_09
-		moveq	#1,d1
+		moveq	#1,d1		;address register direct
 reg_09		rts
 
-no_reg_direct	cmp.b	#'(',(a3)
+no_reg_direct	cmp.b	#'(',d0
 		bne.s	no_indirect_or_postincrement
-		addq.l	#1,A3
+		addq.l	#1,a3
 		bsr	getareg
 		move.w	d1,d0
 		cmp.b	#')',(A3)+
-		bne	error
+		bne	generic_error
 		cmp.b	#'+',(A3)
 		beq.s	postincrement
 		moveq	#2,D1
 		rts
 
 postincrement	addq.l	#1,A3
-		moveq	#3,D1
+		moveq	#3,D1		;addr. reg. indirect with postincrement
 		rts
 
 no_indirect_or_postincrement
@@ -1638,8 +1609,15 @@ no_indirect_or_postincrement
 		bsr	getareg
 		move.w	d1,d0
 		cmp.b	#')',(A3)+
-		bne	error
-		moveq	#4,D1
+		bne	generic_error
+		moveq	#4,D1		;addr. reg. indirect with predecrement
+		rts
+
+indirect_with_index
+		move.l	D0,D7
+		bsr	GetIndex
+		move.l	D7,D0
+		moveq	#6,D1		;addr. reg. indirect with index
 		rts
 
 no_predecrement	cmp.b	#'#',(a3)
@@ -1658,45 +1636,59 @@ sz1		cmp.w	#1,D1
 		move.w	D0,(A0)+
 		bra.s	sz9
 sz2		move.l	D0,(A0)+
-sz9		move.l	A0,Addr(a4)
-		moveq	#7,D1
-		moveq	#4,D0
-		rts
+
+sz9		moveq	#4,D0		;immediate
+		bra.s	s_addr_seven
 
 no_immediate	call	get_expr
 		move.l	D0,D2
 		cmp.b	#'(',(a3)
 		bne	absolute_mode
 		addq.l	#1,A3
-		cmp.b	#'a',(a3)
+		move.b	(a3),d0
+		call	tolower
+		cmp.b	#'a',d0
 		beq.s	01$
-		cmp.b	#'s',(a3)
+		cmp.b	#'s',d0
 		bne.s	no_displacement_or_index
 01$		bsr	getareg
 		move.w	d1,d0
 		cmp.b	#',',(A3)+
 		beq.s	indirect_with_index
 		cmp.b	#')',-1(A3)
-		bne	error
+		bne	generic_error
 		move.l	Addr(a4),A0
 		move.w	D2,(A0)+
 		move.l	A0,Addr(a4)
-		moveq	#5,D1
+		moveq	#5,D1		; addr reg. indirect with displacement
 		rts
 
-indirect_with_index
-		move.l	D0,D7
-		bsr	GetIndex
-		move.l	D7,D0
-		moveq	#6,D1
+abs_short_mode	move.l	Addr(a4),A0
+		move.w	D2,(A0)+
+		moveq	#0,D0		;absolute short
+
+s_addr_seven	move.l	a0,Addr(a4)
+
+seven_up	moveq	#7,d1
 		rts
+
+absolute_mode	move.w	D2,D1
+		ext.l	D1
+		cmp.l	D2,D1
+		beq.s	abs_short_mode
+		move.l	Addr(a4),A0
+		move.l	D2,(A0)+
+		moveq	#1,D0		;absolute long
+		bra.s	s_addr_seven
 
 no_displacement_or_index
-		cmp.b	#'p',(a3)
+		cmp.b	#'p',d0
 		bne.s	pcrel_indx_2
 		addq.l	#1,a3
-		cmp.b	#'c',(A3)+
-		bne	error
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'c',d0
+		bne	generic_error
 		cmp.b	#')',(A3)+
 		bne.s	pcrel_indx_1
 		sub.l	Addr(a4),D2
@@ -1706,49 +1698,31 @@ no_displacement_or_index
 		move.w	d2,d0
 		ext.l	d0
 		cmp.l	d0,d2
-		bne	out_of_range
+		bne	out_range_error
 
-		moveq	#7,D1
-		moveq	#2,D0
-		rts
+		moveq	#2,D0		;pc relative
+		bra.s	seven_up
+
 ;
 ; pc-relative indexed syntax can now be in the correct format '(pc,Rn.w)'
 ;
 pcrel_indx_1	cmp.b	#',',-1(a3)
-		bne	error
+		bne	generic_error
 pcrel_indx_2	sub.l	Addr(a4),D2
 		move.b	d2,d0
 		ext.w	d0
 		ext.l	d0
 		cmp.l	d0,d2
-		bne	out_of_range
+		bne	out_range_error
 		bsr.s	GetIndex
-		moveq	#7,D1
-		moveq	#3,D0
-		rts
-
-absolute_mode	move.w	D2,D1
-		ext.l	D1
-		cmp.l	D2,D1
-		beq.s	abs_short_mode
-		move.l	Addr(a4),A0
-		move.l	D2,(A0)+
-		move.l	A0,Addr(a4)
-		moveq	#7,D1
-		moveq	#1,D0
-		rts
-
-abs_short_mode	move.l	Addr(a4),A0
-		move.w	D2,(A0)+
-		move.l	A0,Addr(a4)
-		moveq	#7,D1
-		moveq	#0,D0
-		rts
+		moveq	#3,D0		;pc relative with index
+		bra.s	seven_up
 
 *** GET SIZE (put it in size(a4), 0=B, 1=W, 2=L) ***
 GetSize		cmp.b	#'.',(A3)+
-		bne	error
+		bne	generic_error
 		move.b	(A3)+,D0
+		call	tolower
 		cmp.b	#'b',D0
 		bne.s	siz1
 		moveq	#BSIZE,d0
@@ -1758,7 +1732,7 @@ siz1		cmp.b	#'w',D0
 		moveq	#WSIZE,d0
 		bra.s	siz3
 siz2		cmp.b	#'l',D0
-		bne	error
+		bne	generic_error
 		moveq	#LSIZE,d0
 siz3		move.w	d0,size(a4)
 		rts
@@ -1777,9 +1751,11 @@ GetIndex	;displacement value in d2
 		or.w	d2,d1
 		cmp.b	#'.',(A3)+
 		bne.s	index_error
-		cmp.b	#'w',(A3)+
+		move.b	(a3)+,d0
+		call	tolower
+		cmp.b	#'w',d0
 		beq.s	index_2
-		cmp.b	#'l',-1(A3)
+		cmp.b	#'l',d0
 		bne.s	index_error
 		bset	#11,D1
 index_2		cmp.b	#')',(A3)+
@@ -1787,10 +1763,25 @@ index_2		cmp.b	#')',(A3)+
 		move.l	Addr(a4),A0
 		move.w	D1,(A0)+
 		move.l	A0,Addr(a4)
+rt001		rts
+
+;
+; check if a given string follows. error if not.
+; case insensitive (but string must be in lower case).
+; pointer to null-terminated string in a0
+;
+checkstring	move.l	a3,a1
+0$		tst.b	(a0)
+		beq.s	ckstr1
+		move.b	(a1)+,d0
+		call	tolower
+		cmp.b	(a0)+,d0
+		beq.s	0$
+
+index_error	bra	generic_error
+
+ckstr1		move.l	a1,a3
 		rts
-index_error
-;#		addq.l	#8,sp
-		bra	error
 
 ;
 ; instruction jump table for assembler
@@ -1811,6 +1802,9 @@ instrjumps	rw	as_asm,ls_asm,rox_asm,rot_asm		;0-3
 		rw	illegal_asm
 
 assemfmt	dc.b	'%08lx: ',0
-outrangetxt	dc.b	'Out of range',0
+
+usp_str		dc.b	'u'
+sp_str		dc.b	'sp',0
+ccr_str		dc.b	'ccr',0
 
 		end

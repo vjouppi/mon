@@ -4,8 +4,6 @@
 ;
 		include	"monitor.i"
 
-		xdef	put_hexnum
-		xdef	put_hexnum1
 		xdef	puthex_68
 		xdef	puthex1_68
 		xdef	phex1_8
@@ -55,6 +53,26 @@ yes		sec
 		rts
 
 ;
+; check if character is printable, and it is not, convert it to '.'
+; option flag #2 affects this
+; (if it is set, $a0-$ff are not considered printable)
+;
+		pub	to_printable
+
+		cmp.b	#$7f,d0
+		beq.s	1$
+		cmp.b	#$A0,D0
+		bcs.s	0$
+		btst	#OPTB_NOTPRCHR,MonOptions(a4)
+		bne.s	1$
+		rts
+0$		cmp.b	#$20,D0
+		bge.s	2$		;note: signed comparison handles correctly codes >= $80
+1$		move.b	#'.',D0
+2$		rts
+
+
+;
 ; **** SKIP SPACES ****
 ;
 		pub	skipspaces
@@ -76,6 +94,42 @@ nth1		tst.b	(a0)+
 		pub	getnth
 
 		dbf	d0,nth1
+		rts
+
+;
+; find a name on the command line from a list (case insensitive, but
+; the list must be in lower case)
+;
+; inputs:
+;  a0  -  pointer to array of null-terminated strings, terminated by
+;	  two null bytes.
+;  a3  -  pointer to command line. not changed by this routine.
+;
+; outputs:
+;  d0  -  index of the name in the array if found, -1 if not found
+;  (note: the status flags are not set according to d0 on return!)
+;  a1  -  points to the command line after the found name
+;
+
+		pub	find_name
+
+		move.l	d2,-(sp)
+		moveq	#-1,d2
+01$		addq.l	#1,d2
+		move.l	a3,a1
+02$		move.b	(a0)+,d1
+		beq.s	09$		;name found
+		move.b	(a1)+,d0
+		call	tolower
+		cmp.b	d0,d1
+		beq.s	02$
+03$		tst.b	(a0)+
+		bne.s	03$
+		tst.b	(a0)
+		bne.s	01$
+		moveq	#-1,d2
+09$		move.l	d2,d0
+		move.l	(sp)+,d2
 		rts
 
 ;
@@ -371,9 +425,9 @@ phex1_68	move.l	d0,d1
 		and.w	#$ff00,d1
 		bne.s	phex1_8
 		moveq	#6,d1
-		bra.s	put_hexnum1
+		bra.s	put_hexnum1_routine
 phex1_8		moveq	#8,d1
-		bra.s	put_hexnum1
+		bra.s	put_hexnum1_routine
 ;
 ; put a signed hexnum in buffer pointed by a3
 ;
@@ -389,8 +443,13 @@ shex1		moveq	#-2,d1
 ; put a hex number in buffer pointed by a3
 ; d0: number, d1: # of digits
 ;
-put_hexnum	putchr	<'$'>
-put_hexnum1	movem.l	d2-d3,-(sp)
+		pub	put_hexnum
+
+		putchr	<'$'>
+
+		pub	put_hexnum1
+
+		movem.l	d2-d3,-(sp)
 		tst.l	d1
 		bpl.s	00$
 		neg.w	d1

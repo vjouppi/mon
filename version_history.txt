@@ -25,9 +25,9 @@
 * v1.32 -> last mod. 1990-12-06	   *
 * v1.33 -> last mod. 1990-12-07	   *
 * v1.37 -> last mod. 1991-04-08    *
+* v1.38 -> last mod. 1991-04-18    *
+* v1.41 -> last mod. 1991-05-22    *
 ************************************
-
-;DEBUG	set	1
 
 ;
 ; there seems to be problems tracing traps (and chk & trapv instructions
@@ -372,3 +372,25 @@ lm;		  and trap numbers.
 ;		- calculator output contains 'ascii'-representation
 ;		- added port("name") function to the expression parser
 ;
+;  1991-04-17/18 --> 1.38
+;		- returning from 'jump' or 'go' with rts now works again...
+;		- new error handling
+;		- modified GetInput (removed the shift-cursor-down bug,
+;			also now ESC CSI and ESC ESC don't confuse GetKey-
+;			routine)
+;		- assembler no longer converts the command line to lower case
+;		  (mnemonics are recognised with find_name)
+;		- many little (and some not so little) changes in the assembler.
+;
+;  1991-05-10	--> 1.39
+;		- interrupting 'hunt' or 'compare' with ctrl-c no longer
+;		  causes the code to jump to some wild address...
+;
+;  1991-05-18	--> 1.40
+;		- cd command ignored first letter of directory name
+;
+;
+;  1991-05-22   --> 1.41
+;		- clr etc. now work again in assembler.
+;
+
