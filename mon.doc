@@ -1,5 +1,5 @@
 
-                 Amiga Monitor 1.08 instructions
+                 Amiga Monitor 1.15 instructions
                  ===============================
 
   The monitor can be started both from CLI and from workbench. If you want
@@ -28,15 +28,68 @@
 
  Numbers:
  --------
-  Hexadecimal numbers can include the '$'-prefix but it is not necessary
-  when the numbers are positive (or unsigned).
-  Negative hex numbers must include the '$'-prefix, for example -$12A3.
-  Positive decimal number must have the '+'-sign, for example +17051.
-  Numbers can also be represented as ASCII-strings with max. 4 characters,
-  for example 'HELP' is $48454C50 hex and 'PC' is $00005043 hex.
-  Note: It is necessary to include the '$' prefix to posivive hex numbers
-  beginning with 'A' or 'D' in some assembler instructions, because
-  otherwise they could be interpreted as register names.
+  Default number base is decimal but it can be changed with the ba-
+  command (the argument of the ba-command is always decimal).
+  the prefixes used to identify number bases are:
+   '$'   hexadecimal
+   '@'   octal
+   '%'   binary
+   '_'   decimal  (necesary only if you have changed the default base)
+
+  Numbers can also be entered as ASCII strings, for example:
+   'FORM'  -->  hex 464f524d
+
+  Note that '+' was the decimal prefix in previous versions. It is not
+  any more.
+
+ Expressions:
+ ------------
+
+ This version accepts expressions in most places where you need a number.
+ The calculator ('?') command allows you to directly display
+ values of expressions.
+
+ The following operators are available:
+
+ +   addition
+ -   subtraction
+ *   multiplication
+ /   division (integer only, truncated)
+ %%  modulo
+ <<  left shift
+ >>  right shift
+
+ parenthesis can be used to group the operations in the expressions.
+
+ '*'   represents the 'current address'.
+
+ All calculations are done in 32-bit integer arithmetic. No overflow
+ checking is done.
+
+ Functions:
+ ----------
+
+ The expression parser currently accepts the following built-in functions:
+
+  hunk(n)  --  start address of nth hunk of currently loaded seglist
+  hlen(n)  --  length of nth hunk of currently loaded seglist
+  abs(x)   --  absolute value of a number  
+  peek(a)  --  8-bit contents of a memory location
+  peekw(a) --  16-bit contents of a memory location
+  peekl(a) --  32-bit contents of a memory location
+  avail(x) --  call AvailMem() with the argument x. for example
+		avail(0) returns total available memory,
+		avail(2) returns available chip memory
+		avail($20000) return largest available block.
+
+ Variables:
+ ----------
+
+ in addition to numbers and functions, variables can be used in expressions
+ if they are previously defined. Variables are defined with the set-command.
+ All variable values are 32-bit integers. Variable names can contain
+ alphanumeric characters and underscores ('_'), but they cannot begin
+ with a number.
 
  Strings:
  --------
@@ -50,8 +103,34 @@
     'this is a string'
     12,34,56
     ''''  -- this means one single quote
-    'both',0A,'text',+10,'and','numbers'
+    'both',$0A,'text',10,'and','numbers'
 
+
+New features and bug fixes in version 1.14 & 1.15
+-------------------------------------------------
+ - some minor bug fixes in assembler
+   (move sp,usp or exg Rx,sp did not work)
+
+ - 'memory info'-command
+
+ - underscores are allowed in variable names
+
+ - variable list is kept in alphabetical order
+
+New features in version 1.11 & 1.12:
+------------------------------------
+ - expressions can now be used instead of numbers. also included
+   calculator-command.
+
+ - variables can be used in expressions.
+
+ - user-defineable default number base, default is now decimal.
+
+ - hunt-command no longer finds anything in the monitor code/data areas
+
+ - show seglist now displays hunk numbers
+
+ - chip memory allocation syntax has been changed.
 
 New features and bug fixes in version 1.08:
 -------------------------------------------
@@ -60,7 +139,7 @@ New features and bug fixes in version 1.08:
 
  - The disassembler no more displays any invalid codes as valid
    instructions (On the 68000 processor, of course. The monitor does
-   currently not support 68010/68020 extra instructions).
+   not currently support 68010/68020 extra instructions).
 
  - The pc-relative indexed addressing mode now works with the assembler.
 
@@ -119,7 +198,7 @@ Special Note:
  The following commands are available in the monitor:
  ----------------------------------------------------
 
-? or the HELP key on the keyboard
+h or the HELP key on the keyboard
  displays a help screen.
 
 i -- info
@@ -130,6 +209,29 @@ o -- redirect output
   o name -- redirects monitor output to file or device 'name'
   o      -- returns to normal, output comes to the monitor window
  for example, to send the output to printer use 'o PRT:'.
+
+? [expr]  --  calculator
+  displays the value of the expression in hex, decimal, octal and binary.
+  If the number is negative, displays it as signed and unsigned.
+
+set [var=expr] -- set/show variables
+  the set-command without parameters displays the values of all currently
+  defined variables. the form 'set var=expr' sets the value of 'var' to
+  the value of the expression.
+
+cv -- clear all variables
+  asks if you really want to do it, answer 'y' to clear them.
+
+ba [num]  --  set/show current number base
+  ba without parameters displays the current number base. ba [num] sets
+  the base to [num] which is always decimal. this is the default base
+  used in number input if no base prefix is specified. initially it is 10
+  (decimal).
+
+mi [addr] -- display information about memory locations
+  the mi-command tells you if the address 'addr' is in the system memory
+  list, is it allocated or not and is it inside any of the hunks
+  of the currently loaded segment.
 
 m -- display memory in hex and ASCII
  usage:
@@ -148,7 +250,7 @@ f -- fill memory with a byte or a string of bytes
   f <start-addr> <end-addr> <byte>   ;fills with <byte>
   f <start-addr> <end-addr> <string> ;fills with the string
  example:
-  f 60000 601FF 4E,71 fills from $60000 to $601FF with NOP-instruction
+  f $60000 $601FF $4E,$71 fills from $60000 to $601FF with NOP-instruction
 
 t -- transfer (move) memory
  usage:
@@ -200,7 +302,7 @@ a -- assemble
    Branch instructions with no size specifier or the .l-specifier assemble
    to normal (16-bit offset) branches, if given the .s-size specifier they
    assemble to the short form (8-bit offset). The dbxx-(decrement and branch)
-   -instructions allows no size specifier.
+   -instructions allow no size specifier.
 
    The assembler converts add/sub/and/or/eor with immediate data source
    automatically to adda/addi/subi/andi/eori. It does not convert move or
@@ -253,6 +355,7 @@ g [addr] -- go (execute machine code)
 j [addr] -- jump to subroutine
 
 w [addr] -- walk (single step trace)
+ (this does not activate breakpoints)
 
  the g, j and w-commands use the current program counter value
  (displayed with the r-command) if you don't give them an address.
@@ -288,15 +391,10 @@ sl -- segment list
   sl -- displays the starting & ending addresses and length of each hunk
   of the currently loaded file.
 
-n -- number base conversion
- usage:
-  n <number>  -- displays the <number> in hex, decimal, octal and binary.
-  If the number is negative, displays it as signed and unsigned.
-
 ( -- allocate memory
  usage:
   ( <length>        -- allocate <length> bytes any type of memory
-  ( <length> 'CHIP' -- allocate <length> bytes of chip memory
+  ( <length> C      -- allocate <length> bytes of chip memory
   Displays the start & end addresses of the allocated memory block.
 
 & -- allocate absolute memory location
@@ -328,8 +426,7 @@ sm -- show allocated memory
  starting at <addr>. <drive> is a number between 0..3,
  corresponding the DOS devices DF0: -- DF3:
 
- In this version the read destination address
- does not need to be in chip memory.
+ the read destination address does not need to be in chip memory.
 
 >  -- write disk sectors
  usage:
@@ -338,8 +435,7 @@ sm -- show allocated memory
  starting at <addr>. <drive> is a number between 0..3,
  corresponding the DOS devices DF0: -- DF3:
 
- In this version the write source address
- does not need to be in chip memory.
+ the write source address does not need to be in chip memory.
 
 =  -- corrects a disk block checksum
  usage:
@@ -367,6 +463,8 @@ del <filename> -- deletes a file
 cd  <dirname>  -- sets the current directory
 
 dir [<name>]   -- displays the directory
+  if you don't specify the name, then current directory
+  will be displayed.
 
 \ -- new CLI
   Opens a new CLI window. This CLI is a separate process, so you can continue
@@ -380,10 +478,10 @@ x -- exit
  and exits the monitor.
 
 
-version 1.08 of the monitor (and this document) --> 1989-08-29
+version 1.15 of the monitor (and this document) --> 1989-11-30
 
  Timo Rossi
  Kellankoski			internet e-mail:
- 44300 Konnevesi		trossi@tukki.jyu.fi
+ 44300 Konnevesi		trossi@jyu.fi
  FINLAND
 
