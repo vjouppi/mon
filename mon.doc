@@ -1,0 +1,261 @@
+
+                 Amiga Monitor 1.06 instructions
+                 -------------------------------
+
+  The monitor can be started both from CLI and from workbench. If you want to
+  start the monitor from workbench, you must first make an icon for it.
+
+ Input line editing and command line history:
+  You can edit the input lines by using the left/right cursor keys to move
+  left and right, backspace to delete the character before the cursor and
+  del to delete the character under the cursor. You can use the up/down
+  cursor keys to get the old command lines (the monitor remembers 10 last
+  command lines). Shift-cursor-up gets the last command and enters it
+  automatically (you need not to press <CR>). In assembler mode you can
+  press Ctrl-E to edit the assembler instruction currently stored in that
+  address.
+
+ Stopping the output:
+  In most cases the output of the monitor can be suspended by pressing SPACE
+  and continued by pressing SPACE again. To permanently stop the output,
+  press Ctrl-C.
+
+ Numbers:
+  Hexadecimal numbers can include the '$'-prefix but it is not necessary
+  when the numbers are positive (or unsigned).
+  Negative hex numbers must include the '$'-prefix, for example -$12A3.
+  Positive decimal number must have the '+'-sign, for example +17051.
+  Numbers can also be represented as ASCII-strings with max. 4 characters,
+  for example 'HELP' is $48454C50 hex and 'PC' is $00005043 hex.
+  Note: It is necessary to include the '$' prefix to posivive hex numbers
+  beginning with 'A' or 'D' in some assembler instructions, because
+  otherwise they could be interpreted as register names.
+
+ Strings:
+  Strings are used in the fill command, the hunt command, the modify memory
+  command and the assembler directive dc.b .
+  Strings are series of bytes, represented by numbers or ASCII-characters
+  in single quotes or both together separated by commas.
+  Note: the single quote itself may be included in a quoted string if it
+  is duplicated.
+   examples:
+    'this is a string'
+    12,34,56
+    ''''  -- this means one single quote
+    'both',0A,'text',+10,'and','numbers'
+
+ The following commands are available in the monitor:
+
+? or the HELP key on the keyboard
+ displays a help screen.
+
+i -- info
+ displays info-message
+
+o -- redirect output
+ usage:
+  o name -- redirects monitor output to file or device 'name'
+  o      -- returns to normal, output comes to the monitor window
+ for example, to send the output to printer use 'o PRT:'.
+
+m -- display memory in hex and ASCII
+ usage:
+  m                   -- display 20 lines from current address
+  m <addr>            -- display 20 lines from <addr>
+  m <addr> <end-addr> -- display from <addr> to <end-addr>
+
+: -- modify memory
+ usage:
+  : <addr> <string>
+  puts the <string> in memory at <addr>
+  this can also be done with the command 'a <addr> dc.b <string>'
+
+f -- fill memory with a byte or a string of bytes
+ usage:
+  f <start-addr> <end-addr> <byte>   ;fills with <byte>
+  f <start-addr> <end-addr> <string> ;fills with the string
+ example:
+  f 60000 601FF 4E,71 fills from $60000 to $601FF with NOP-instruction
+
+t -- transfer (move) memory
+ usage:
+  t <start-addr> <end-addr> <destination-addr>
+ the command works correctly even if the source and destination memory
+ blocks overlap. (if destination is at a higher address than source,
+  the block is moved backwards, staring at the end)
+
+h -- hunt (find) string in memory
+ usage:
+  h <start-addr> <end-addr> <string>
+  displays all addresses in the range <start-addr>..<end-addr>
+  where the <string> is found.
+
+c -- compare memory
+ usage:
+  c <start-addr> <end-addr> <string>
+  displays all addresses in the range <start-addr>..<end-addr>
+  where is corresponding byte in the destination block is different from
+  the source.
+
+a -- assemble
+ usage:
+  a         : assemble to the current address
+  a <addr>  : assemble to <addr>
+  a <addr> <instruction> : assemble <instruction> at <addr>
+  After assembling an instruction the monitor prompts with the address of
+  the location following the instruction just assembled and waits a new
+  instruction to be entered. To exit this mode, simply press <CR> without
+  entering an instruction. To edit an existing instruction, press Ctrl-E when
+  the monitor is waiting an assembler instruction.
+   The assembler understands all the normal 68000 instructions and also
+  the 'pseudo-instructions' dc.b, dc.w and dc.l, which can be used to
+  directly put data in memory.
+   Note: in most assembler instructions you must specify the instruction
+  size (byte, word, long -- .b .w or .l). The assembler does not use the
+  word length as a default, as most other assemblers do. This is intentional,
+  because it is easy to forget to include the size specifier when you don't
+  really want the instruction size to be word. The instructions that refer to
+  the status register SR, condition code register CCR or user stack pointer
+  USP don't need the size specifier (and it can't be there...). Also the
+  stack pointer must always be references by A7, 'SP' can't be used.
+
+d -- disassemble
+ usage:
+  d                   -- disassemble 20 lines from current address
+  d <addr>            -- disassemble 20 lines from <addr>
+  d <addr> <end-addr> -- disassemble from <addr> to <end-addr>
+
+r -- show or change registers
+ usage:
+  r        -- displays all registers
+  r <reg>=<number> or
+  r <reg> <number> -- puts the value <number> into <reg>
+   examples:
+    r D0=0
+    r A5 $60000
+
+b -- set breakpoints
+ usage:
+  b <addr> -- sets a breakpoint to <addr>
+   Breakpoints are implemented by putting an illegal opcode ($4AFC) in the
+  breakpoint locations when a G or J command is given. After returning to
+  the monitor the original contents of the breakpoints are restored. This
+  means that you can not put breakpoints to ROM (but you can trace ROM code).
+
+br -- remove breakpoints
+ usage:
+  br <addr> -- removes the breakpoint at <addr>
+  br all    -- removes all breakpoints
+
+bl -- list breakpoints
+ usage:
+  bl -- display a list of all breakpoints
+
+g -- go (execute machine code)
+
+j -- jump to subroutine
+
+w -- walk (single step trace)
+
+l -- load segment
+ usage:
+  l <name> -- loads the executable file <name> in memory and displays
+  the starting address of the first hunk, also sets PC to this address.
+  only one segment can be loaded at the same time. Before loading a new
+  segment you must unload the old segment with the u-command. To display
+  the starting & ending addresses of all the hunks in the file, use the
+  sl-command.
+
+u -- unload segment
+ usage:
+  u  -- unload the current segments (frees the memory of that segment)
+
+sl -- segment list
+ usage:
+  sl -- displays the starting & ending addresses and length of each hunk
+  of the currently loaded file.
+
+n -- number base conversion
+ usage:
+  n <number>  -- displays the <number> in hex, decimal, octal and binary.
+  If the number is negative, displays it as signed and unsigned.
+
+( -- allocate memory
+ usage:
+  ( <length>        -- allocate <length> bytes any type of memory
+  ( <length> 'CHIP' -- allocate <length> bytes of chip memory
+  Displays the start & end addresses of the allocated memory block.
+
+& -- allocate absolute memory location
+ usage:
+  & <addr> <length> -- allocate <length> bytes at <addr>
+
+) -- free memory
+ usage:
+  ) <addr> -- frees the memory block starting at <addr>
+  ) all    -- frees all the memory allocated with the (- and &-commands
+
+sm -- show allocated memory
+ usage:
+  sm -- display all memory blocks allocated with the (- and &-commands
+
+[  -- read file
+ usage:
+  [ <addr> <name> -- reads the file <name> to memory starting at <addr>
+
+]  -- write file
+ usage:
+  ] <addr> <length> <name> -- creates a file named <name> and writes <length>
+ bytes of memory starting at <addr> to the file.
+
+<  -- read disk sectors
+ usage:
+  < <addr> <drive> <start-sector> <number-of-sectors>
+ Reads <number-of-sectors> sectors from the disk in unit <drive> to memory
+ starting at <addr>. <addr> must be in CHIP memory!. <drive> is a number
+ between 0..3, corresponding the DOS devices DF0: -- DF3:
+
+>  -- write disk sectors
+ usage:
+  > <addr> <drive> <start-sector> <number-of-sectors>
+ Writes <number-of-sectors> sectors to the disk in unit <drive> from memory
+ starting at <addr>. <addr> must be in CHIP memory!. <drive> is a number
+ between 0..3, corresponding the DOS devices DF0: -- DF3:
+
+=  -- corrects a disk block checksum
+ usage:
+  = <addr> -- if there is a DOS-format disk block read into memory at <addr>,
+ calculates the correct checksum for the block and stores it in the block.
+ Displays old and new checksums. This command is useful if use use the
+ monitor as a disk editor.
+
+#  -- corrects bootblock checksum
+ usage:
+  # <addr> -- if there is a disk bootblock (2 disk blocks, 1024 bytes) read
+ into memory at <addr>, calculates a new checksum for the bootblock and stores
+ it in the bootblock. Displays old and new checksums.
+
+!  -- play digisound
+ usage:
+  ! <addr> <length> <period>
+ Plays sound <length> bytes starting at <addr> and using sampling period
+ <period>. the sound repeats until you stop it by pressing Ctrl-C. <addr>
+ must be in CHIP memory!.
+
+cls -- clears the monitor window
+
+del <filename> -- deletes a file
+cd  <dirname>  -- sets the current directory
+
+dir [<name>]   -- displays the directory
+
+\ -- new CLI
+  Opens a new CLI window. This CLI is a separate process, so you can continue
+  to use the monitor when the CLI window is there. Also the CLI window does
+  not close automatically when you exit the monitor. You must close it with
+  the CLI command EndCLI. In fact the monitor uses the NewCLI command
+  to open the new CLI window.
+
+x -- exit
+ frees all memory allocated by the monitor, closes redirection file (if open)
+ and exits the monitor.
