@@ -270,6 +270,8 @@ ILLEGAL_INSTR	equ	$4AFC	;illegal instruction (used by breakpoints)
 
 		 APTR	GoBrkPtr	;address of skipped brkpoint struct
 
+		 APTR	RelBaseAddr	;address pointed by a4 or other base reg
+
 ; the output buffer must be long word aligned
 		 STRUCT	OutputBuf,LEN
 		 STRUCT	InputBuf,LEN
@@ -298,13 +300,14 @@ RegSP		equ	AddrRegs+7*4
 		 UBYTE	flags		;flags, see below for bitdefs...
 		 UBYTE	defbase		;current default number base for input
 		 UBYTE	MonOptions	;option flags
-		 UBYTE	__pad__
+		 UBYTE	RelBaseReg	;base register, works with RelBaseAddr
+					;-1 if not in use
 		LABEL MonitorData_SIZE
 
 ;
 ; safety check
 ;
-		ifne	MonitorData_SIZE-$764
+		ifne	MonitorData_SIZE-$768
 		FAIL	Panic! MonitorData wrong size!
 		endc
 

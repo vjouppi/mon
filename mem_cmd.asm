@@ -10,6 +10,9 @@
 		list
 
 		include	"monitor.i"
+		include	"variables.i"
+
+		xref	find_var_value
 ;
 ; This module defines the following command routines:
 ;
@@ -289,7 +292,7 @@ do_free		move.l	4(A1),D0
 		move.l	SegList(a4),d0
 		moveq	#0,d4
 500$		lsl.l	#2,d0
-		beq.s	ret_01
+		beq.s	520$
 		move.l	d0,a2
 		lea	4(a2),a0
 		cmp.l	a0,d5
@@ -303,11 +306,26 @@ do_free		move.l	4(A1),D0
 		move.l	d5,d1
 		sub.l	a0,d1
 		lea	inhunkfmt(pc),a0
-		call	JUMP,printf
+		call	printf
+		bra.s	520$
 
 510$		move.l	(a2),d0
 		addq.l	#1,d4
 		bra.s	500$
+
+520$		tst.l	HunkTypeTable(a4)
+		beq.s	ret_01
+
+		move.l	d5,d0
+		bsr	find_var_value
+		tst.l	d0
+		beq.s	ret_01
+
+		move.l	d0,a0
+		lea	var_Name(a0),a0
+		move.l	a0,d0
+		lea	minfo_var_fmt(pc),a0
+		call	printf
 
 ret_01		rts
 
@@ -732,6 +750,7 @@ memlisttx	dc.b	'Allocated memory:',LF,0
 
 notmemtxt	dc.b	'Not in MemList',LF,0
 inhunkfmt	dc.b	'(in hunk %ld, offset $%lx)',LF,0
+minfo_var_fmt	dc.b	' = %1.50s',LF,0
 
 allocfmt	dc.b	'Allocated from $%08lx to $%08lx',LF,0
 

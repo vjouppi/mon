@@ -202,7 +202,8 @@ unload_seg	move.l	SegList(a4),d1
 
 1$		call	clear_hunk_vars
 		clr.l	NumHunks(a4)
-2$		rts
+2$		st	RelBaseReg(a4)
+		rts
 
 **** SEGMENT LIST ****
 		cmd	showseglist

@@ -349,6 +349,8 @@ cv_end		moveq	#LF,d0
 
 ;
 ; find variable with a given value (and non-$ffff hunknum)
+; inputs: value (address) in d0
+; returns: pointer to variable structure in d0, or zero if failed
 ;
 find_var_value	move.l	d0,d1
 		move.l	VarList(a4),d0
@@ -365,11 +367,62 @@ fv_next		move.l	(a0),d0
 
 fv_ret		rts
 
+;
+; set/show address register (normally a4) relative base address
+;
+		cmd	setshow_relbase
+
+		tst.b	(a3)
+		beq.s	show_relbase
+
+		moveq	#4,d3		;register: default a4
+
+		call	GetExpr		;get address
+		move.l	d0,d2
+		beq	relbase_off
+
+		tst.b	(a3)
+		beq.s	set_relbase
+
+		move.b	(a3)+,d0
+		cmp.b	#'A',d0
+		beq.s	1$
+		cmp.b	#'a',d0
+		bne	generic_error
+
+1$		move.b	(a3)+,d3
+		sub.b	#'0',d3
+		bcs	generic_error
+		cmp.b	#8,d3
+		bcc	generic_error
+
+set_relbase	move.l	d2,RelBaseAddr(a4)
+		move.b	d3,RelBaseReg(a4)
+		rts
+
+relbase_off	st	RelBaseReg(a4)
+		rts
+
+show_relbase	moveq	#0,d1
+		move.b	RelBaseReg(a4),d1
+		bmi.s	no_relbase
+		move.l	RelBaseAddr(a4),d0
+		lea	relbase_fmt(pc),a0
+		call	JUMP,printf
+
+no_relbase	lea	no_relbase_msg(pc),a0
+		call	JUMP,printstring_a0
+
+;
+; strings...
+;
 novartxt	dc.b	'No variables defined',LF,0
 varhead		dc.b	'Variables:',LF,0
 varfmt1		dc.b	'%-10.50s = $%08lx (%ld)',LF,0
 varfmt2		dc.b	'%-20.50s = $%08lx  [%ld]',LF,0
 clvartxt	dc.b	'Clear vars (y/n)? ',0
 label_fmt	dc.b	'%-1.50s:',LF,0
+no_relbase_msg	dc.b	'No base reg/addr defined',LF,0
+relbase_fmt	dc.b	'Relative base addr $%08lx, register A%ld',LF,0
 
 		end

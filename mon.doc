@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.47 instructions
+                 Amiga Monitor v1.48 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -557,6 +557,20 @@ sl -- Segment list
   of the currently loaded file. If the 'l +' command has been used to
   load the file, also the type of each hunk is displayed.
 
+rb -- set base address for address register relative symbols
+ Usage:
+  rb addr  --    sets base address of a4-relative addressing to addr. typically
+                 this is in the beginning of the data hunk of a program with
+                 programs compiled with Lattice/SAS C.
+  rb addr reg -- as above but allows selection of address register
+                 other than a4.
+  rb 0     --    removes the base address setting.
+  rb       --    displays current base address setting.
+
+  When the base address setting is active, the disassembler will check all
+  xx(a4) (or other addr reg, if selected) addressing modes and if
+  baseaddr + offset equals a symbol, the symbol is displayed.
+
 ( -- Allocate memory
  Usage:
   ( <length>        -- allocate <length> bytes any type of memory
@@ -709,6 +723,9 @@ x -- Exit
 
 Version history:
 ----------------
+1.48 ->
+ - address register relative symbol support (rb-command)
+
 1.47 ->
  - symbol support
  - variables now case sensitive
@@ -889,10 +906,10 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.47 Copyright © 1987-1991 by Timo Rossi. The monitor
+  Amiga Monitor v1.48 Copyright © 1987-1991 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lharc-archive 'mon147.lzh'.
+way of distribution is the lharc-archive 'mon148.lzh'.
 
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.

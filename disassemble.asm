@@ -534,7 +534,7 @@ btypes		dc.b	'tst',0,'chg',0,'clr',0,'set',0
 		even
 
 eacategories	dc.b	EA_DATA!EA_ALTER!EA_NOTIMM			; 0 - data reg direct
-		dc.b	EA_ALTER!EA_NOTIMM			; 1 - address reg direct
+		dc.b	EA_ALTER!EA_NOTIMM				; 1 - address reg direct
 		dc.b	EA_DATA!EA_MEMORY!EA_CONTROL!EA_ALTER!EA_NOTIMM	; 2 - address reg indirect
 		dc.b	EA_DATA!EA_MEMORY!EA_ALTER!EA_NOTIMM		; 3 - addr. reg. ind. ++
 		dc.b	EA_DATA!EA_MEMORY!EA_ALTER!EA_NOTIMM		; 4 - addr. reg. ind. --
@@ -542,9 +542,9 @@ eacategories	dc.b	EA_DATA!EA_ALTER!EA_NOTIMM			; 0 - data reg direct
 		dc.b	EA_DATA!EA_MEMORY!EA_CONTROL!EA_ALTER!EA_NOTIMM	; 6 - addr. reg. ind. index
 		dc.b	EA_DATA!EA_MEMORY!EA_CONTROL!EA_ALTER!EA_NOTIMM	; 7 - absolute short
 		dc.b	EA_DATA!EA_MEMORY!EA_CONTROL!EA_ALTER!EA_NOTIMM	; 8 - absolute long
-		dc.b	EA_DATA!EA_MEMORY!EA_CONTROL!EA_NOTIMM	; 9 - pc relative
-		dc.b	EA_DATA!EA_MEMORY!EA_CONTROL!EA_NOTIMM	;10 - pc relative index
-		dc.b	EA_DATA!EA_MEMORY			;11 - immediate
+		dc.b	EA_DATA!EA_MEMORY!EA_CONTROL!EA_NOTIMM		; 9 - pc relative
+		dc.b	EA_DATA!EA_MEMORY!EA_CONTROL!EA_NOTIMM		;10 - pc relative index
+		dc.b	EA_DATA!EA_MEMORY				;11 - immediate
 		even
 
 effective_address
@@ -578,11 +578,13 @@ eajumps1	bra.s	drdirect
 		bra.s	arindirect
 		bra.s	postincr
 		bra.s	predecr
-		bra.s	displ
+		bra.s	displ1
 		bra.s	indx
 ; handle 7-modes
 		add.w	d0,d0
 		jmp	eajumps2(pc,d0.w)
+
+displ1		bra	displ
 
 drdirect	move.b	#'d',(a3)+
 		bra.s	putreg
@@ -621,12 +623,6 @@ eajumps2	bra.s	abs_short
 		nop
 invalid_br	bra	invalid
 
-displ		move.w	d0,-(sp)
-		bsr	GetWord
-		bsr	sword		;%% signed
-		move.w	(sp)+,d0
-		bra.s	arindirect
-
 indx		move.w	d0,-(sp)
 		bsr	GetWord
 		move.w	d0,d2
@@ -636,7 +632,7 @@ indx		move.w	d0,-(sp)
 		move.b	#'(',(a3)+
 		bsr	ardirect
 		move.b	#',',(a3)+
-		bsr.s	handle_index
+		bsr	handle_index
 		move.b	#')',(a3)+
 		rts
 
@@ -652,7 +648,7 @@ pcrel		move.l	a5,d1
 		add.l	d1,d0
 		bsr	put_addr
 		lea	pc_txt(pc),a0
-		bsr.s	put_str
+		bsr	put_str
 		bra.s	endpar
 
 pcrel_indx	move.l	a5,d1
@@ -663,12 +659,55 @@ pcrel_indx	move.l	a5,d1
 		add.l	d1,d0
 		bsr	put_addr
 		lea	pc_txt(pc),a0
-		bsr.s	put_str
+		bsr	put_str
 		move.b	#',',(a3)+
-		bsr.s	handle_index
+		bsr	handle_index
 endpar		move.b	#')',(a3)+
 		rts
 
+displ		move.w	d0,-(sp)
+		bsr	GetWord
+
+		move.l	a4,-(sp)
+		move.l	_ExecBase,a4
+		move.l	ThisTask(a4),a4
+		move.l	TC_Userdata(a4),a4
+
+		tst.l	HunkTypeTable(a4)
+		beq.s	8$
+
+		move.b	5(sp),d1
+		cmp.b	RelBaseReg(a4),d1
+		bne.s	8$
+
+		ext.l	d0
+		add.l	RelBaseAddr(a4),d0
+
+		bsr	find_var_value
+		tst.l	d0
+		beq.s	7$
+		move.l	d0,a0
+
+		moveq	#30,d1
+		lea	var_Name(a0),a1
+1$		move.b	(a1)+,(a3)+
+		dbeq	d1,1$
+
+		move.b	#'[',-1(a3)
+		move.w	-2(a5),d0
+		bsr	sword
+		move.b	#']',(a3)+
+		move.l	(sp)+,a4
+		bra.s	9$
+
+7$		move.w	-2(a5),d0
+
+8$		move.l	(sp)+,a4
+		bsr	sword		;%% signed
+9$		move.w	(sp)+,d0
+		bra	arindirect
+;
+;
 put_str		move.b	(a0)+,(a3)+
 		bne.s	put_str
 		subq.l	#1,a3

@@ -296,6 +296,8 @@ win_com		move.l	d0,WinFile(a4)
 ;;		moveq	#-1,d0
 ;;		move.l d0,RegPC(a4)
 
+		st	RelBaseReg(a4)	;no base register currently used
+
 		lea	welcometxt(pc),A0
 		call	printstring_a0_window ;display welcome message
 
@@ -505,6 +507,7 @@ command_names	dc.b	'?',0		;calculator
 		dc.b	'br',0		;remove breakpoints
 		dc.b	'bl',0		;list breakpoints
 		dc.b	'b',0		;set breakpoint
+		dc.b	'rb',0		;addr. reg relative base addr. set/show
 		dc.b	'r',0		;set/show registers
 		dc.b	'a',0		;assemble
 		dc.b	':',0		;modify memory
@@ -568,6 +571,7 @@ command_table	command	calculator
 		command	remove_break
 		command	list_breaks
 		command	set_break
+		command	setshow_relbase
 		command	setshow_regs
 		command	assemble
 		command modifymem
