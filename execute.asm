@@ -3,13 +3,20 @@
 ;
 		include	"monitor.i"
 
+;
+; This module defines the following command routines:
+;
+;	set_break,remove_break,list_breaks,quicktrace,walk,skip_one
+;	exe_one,go,jumpsr,showtrap
+;
+
+
 		xdef	trapreturn
 		xdef	returncode
 
 		xdef	remove_all_breaks
 		xdef	find_brk_num
 
-		xref	get_expr
 		xref	displayregs
 		xref	displayregs_d
 		xref	mainloop
@@ -22,7 +29,7 @@
 ;
 		cmd	set_break
 
-		call	get_expr
+		call	GetExpr
 		btst	#0,D0
 		bne.s	brk_err
 		move.l	D0,a5
@@ -72,7 +79,7 @@ break_remove	call	skipspaces
 		cmp.b	#'l',d0
 		beq	remove_all_breaks
 
-break_rem1	call	get_expr
+break_rem1	call	GetExpr
 		bsr	find_break
 		bmi.s	brk_err
 do_remove_brk	move.l	A1,D0
@@ -89,7 +96,7 @@ break_remove_1	move.l	A0,A1
 ; remove a numbered breakpoint (br #num)
 ;
 rembrk_num	addq.l	#1,a3
-		call	get_expr
+		call	GetExpr
 		bsr.s	find_brk_num
 		moveq	#-1,d1
 		cmp.l	d1,d0
@@ -281,7 +288,7 @@ walk_here	;a label so we can reference it in the handler routine
 getpc		call	skipspaces
 		tst.b	(a3)
 		beq.s	01$
-		call	get_expr
+		call	GetExpr
 		move.l	d0,RegPC(a4)
 01$		btst	#0,RegPC+3(a4)		;error if current
 		beq.s	rts_001			;PC is odd
@@ -298,7 +305,7 @@ getpc		call	skipspaces
 		bsr.s	getpc
 		move.l	RegPC(a4),a5
 		lea	OutputBuf(a4),a3
-		call	disassemble
+		call	Disassemble
 		move.l	a5,RegPC(a4)
 		lea	skip_txt(pc),a0
 		call	printstring_a0
@@ -318,7 +325,7 @@ getpc		call	skipspaces
 		bsr.s	getpc
 		move.l	RegPC(a4),a5
 		lea	OutputBuf(a4),a3
-		call	disassemble
+		call	Disassemble
 		move.l	a5,d0
 		bra.s	go_com
 
@@ -541,7 +548,7 @@ go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 		bsr.s	is_flowctrl
 		bcc	walk_001
 		lea	OutputBuf(a4),a3
-		call	disassemble
+		call	Disassemble
 		tst.w	d0
 		bne	walk_001
 
@@ -574,7 +581,7 @@ trap_dregs	bsr	RemBreaks
 		move.l	D0,Addr(a4)
 		move.l	D0,a5
 		startline
-		call	disassemble
+		call	Disassemble
 		call	printstring
 tr99		bra	mainloop
 
@@ -646,7 +653,7 @@ notraps		putchr	SPACE
 
 		cmp.b	(a3),d0
 		beq.s	dbug
-		call	get_expr
+		call	GetExpr
 		move.l	D0,D5
 		bra	show_trap_name
 

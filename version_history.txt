@@ -27,6 +27,9 @@
 * v1.37 -> last mod. 1991-04-08    *
 * v1.38 -> last mod. 1991-04-18    *
 * v1.41 -> last mod. 1991-05-22    *
+* v1.43 ->           1991-09-01    *
+* v1.44 ->           1991-10-27    *
+* v1.45 ->           1991-11-10    *
 ************************************
 
 ;
@@ -400,3 +403,18 @@ lm;		  and trap numbers.
 ;		- modulo operator is now '%'
 ;		- redirect appends if possible
 ;
+;  1991-08-??	--> 1.43b
+;		- added experimental version of formatted memory display
+;  1991-09-01	- added error message for audio open failure
+;		- display can now also be stopped with ctrl-s and
+;		  continued with ctrl-q
+;		- spaces can be used in 'set register' command before the
+;		  equal sign.
+;
+;  1991-10-27	--> 1.44
+;		- added task/lib/dev/res/port/semaphore list display.
+;
+;  1991-11-10   -->
+;		- small correction in help message
+;
+

@@ -2,69 +2,16 @@
 ; misc_cmd.asm
 ;
 		include	"monitor.i"
-
-		xref	getstring
-		xref	getdecnum
-		xref	puthex1_68
-		xref	phex1_8
-		xref	mainloop
+;
+; This module defines the following command routines:
+;
+;	setshow_base,cmdline,calculator,options
+;
 
 		xref	generic_error
+		xref	mainloop
 
 		xdef	set_cmdline
-
-**** DISPLAY MEMORY ****
-;#
-;# ->v1.22  1990-01-06
-;# memdisplay now reads memory as bytes and can be started at odd address.
-;#
-		cmd	memdisplay
-
-display_memory	call	getparams
-		moveq	#0,d6
-		move.l	ConsoleUnit(a4),d0
-		beq.s	00$
-		move.l	d0,a0
-		cmp.w	#65,cu_XMax(a0)
-		scs	d6
-00$		move.l	Addr(a4),a5
-
-disploop	startline
-		move.l	a5,D0
-		bsr	puthex1_68
-		putchr	<':'>
-		putchr	SPACE
-		moveq	#16/4-1,D2
-
-01$		call	mgetw
-		swap	d0
-		call	mgetw
-		bsr	phex1_8
-		putchr	SPACE
-		dbf	D2,01$
-
-		sub.w	#16,a5
-		putchr	SPACE
-		tst.b	d6
-		bmi.s	100$
-		putchr	<''''>
-100$		moveq	#16-1,D2
-
-02$		move.b	(a5)+,D0	;printable codes are $20-$7F and $A0-$FF
-		call	to_printable
-		move.b	D0,(A3)+
-		dbf	D2,02$
-
-		tst.b	d6
-		bmi.s	101$
-		putchr	<''''>
-101$		endline
-		call	printstring
-		call	CheckEnd
-		bne.s	disploop
-
-		move.l	a5,Addr(a4)
-		bra	mainloop
 
 ;
 ; display/change default number base
@@ -74,7 +21,7 @@ disploop	startline
 		call	tolower
 		tst.b	(a3)
 		beq.s	showbase
-		bsr	getdecnum
+		call	GetDecNum
 		bcs.s	base_err
 		moveq	#2,d1
 		cmp.b	d1,d0
@@ -127,7 +74,7 @@ set_cmdline	lea	CmdLineBuf(a4),a1
 		call	printstring_a0_window
 		moveq	#0,d0
 		call	GetInput
-01$		call	get_expr
+01$		call	GetExpr
 
 		tst.b	(a3)
 		bne	generic_error
@@ -229,12 +176,12 @@ num_A2		rts
 		cmp.b	#'-',d0
 		bne	generic_error
 ; remove option
-		call	get_expr
+		call	GetExpr
 		subq.w	#1,d0
 		bclr	d0,MonOptions(a4)
 		bra.s	opt_9
 
-add_option	call	get_expr
+add_option	call	GetExpr
 		subq.w	#1,d0
 		bset	d0,MonOptions(a4)
 		bra.s	opt_9
@@ -264,16 +211,6 @@ show_options	moveq	#0,d3
 		call	printf
 
 opt_9		bra	mainloop
-
-;
-;*** MODIFY MEMORY ***
-;
-		cmd	modifymem
-
-		call	get_expr
-		move.l	D0,A0
-		bsr	getstring
-		bra	mainloop
 
 signtxt		dc.b	'unsigned',0
 basefmt		dc.b	'Base is %ld',LF,0

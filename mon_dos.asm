@@ -3,15 +3,17 @@
 ;
 
 		include	"monitor.i"
-
+;
+; This module defines the following command routines:
+;
+;	directory,loadseg,unloadseg,showseglist,abs_save,abs_load,redirect
+;	new_cli,deletefile,current_dir
+;
 		xdef	loadseg1
 
 		xref	seghead
 		xref	seglistfmt
 
-		xref	do_options
-
-		xref	putch
 		xref	showrange
 
 		xref	generic_error
@@ -85,36 +87,15 @@ dir8		move.l	a5,A1
 
 *** PRINT ONE LINE OF DIREECTORY ***
 DisplayDirLine	;fib-pointer in a5
-		startline
-		lea	fib_FileName(a5),A1
-		moveq	#0,D1
-txmovloop	;copy file name to output buffer
-		move.b	(A1)+,D0
-		beq.s	txmov2
-		move.b	D0,(A3)+
-		addq.w	#1,D1
-		cmp.w	#30,D1		;max 30 chars
-		bcs.s	txmovloop
-txfloop		putchr	SPACE
-		addq.w	#1,D1
-txmov2		cmp.w	#24,D1
-		bcs.s	txfloop
-		putchr	SPACE
+		lea	fib_FileName(a5),a0
+		move.l	a0,d0
 		tst.l	fib_DirEntryType(a5)	;positive=dir, negative=file
-		bmi.s	txputlen
-		lea	dnam(pc),A1		;'(dir)'
-		call	putstring
-		bra.s	txmov9
-
-txputlen	movem.l	a2/a6,-(sp)
-		lea	numfmt(pc),a0
-		lea	fib_Size(a5),a1
-		lea	putch(pc),a2
-		lib	Exec,RawDoFmt
-		movem.l	(sp)+,a2/a6
-		bra.s	txmov10
-txmov9		endline
-txmov10		call	printstring
+		bmi.s	printf_file
+		lea	dir_fmt(pc),a0
+		bra.s	printf_dirfile
+printf_file	move.l	fib_Size(a5),d1
+		lea	file_fmt(pc),a0
+printf_dirfile	call	printf
 		call	JUMP,CheckKeys
 
 *** PRINT DOS ERROR NUMBER ***
@@ -162,12 +143,12 @@ loadseg1	lib	Dos,LoadSeg
 		lea	null_txt(pc),a0
 03$		move.l	a0,d1
 		move.l	(sp)+,d2
-		lea	segadrmes(pc),a0
+		lea	seg_addr_fmt(pc),a0
 		call	printf
 		bra.s	mjump
 
 oldseg		;message 'unload old segment first'
-		lea	ulserr(pc),A0
+		lea	unload_old_msg(pc),A0
 		call	printstring_a0_window
 		bra.s	mjump
 
@@ -221,9 +202,9 @@ mjump2		rts
 *** SAVE ABSOLUTE (using DOS Write)****
 		cmd	abs_save
 
-		call	get_expr
+		call	GetExpr
 		move.l	D0,a5
-		call	get_expr
+		call	GetExpr
 		move.l	D0,D6
 
 		call	GetName
@@ -248,7 +229,7 @@ abs_save_1	move.l	D7,D1
 *** LOAD ABSOLUTE (using DOS Read) ***
 		cmd	abs_load
 
-		call	get_expr
+		call	GetExpr
 		move.l	D0,a5
 
 		call	GetName
@@ -367,21 +348,22 @@ cd_2		lib	CurrentDir
 		lib	UnLock	;unlock previous current directory
 cd_3		rts
 
-ulserr		dc.b	'Unload old segment first',LF,0
-segadrmes	dc.b	'%ld hunk%s at '
+unload_old_msg	dc.b	'Unload old segment first',LF,0
+seg_addr_fmt	dc.b	'%ld hunk%s at '
 hexfmt		dc.b	'$%08lx',LF,0
 s_txt		dc.b	's, first hunk'
 null_txt	dc.b	0
-doserrfmt	dc.b	'DOS error '
-numfmt		dc.b	'%ld',LF,0
-notfound_txt	dc.b	'File not found',LF,0
+doserrfmt	dc.b	'DOS error %ld',LF,0
+
+file_fmt	dc.b	'%-24.30s %5ld',LF,0
+dir_fmt		dc.b	'%-24.30s (dir)',LF,0
+freeblkfmt	dc.b	'%ld Blocks free.',LF,0
+
 
 NewShellCom	dc.b	'NewShell',0
 NewCLICom	dc.b	'NewCLI',0
 
 nosegmes	dc.b	'No segment loaded',LF,0
-
-dnam		dc.b	'(dir)',0
-freeblkfmt	dc.b	'%ld Blocks free.',LF,0
+notfound_txt	dc.b	'File not found',LF,0
 
 		end

@@ -3,7 +3,14 @@
 ;
 ;
 		include	"monitor.i"
-
+;
+; This module defines the following public subroutines:
+;
+;	tolower,isalnum,isalpha,to_printable,skipspaces,getnth,find_name
+;	putstring,PutLong,mgetw,MyCreatePort,MyDeletePort,MyCreateIO
+;	MyDeleteIO,FindConUnit,SetConMode,sendpacket,GetName
+;	put_signed_hexnum,put_hexnum,put_hexnum1,PutNum
+;
 		xdef	puthex_68
 		xdef	puthex1_68
 		xdef	phex1_8

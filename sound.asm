@@ -2,6 +2,11 @@
 ; sound.asm
 ;
 		include	"monitor.i"
+;
+; This module defines the following command routine:
+;
+;	digisound
+;
 
 		xref	generic_error
 		xref	odd_address_error
@@ -11,24 +16,24 @@
 		cmd	digisound
 
 dummy_label_here	;_because_devpac_doesnt_work_without_it
-		call	get_expr
+		call	GetExpr
 		btst	#0,d0
 		bne	odd_address_error
 
 		move.l	D0,D5
-		call	get_expr
+		call	GetExpr
 		tst.l	D0
 		beq	generic_error		;error: zero length
 		btst	#0,D0
 		bne	generic_error
 		move.l	D0,D6
-		call	get_expr	;period (speed)
+		call	GetExpr	;period (speed)
 		move.w	D0,D7
 		move.w	#1,size(a4)
 		call	skipspaces
 		tst.b	(a3)
 		beq.s	00$
-		call	get_expr	;# of cycles, defaults to zero (loop)
+		call	GetExpr		;# of cycles, defaults to zero (loop)
 		move.w	d0,size(a4)
 00$		call	MyCreatePort
 		move.l	d0,d2
@@ -50,7 +55,7 @@ dummy_label_here	;_because_devpac_doesnt_work_without_it
 		moveq	#0,D1
 		lib	Exec,OpenDevice	;open audio.device
 		tst.l	D0
-		bne.s	digi7
+		bne	digi_openerr
 		move.l	D5,ioa_Data(A2)
 		move.l	D6,ioa_Length(A2)
 		move.w	D7,ioa_Period(A2)
@@ -84,9 +89,14 @@ digi8		move.l	d2,A1
 		call	MyDeletePort
 digi9		rts
 
+digi_openerr	lea	aud_openerr_msg(pc),a0
+		call	printstring_a0_window
+		bra.s	digi7
+
 audioname	dc.b	'audio.device',0
 allocmap	dc.b	1,8,2,4
 
 audiotxt	dc.b	'Press Ctrl-C to stop...',LF,0
+aud_openerr_msg	dc.b	'Audio open failed',LF,0
 
 		end

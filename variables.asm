@@ -2,13 +2,13 @@
 ; variables.asm
 ;
 		include	"monitor.i"
-
+;
+; This module defines the following command routines:
+;
+;	setvariable,clearvars
+;
 		xdef	clear_all_variables
 		xdef	findvar
-
-		xref	GetKey
-		xref	ChrOut
-		xref	ChrOutWin
 
 		xref	generic_error
 		xref	out_memory_error
@@ -78,7 +78,7 @@ set_variable	move.b	(a3),d0
 		cmp.b	#'=',(a3)+
 		beq.s	02$
 		subq.l	#1,a3
-02$		call	get_expr
+02$		call	GetExpr
 		move.l	a5,a0
 		clr.b	(a2)
 		bsr.s	setvar
@@ -216,14 +216,14 @@ deletevar	lea	VarList(a4),a1
 
 		lea	clvartxt(pc),a0
 		call	printstring_a0_window
-		bsr	GetKey
+		call	GetKey
 		call	tolower
 		cmp.b	#'y',d0
 		bne.s	cv_end
-		bsr	ChrOutWin
+		call	ChrOutWin
 		bsr	clear_all_variables
 cv_end		moveq	#LF,d0
-		bra	ChrOut
+		call	JUMP,ChrOut
 
 novartxt	dc.b	'No variables defined',LF,0
 varhead		dc.b	'Variables:',LF,0

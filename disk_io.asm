@@ -2,9 +2,12 @@
 ; disk_io.asm
 ;
 		include	"monitor.i"
+;
+; This module defines the following command routines:
+;
+;	disk_read,disk_write,setshow_device,block_check,boot_check
+;
 
-		xref	ChrOut
-		xref	ChrOutWin
 
 		xref	showrange
 
@@ -30,16 +33,16 @@
 
 		moveq	#-1,D7
 
-disk_rw		call	get_expr
+disk_rw		call	GetExpr
 		btst	#0,D0
 		bne	odd_address_error
 		move.l	D0,Addr(a4)
 		beq	generic_error
-		call	get_expr
+		call	GetExpr
 		move.l	D0,D3		;Unit number (drive)
-		call	get_expr
+		call	GetExpr
 		move.l	D0,D4		;starting sector
-		call	get_expr
+		call	GetExpr
 		move.l	D0,D5		;length
 		beq	generic_error		;error: zero length
 		move.l	#DISKBLOCKSIZE,d0
@@ -126,17 +129,24 @@ disk_wr		move.l	Addr(a4),a0
 disk_io_err	;Print TrackDisk error number
 		cmp.b	#IOERR_BADLENGTH,d0
 		bne.s	00$
+
 		lea	out_range_txt(pc),a0
 		bra.s	02$
+
 00$		cmp.b	#TDERR_DiskChanged,d0
 		bne.s	01$
+
 		lea	nodisktxt(pc),a0
 		bra.s	02$
+
 01$		cmp.b	#TDERR_WriteProt,d0
 		bne.s	03$
+
 		lea	wrprotxt(pc),a0
+
 02$		call	printstring_a0_window
 		bra.s	99$
+
 03$		lea	td_errfmt(pc),a0
 		call	printf_window
 99$		emitwin	LF
@@ -151,7 +161,11 @@ disk_io_6	move.l	A2,A1
 		lib	CloseDevice
 		bra.s	disk_io_7
 
-opendev_fail	lea	opendevfailfmt(pc),a0
+opendev_fail	lea	opendev_fail_fmt(pc),a0
+		move.l	d0,d2
+		move.l	d3,d1
+		lea	DevNameBuf(a4),a1
+		move.l	a1,d0
 		call	printf_window
 
 disk_io_7	move.l	MN_REPLYPORT(a2),d6
@@ -195,7 +209,7 @@ showdev		lea	DevNameBuf(a4),a0
 ;
 ; get parameters for checksum commands
 ;
-get_sum_params	call	get_expr
+get_sum_params	call	GetExpr
 		tst.l	d0
 		beq.s	errx02
 		btst	#0,d0		;error if odd address
@@ -210,14 +224,14 @@ get_sum_params	call	get_expr
 		tst.b	(a3)
 		beq.s	sum_1
 
-		call	get_expr
+		call	GetExpr
 		tst.l	d0
 		beq.s	errx02
 		move.l	d0,d4
 		and.b	#3,d0
 		bne.s	errx02
 
-		call	get_expr
+		call	GetExpr
 		move.l	d0,d5
 
 sum_1		moveq	#0,D0
@@ -286,7 +300,8 @@ ShowSum ;old sum in D6, new sum in D7
 sumfmt		dc.b	'Old: $%08lx New: $%08lx',LF,0
 nodisktxt	dc.b	'No disk in drive',0
 wrprotxt	dc.b	'Disk write protected',0
-opendevfailfmt	dc.b	'Can''t open device, error #%ld',LF,0
+opendev_fail_fmt
+		dc.b	'Can''t open %s unit %ld, error #%ld',LF,0
 td_errfmt	dc.b	'Disk error %ld',0
 
 		end

@@ -3,13 +3,14 @@
 ;
 
 		include	"monitor.i"
+;
+; This module defines the command routine 'assemble'.
+;
 
 		xref	ccodes
 		xref	instr_names
 
 		xref	UpAndClearEol
-
-		xref	getstring
 
 		xref	generic_error
 		xref	odd_address_error
@@ -36,7 +37,7 @@
 		bra.s	assem_02
 
 Assem_Get_Address
-		call	get_expr
+		call	GetExpr
 		btst	#0,D0
 		bne	odd_address_error	;assembling to odd address is illegal
 
@@ -59,7 +60,7 @@ Assem_GetInput	call	GetInput
 *** disassemble at current address and put result in input buffer ***
 		move.l	Addr(a4),a5
 		startline
-		call	disassemble
+		call	Disassemble
 		lea	InputBuf(a4),a1
 		moveq	#LF,D0
 1$		move.b	(A0)+,(A1)+	copy instruction to input buffer
@@ -114,7 +115,7 @@ branch_1	lsl.w	#8,D1
 		beq.s	long_branch
 		cmp.b	#'s',d0
 		bne.s	br_err
-		call	get_expr	;short branch
+		call	GetExpr	;short branch
 		sub.l	Addr(a4),D0
 		subq.l	#2,D0
 		move.b	D0,D2
@@ -127,7 +128,7 @@ branch_1	lsl.w	#8,D1
 		or.w	D1,D0
 		bra	one_word_instr
 
-long_branch	call	get_expr
+long_branch	call	GetExpr
 		sub.l	Addr(a4),D0
 		subq.l	#2,D0
 		move.w	D0,D2
@@ -196,7 +197,7 @@ DBcc_3		move.w	D1,D3
 		or.w	D0,D3
 		or.w	#$50C8,D3
 		bsr	SkipComma
-		call	get_expr	
+		call	GetExpr	
 		sub.l	Addr(a4),D0
 		subq.l	#2,D0
 		move.l	D0,D1
@@ -218,19 +219,19 @@ try_dc		cmp.b	#'c',d0
 		beq.s	dc_byte
 		subq.w	#1,D0
 		beq.s	dc_word
-dc_long		call	get_expr
+dc_long		call	GetExpr
 		move.l	D0,(A0)+
 		call	skipspaces
 		cmp.b	#COMMA,(a3)+
 		beq.s	dc_long
 		bra.s	dc_exit
-dc_word		call	get_expr
+dc_word		call	GetExpr
 		move.w	D0,(A0)+
 		call	skipspaces
 		cmp.b	#COMMA,(a3)+
 		beq.s	dc_word
 		bra.s	dc_exit
-dc_byte		bsr	getstring
+dc_byte		call	GetString
 		move.l	A1,A0
 dc_exit		move.l	A0,D0	;align address to word boundary
 		btst	#0,D0
@@ -253,7 +254,7 @@ Assem_End	call	skipspaces
 Assem_DisplayLine
 		move.l	EndAddr(a4),a5
 		startline
-		call	disassemble
+		call	Disassemble
 		call	printstring_window
 dc_exit2	bra	Assem_Prompt
 
@@ -309,7 +310,7 @@ shift_1		cmp.b	#'.',(A3)
 		cmp.b	#'#',(A3)
 		bne.s	count_in_reg
 		addq.l	#1,A3
-		bsr	get_expr_1_8
+		bsr	GetExpr_1_8
 		bra.s	shift_2
 
 count_in_reg	bsr	getdreg
@@ -365,7 +366,7 @@ no_as_ext	addq.l	#2,Addr(a4)
 		call	skipspaces
 		cmp.b	#'#',(A3)+
 		bne	addrmode_error
-		bsr	get_expr_1_8
+		bsr	GetExpr_1_8
 		lsl.w	#8,D0
 		lsl.w	#1,D0
 		cmp.w	#$9000,D3
@@ -878,7 +879,7 @@ move_asm	move.b	(a3)+,d0
 		call	skipspaces
 		cmp.b	#'#',(A3)+
 		bne	addrmode_error
-		call	get_expr
+		call	GetExpr
 		moveq	#-$80,d1	; d1 := $ffffff80
 		cmp.l	d1,d0
 		blt	out_range_error
@@ -1160,7 +1161,7 @@ bit_ins_1	clr.w	size(a4)		for btst Dn,#imm
 		call	skipspaces
 		cmp.b	#'#',(A3)+
 		bne.s	bit_reg_mode
-		call	get_expr
+		call	GetExpr
 		move.l	Addr(a4),A0
 		move.w	D0,(A0)+
 		move.l	A0,Addr(a4)
@@ -1384,7 +1385,7 @@ addrmod_err3	bra	addrmode_error
 trap_asm	call	skipspaces
 		cmp.b	#'#',(A3)+
 		bne.s	addrmod_err3
-		call	get_expr
+		call	GetExpr
 		and.w	#$0f,D0
 		or.w	#$4E40,D0
 		bra.s	one_word_instr
@@ -1403,7 +1404,7 @@ link_asm	call	skipspaces
 		bsr	SkipComma
 		cmp.b	#'#',(A3)+
 		bne.s	addrmod_err3
-		call	get_expr
+		call	GetExpr
 		move.w	D0,D1
 		move.w	D3,D0
 		or.w	#$4E50,D0
@@ -1413,7 +1414,7 @@ link_asm	call	skipspaces
 stop_asm	call	skipspaces
 		cmp.b	#'#',(A3)+
 		bne.s	addrmod_err3
-		call	get_expr
+		call	GetExpr
 		move.w	D0,D1
 		move.w	#$4E72,D0
 two_words_instr	move.l	Addr(a4),A0
@@ -1543,7 +1544,7 @@ getdreg		bsr	getreg
 
 *** Get a number in range 1..8, used by 'quick' instructions and shifts ***
 * return -1 if error
-get_expr_1_8	call	get_expr
+GetExpr_1_8	call	GetExpr
 		tst.l	d0
 		beq	out_range_error
 		moveq	#8,d1
@@ -1636,7 +1637,7 @@ no_predecrement	cmp.b	#'#',(a3)
 		bne.s	no_immediate
 		addq.l	#1,A3
 
-PutImm		call	get_expr
+PutImm		call	GetExpr
 		move.l	Addr(a4),A0
 		move.w	size(a4),D1
 		bne.s	sz1
@@ -1652,7 +1653,7 @@ sz2		move.l	D0,(A0)+
 sz9		moveq	#4,D0		;immediate
 		bra.s	s_addr_seven
 
-no_immediate	call	get_expr
+no_immediate	call	GetExpr
 		move.l	D0,D2
 		cmp.b	#'(',(a3)
 		bne	absolute_mode

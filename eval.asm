@@ -7,9 +7,15 @@
 ;
 		include	"monitor.i"
 
-		xdef	getdecnum
-		xdef	gethexnum
 
+;
+; this module defines the following public subroutines
+;
+;		GetExpr, GetDecNum, GetHexNum
+;
+
+;
+;
 		xref	findvar
 		xref	find_brk_num
 
@@ -19,7 +25,7 @@
 ;
 ; The expression evaluation routines
 ;
-; NOTE: get_expr must not change d1/a0/a1
+; NOTE: GetExpr must not change d1/a0/a1
 ;
 **********************************************************
 *							 *
@@ -52,7 +58,7 @@
 *							 *
 **********************************************************
 
-		pub	get_expr
+		pub	GetExpr
 
 		movem.l	d1-d2/a0-a1/a6,-(sp)
 		bsr.s	get_ex1
@@ -154,7 +160,7 @@ get_ex3		call	skipspaces
 		move.b	(a3)+,d0
 		cmp.b	#'(',d0
 		bne.s	ex31
-		call	get_expr
+		call	GetExpr
 		call	skipspaces
 		cmp.b	#')',(a3)+
 		bne	expression_error		;right parenthesis expected
@@ -448,7 +454,7 @@ r_task		call	skipspaces
 		call	skipspaces
 		cmp.b	#'"',(a3)
 		beq	r_taskname
-		call	get_expr	;find task by CLI number
+		call	GetExpr	;find task by CLI number
 		tst.l	d0
 		beq.s	r_ftask
 
@@ -484,12 +490,12 @@ r_brk		bsr	get_first_arg
 get_first_arg	call	skipspaces
 		cmp.b	#'(',(a3)+
 		bne	expression_error		;left parenhesis expected
-		call	JUMP,get_expr
+		call	JUMP,GetExpr
 
 ;get_arg	call	skipspaces
 ;		cmp.b	#',',(a3)+
 ;		bne	expression_error		;comma expected
-;		call	JUMP,get_expr
+;		call	JUMP,GetExpr
 
 no_more_args	;D0 not changed!
 		call	skipspaces
@@ -502,11 +508,15 @@ get_num		;radix in D0
 		bcs	expression_error
 		rts
 
-gethexnum	call	skipspaces
+		pub	GetHexNum
+
+		call	skipspaces
 		moveq	#16,d0
 		bra.s	getnum0
 
-getdecnum	call	skipspaces
+		pub	GetDecNum
+
+		call	skipspaces
 		moveq	#10,d0
 ;
 ; get a number, radix in d0, return carry set if error

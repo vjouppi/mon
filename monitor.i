@@ -4,17 +4,12 @@
 
 ;
 ; include file for Amiga Monitor
-; version 1.42 -- 1991-07-26
+; version 1.44 -- 1991-10-27
 ; Copyright © 1991 by Timo Rossi
 ;
 
-;
-; set this if you don't have the special includes
-;
-NORMAL_INCLUDES	set	1
 
 		include	"exec/types.i"
-		ifd	NORMAL_INCLUDES
 		include	"exec/nodes.i"
 		include	"exec/lists.i"
 		include	"exec/memory.i"
@@ -32,10 +27,7 @@ NORMAL_INCLUDES	set	1
 		include	"devices/conunit.i"
 		include	"devices/audio.i"
 		include	"workbench/startup.i"
-		endc
-		ifnd	NORMAL_INCLUDES
-		include	"include.i"
-		endc
+
 		include	"offsets.i"
 
 
@@ -44,7 +36,7 @@ NORMAL_INCLUDES	set	1
 BETA		equ	0	;special 'Beta version' flag
 
 VERSION		macro
-		dc.b	'1.42'
+		dc.b	'1.45'
 		ifne	BETA
 		dc.b	'b'
 		endc
@@ -89,16 +81,6 @@ rw		macro
 		endc
 		endm
 
-; some common ASCII control characters
-BS		equ	8
-TAB		equ	9
-LF		equ	$0a
-FF		equ	$0c
-CR		equ	$0d
-DEL		equ	$7f
-ESC		equ	$1b
-CSI		equ	$9b
-
 ; the only absolute address in the Amiga operating system
 _ExecBase	equ	4
 
@@ -126,40 +108,40 @@ getbase		macro
 
 lib		macro
 		ifeq	NARG-2
-		getbase	\1
-		lib	\2
+		  getbase	\1
+		  lib	\2
 		endc
 		ifeq	NARG-1
-		jsr	_LVO\1(a6)
+		  jsr	_LVO\1(a6)
 		endc
 		endm
 
 jlib		macro
 		ifeq	NARG-2
-		getbase	\1
-		jlib	\2
+		  getbase  \1
+		  jlib	\2
 		endc
 		ifeq	NARG-1
-		jmp	_LVO\1(a6)
+		  jmp	_LVO\1(a6)
 		endc
 		endm
 
 slib		macro
-		move.l	a6,-(sp)
+		move.l  a6,-(sp)
 		lib	\1,\2
-		move.l	(sp)+,a6
+		move.l  (sp)+,a6
 		endm
 
 *** macro to display a single character ***
 
 emit		macro
 		moveq	#\1,D0
-		bsr	ChrOut
+		call	ChrOut
 		endm
 
 emitwin		macro
 		moveq	#\1,d0
-		bsr	ChrOutWin
+		call	ChrOutWin
 		endm
 
 *** start output line ***
@@ -197,16 +179,16 @@ pub		macro
 ;
 call		macro
 		ifnc	'\1','JUMP'
-		ifnd	\1_routine
-		xref	\1_routine
-		endc
-		bsr	\1_routine
+		  ifnd	\1_routine
+		     xref  \1_routine
+		  endc
+		  bsr	\1_routine
 		endc
 		ifc	'\1','JUMP'
-		ifnd	\2_routine
-		xref	\2_routine
-		endc
-		bra	\2_routine
+		  ifnd	\2_routine
+		    xref  \2_routine
+		  endc
+		  bra	\2_routine
 		endc
 		endm
 
@@ -216,10 +198,23 @@ WSIZE		equ	1
 LSIZE		equ	2
 
 
+; some common ASCII control characters
+BS		equ	8
+TAB		equ	9
+LF		equ	$0a
+FF		equ	$0c
+CR		equ	$0d
+DEL		equ	$7f
+ESC		equ	$1b
+CSI		equ	$9b
+
 *** SOME SPECIAL CHARACTERS ***
 CtrlC	equ	3	;control-c, break
 CtrlE	equ	5	;control-e, edit existing assembler instruction
+CtrlQ	equ	17	;control-q, xon
+CtrlS	equ	19	;control-s, xoff
 CtrlX	equ	24	;control-x, clear input line
+
 SPACE	equ	32
 COMMA	equ	','
 
@@ -232,6 +227,7 @@ SHIFT_CURSOR_UP		equ	$0500
 SHIFT_CURSOR_DOWN	equ	$0600
 SHIFT_CURSOR_LEFT	equ	$0700
 SHIFT_CURSOR_RIGHT	equ	$0800
+
 
 LEN		equ	100	;length of input & output buffers
 NLINES		equ	10	;number of lines of command line history
@@ -351,3 +347,4 @@ RegSP		equ	AddrRegs+7*4
 		BITDEF	OPT,NARROWDIS,0
 		BITDEF	OPT,EXTPRTCHR,1
 		BITDEF	OPT,DUMBTERM,2
+

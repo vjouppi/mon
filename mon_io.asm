@@ -3,13 +3,16 @@
 ;
 
 		include	"monitor.i"
+;
+; This module defines the following public subroutines
+;
+;	printf,printstring,printstring_a0,printf_window,printstring_window
+;	printstring_a0_window,puts_stdout,fmtstring
+;	ChrOutWin,ChrOut,GetKey,GetInput
+;
 
 		xdef	UpAndClearEol
 
-		xdef	putch
-		xdef	GetKey
-		xdef	ChrOut
-		xdef	ChrOutWin
 ;
 ; output routines
 ;
@@ -90,12 +93,12 @@ print_loop	move.l	a2,d2
 		pub	fmtstring
 
 		movem.l	a2-a3/a6,-(sp)
-		movem.l	d0-d3,-(sp)
+		movem.l	d0-d4,-(sp)
 		move.l	sp,a1
 		lea	putch(pc),a2
 		lea	OutputBuf(a4),a3
 		lib	Exec,RawDoFmt
-		lea	16(sp),sp
+		lea	20(sp),sp
 		movem.l	(sp)+,a2-a3/a6
 		rts
 
@@ -104,10 +107,16 @@ putch		move.b	d0,(a3)+
 		rts
 
 ; Output a character to the window
-ChrOutWin	move.l	WinFile(a4),D1
+		pub	ChrOutWin
+
+		move.l	WinFile(a4),D1
 		bra.s	xChrOut
+
 ; output a character to current output
-ChrOut		move.l	OutputFile(a4),d1
+		pub	ChrOut
+
+		move.l	OutputFile(a4),d1
+
 xChrOut		movem.l	D2-D3/a6,-(sp)
 		move.b	d0,-(sp)
 		move.l	sp,d2
@@ -129,7 +138,7 @@ GetChar		movem.l	D2-D3/a6,-(sp)
 		movem.l	(sp)+,D2-D3/a6
 		rts
 
-GetKey
+		pub	GetKey
 * get a word value describing the key pressed
 * if high byte is zero, this is the ASCII-code of the key
 * else it is a special code or -1 if key is not recognised
@@ -254,7 +263,7 @@ inp0len		tst.b	(A0)+
 		subq.l	#1,A0
 		move.l	A0,D7
 inp0		move.l	D7,D6	;current position
-input_loop	bsr	GetKey
+input_loop	call	GetKey
 
 		lea	input_jumps(pc),a0
 inp_j1		move.l	(a0)+,d1
@@ -315,7 +324,7 @@ iputchr		move.b	D0,D2
 		lea	insch(pc),a0
 		call	printstring_a0_window
 		move.b	D2,D0
-		bsr	ChrOutWin
+		call	ChrOutWin
 		move.b	D2,0(a2,D6.L)
 		addq.l	#1,D6
 		addq.l	#1,D7
@@ -475,7 +484,7 @@ dumb_input1	cmp.b	#$20,d0
 
 		move.b	d0,(a2)+
 		addq.w	#1,d7
-		bsr	ChrOutWin
+		call	ChrOutWin
 		bra.s	dumb_input_loop
 
 dumb_input_end	clr.b	(a2)

@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.42 instructions
+                 Amiga Monitor v1.45 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -24,7 +24,7 @@
   (for example, using the Workbench 1.3 resident command or ARP 1.3 ares)
 
 
- Command line arguments (New in version 1.26):
+ Command line arguments (New in versions 1.26+):
  ---------------------------------------------
 
  options:
@@ -55,11 +55,11 @@
  command line editing and history, but you can still delete the last
  character with backspace/delete). Easies way to do that is to start
  the monitor with the command 'mon -o4'.
- 
 
 
- Option flags (New in version 1.34)
- ----------------------------------
+
+ Option flags (New in versions 1.34+)
+ ------------------------------------
 
  Commands 'opt +n' and 'opt -n' where 'n' is a number between 1 and 3
  can be used to set and reset monitor option flags. Currently three
@@ -68,11 +68,13 @@
   - flag #1
       Switches on the narrow disassembly output mode
       (does not show the data as hex digits)
+
   - flag #2
       Causes characters $a0-$ff to be considered printable in
       'm' command memory dump (and '?' command ascii display)
       (Note that this was changed in 1.42, previously they were
       printable by default).
+
   - flag #3
       This is the 'Dumb terminal' mode flag. When this is set on,
       the command line history and editing features of the monitor
@@ -104,8 +106,8 @@
  Stopping the output:
  --------------------
   In most cases the output of the monitor can be suspended by pressing SPACE
-  and continued by pressing SPACE again. To permanently stop the output,
-  press Ctrl-C.
+  or control-S and continued by pressing control-S or SPACE again.
+  To permanently stop the output, press Ctrl-C.
 
 
  Numbers:
@@ -312,6 +314,29 @@ m -- Display memory in hex and ASCII
   m                   -- display 20 lines from current address
   m <addr>            -- display 20 lines from <addr>
   m <addr> <end-addr> -- display from <addr> to <end-addr>
+
+mf -- Formatted memory display
+ Usage:
+  mf "formatstring"
+  mf <addr> "formatstring"
+  mf <addr> <endaddr> "formatstring"
+
+  This command displays memory in user-specified format. The format string
+  can contain normal text that is printed directly and c-printf-style
+  format specifiers. The following format specifiers are currently supported:
+    %b  -- display hex byte
+    %w  -- display hex word
+    %l  -- display hex longword
+    %db -- display decimal byte
+    %dw -- display decimal word
+    %dl -- display decimal longword
+    %a  -- display current address (in hex)
+  Also, \n can be used to print a line feed.
+
+  Note2: words and longs that are displayed must be at even addresses. If the
+  current address os odd when a word or longword value is going to be displayed,
+  the address is incremented to the next even address and an asterisk is
+  printed as a warning to the user.
 
 : -- Modify memory
  Usage:
@@ -585,7 +610,7 @@ dev -- set/show current disk device
  Displays old and new checksums. This command is useful if use use the
  monitor as a disk editor. Addr must be even.
 
- New in 1.38: extended usage: = <addr> <len> <offs>
+ New in 1.38+: extended usage: = <addr> <len> <offs>
  where <len> is block length to be checksummed and <offs> is the offset
  of the checksum longword from the start of the block. The checksum is
  calculated to that the sum of the longwords in the block is zero.
@@ -601,7 +626,7 @@ dev -- set/show current disk device
  it in the bootblock (in memory). Displays old and new checksums.
  Addr must be even.
 
- New in 1.38: extended usage: # <addr> <len> <offs>
+ New in 1.38+: extended usage: # <addr> <len> <offs>
  where <len> is block length to be checksummed and <offs> is the offset
  of the checksum longword from the start of the block. The checksum is
  calculated to that the sum of the longwords with carry in the block
@@ -633,13 +658,51 @@ dir [<name>]   -- Displays the directory
   (this uses Dos Execute, so it requires the Run-command to be
   in the C:-directory)
 
-x -- Exit
-  Cleanup and exit.
+vt -- show tasks
+  Shows the addresses, types, states and priorities of all tasks currently
+  in the system (on the exec TaskWait & TaskReady lists and the current task)
 
+  Type: t - task, p - process, c - CLI process
+  State: w - waiting, r - ready, c - current
+
+vl -- show library list
+  Shows the addresses, names, versions & revisions and open counts of
+  all libraries on the exec library list.
+
+vd -- show device list
+  Shows the addresses, names, versions & revisions and open counts of
+  all devices on the exec device list.
+
+vr -- show resource list
+  Shows the addresses and names of all resources on the exec resource list.
+
+vp -- show port list
+  Shows the addresses, SigBits, mp_Flags-fields and names of all public
+  message ports currently in the system.
+
+vs -- show semaphore list
+  Shows the addresses and names of all public signalsemaphores currently
+  in the system.
+
+x -- Exit
+  Cleanup and exit the monitor. This frees all the memory allocated
+  with ( and & commands and closes redirection file, if open.
 
 
 Version history:
 ----------------
+1.45 ->
+ - small change in help text
+1.44 ->
+ - added task/library/device/resource/port/semaphore list viewing commands.
+
+1.43 ->
+ - added formatted memory dump command
+ - now gives error message if cannot allocate audio channels in digisound
+   play command.
+ - display can be stopped/started with ctrl-s/ctrl-q
+ - spaces can be used in 'set register' command before the equal sign.
+
 1.42 ->
  - better option handling
  - understands 2.0 shell window close gadget
@@ -802,10 +865,10 @@ Version history:
 
 
 
-  Amiga Monitor v1.42 Copyright © 1987-1991 by Timo Rossi. The monitor
+  Amiga Monitor v1.45 Copyright © 1987-1991 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lharc-file 'mon142.lzh'.
+way of distribution is the lharc-archive 'mon145.lzh'.
 
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.

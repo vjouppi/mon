@@ -5,6 +5,14 @@
 		include	"monitor.i"
 		include	"instructions.i"
 
+;
+; This module defines the following public subroutine:
+;
+;	Disassemble
+;
+; And the command routine 'disassem'
+;
+
 		xdef	instr_names
 		xdef	ccodes
 
@@ -56,13 +64,13 @@ BIT	equ	$92	; bit instruction type
 ;
 		cmd	disassem
 
-		call	getparams
+		call	GetParams
 		bclr	#0,Addr+3(a4)
 		move.l	Addr(a4),a5
 
 disasmloop	startline
 	;;	call	disassemble
-		bsr	disassemble_routine
+		bsr	Disassemble_routine
 
 		call	printstring
 		call	CheckEnd
@@ -86,7 +94,7 @@ disasmloop	startline
 ; return d0 zero if valid instruction was disasembled
 ; (now line-[af] and ILLEGAL are not considered as valid instructions)
 ;
-		pub	disassemble
+		pub	Disassemble
 
 		movem.l	d2-d7/a2/a4/a6,-(sp)
 

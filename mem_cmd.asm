@@ -2,6 +2,12 @@
 ; memory.asm
 ;
 		include	"monitor.i"
+;
+; This module defines the following command routines:
+;
+;	showmemory,allocate_mem,alloc_abs,free_mem,memory_info,memtransfer
+;	memfill,memhunt,memcomp,memdisplay,fmt_memdisplay,modifymem
+;
 
 		xref	monitor_code_start
 		xref	monitor_code_end
@@ -11,10 +17,9 @@
 
 		xref	help
 
-		xref	mgetw
-		xref	ChrOut
 		xref	puthex_68
-		xref	getstring
+		xref	puthex1_68
+		xref	phex1_8
 
 		xref	loctext
 		xref	memlistfmt
@@ -71,7 +76,7 @@ freeall9	move.l	(sp)+,a6
 *** ALLOCATE MEMORY ***
 		cmd	allocate_mem
 
-		call	get_expr
+		call	GetExpr
 		move.l	D0,D5
 		call	skipspaces
 		moveq	#0,d1
@@ -85,7 +90,7 @@ freeall9	move.l	(sp)+,a6
 		or.l	#MEMF_CLEAR!MEMF_PUBLIC,D1
 		lib	Exec,AllocMem
 		tst.l	D0
-		beq.s	allocfailed
+		beq.s	alloc_failed
 		move.l	D0,A0
 
 alloc_mem_1	;add allocated memory to linked list of memory blocks
@@ -121,24 +126,24 @@ alloc_display	move.l	a0,d0
 		lea	allocfmt(pc),a0
 		call	JUMP,printf
 
-allocfailed		;error 'allocation failed'
-		lea	allocfail(pc),A0
+alloc_failed		;error 'allocation failed'
+		lea	alloc_fail_msg(pc),A0
 		call	JUMP,printstring_a0_window
 
 *** ALLOCATE ABSOLUTE ***
 		cmd	alloc_abs
 
-		call	get_expr
+		call	GetExpr
 		subq.l	#8,D0	;remember to subtract 8 from the starting address
 		move.l	D0,D7	;(next block pointer & length)
-		call	get_expr
+		call	GetExpr
 		move.l	D0,D5
 		beq	generic_error
 		addq.l	#8,D0	;add 8 to length
 		move.l	D7,A1
 		lib	Exec,AllocAbs
 		tst.l	D0
-		beq.s	allocfailed
+		beq.s	alloc_failed
 		move.l	D7,A0
 		bra	alloc_mem_1
 
@@ -161,7 +166,7 @@ allocfailed		;error 'allocation failed'
 		bne.s	free_norm
 		bra	FreeAllMem
 
-free_norm	call	get_expr
+free_norm	call	GetExpr
 		subq.l	#8,D0
 		move.l	MemoryList(a4),D1
 		beq	not_at_all_allocated
@@ -193,7 +198,7 @@ do_free		move.l	4(A1),D0
 ;
 		cmd	memory_info
 
-		call	get_expr
+		call	GetExpr
 		move.l	d0,d5
 
 ; walk the memory list
@@ -301,11 +306,11 @@ ret_01		rts
 **** TRANSFER MEMORY ****
 		cmd	memtransfer
 
-		call	get_expr
+		call	GetExpr
 		move.l	D0,A0
-		call	get_expr
+		call	GetExpr
 		move.l	D0,A1
-		call	get_expr
+		call	GetExpr
 		move.l	D0,A2
 		cmp.l	A2,A0
 		bcs.s	backwards	;if destination > source, transfer backwards
@@ -342,12 +347,12 @@ trf2		move.b	(A1),(A2)
 * This version can fill memory with a pattern
 		cmd	memfill
 
-		call	get_expr
+		call	GetExpr
 		move.l	D0,-(sp)
-		call	get_expr
+		call	GetExpr
 		move.l	D0,A2
 		lea	InputBuf(a4),a0
-		bsr	getstring
+		call	GetString
 		move.l	(sp)+,A1
 		tst.l	D2
 		beq.s	ret_01
@@ -369,12 +374,12 @@ fill1		cmp.l	A2,A1
 
 		bsr	get_n_per_line
 		move.w	d6,D7
-		call	get_expr
+		call	GetExpr
 		move.l	D0,-(sp)
-		call	get_expr
+		call	GetExpr
 		move.l	D0,A2
 		lea	InputBuf(a4),a0
-		bsr	getstring
+		call	GetString
 		move.l	(sp)+,A1
 		tst.l	D2	;string length
 		beq	ret_01
@@ -414,7 +419,7 @@ hunt_ck1	cmp.l	a4,a1
 
 huntprint	move.l	A1,D0
 		subq.l	#1,D0
-		lea	comhfmt(pc),a0
+		lea	comp_hunt_fmt(pc),a0
 		call	printf
 		subq.w	#1,D7
 		bne.s	huntf1
@@ -426,8 +431,7 @@ huntf1		call	CheckKeys
 huntf2		movem.l	(sp)+,A0-A1
 		bra.s	hunt0
 
-lf_and_exit	moveq	#LF,d0
-		bsr	ChrOut
+lf_and_exit	emit	LF
 		bra	mainloop
 
 **** COMPARE MEMORY ****
@@ -435,11 +439,11 @@ lf_and_exit	moveq	#LF,d0
 
 		bsr.s	get_n_per_line
 		move.w	d6,D7
-		call	get_expr
+		call	GetExpr
 		move.l	D0,A0
-		call	get_expr
+		call	GetExpr
 		move.l	D0,A1
-		call	get_expr
+		call	GetExpr
 		move.l	D0,A2
 
 comp1		cmp.l	A1,A0
@@ -449,7 +453,7 @@ comp1		cmp.l	A1,A0
 		movem.l	A0-A1,-(sp)
 		move.l	A0,D0
 		subq.l	#1,D0
-		lea	comhfmt(pc),a0
+		lea	comp_hunt_fmt(pc),a0
 		call	printf
 		subq.w	#1,D7
 		bne.s	compf1
@@ -475,9 +479,243 @@ get_n_per_line	moveq	#80,d6
 		moveq	#1,d6
 09$		rts
 
-comhfmt		dc.b	'%08lx ',0
+**** DISPLAY MEMORY ****
+;#
+;# ->v1.22  1990-01-06
+;# memdisplay now reads memory as bytes and can be started at odd address.
+;#
+		cmd	memdisplay
 
-allocfail	dc.b	'Allocation failed',LF,0
+display_memory	call	GetParams
+		moveq	#0,d6
+		move.l	ConsoleUnit(a4),d0
+		beq.s	00$
+		move.l	d0,a0
+		cmp.w	#65,cu_XMax(a0)
+		scs	d6
+00$		move.l	Addr(a4),a5
+
+disploop	startline
+		move.l	a5,D0
+		bsr	puthex1_68
+		putchr	<':'>
+		putchr	SPACE
+		moveq	#16/4-1,D2
+
+01$		call	mgetw
+		swap	d0
+		call	mgetw
+		bsr	phex1_8
+		putchr	SPACE
+		dbf	D2,01$
+
+		sub.w	#16,a5
+		putchr	SPACE
+		tst.b	d6
+		bmi.s	100$
+		putchr	<''''>
+100$		moveq	#16-1,D2
+
+02$		move.b	(a5)+,D0	;printable codes are $20-$7F and $A0-$FF
+		call	to_printable
+		move.b	D0,(A3)+
+		dbf	D2,02$
+
+		tst.b	d6
+		bmi.s	101$
+		putchr	<''''>
+101$		endline
+		call	printstring
+		call	CheckEnd
+		bne.s	disploop
+
+		move.l	a5,Addr(a4)
+		bra	mainloop
+;
+; subroutines for 'mf' command
+;
+p_align		move.l	a5,d0
+		btst	#0,d0
+		beq.s	p_align_end
+		emit	'*'
+		addq.l	#1,a5
+p_align_end	rts
+
+dec_num		move.l	d2,-(sp)
+		move.l	d5,d2
+		moveq	#-1,d1
+		call	PutNum
+		move.l	(sp)+,d2
+		clr.b	(a3)
+		call	JUMP,printstring
+
+p_byte		startline
+		moveq	#0,d0
+		move.b	(a5)+,d0
+		moveq	#2,d1
+		bra.s	h_com
+
+p_word		startline
+		bsr.s	p_align
+		moveq	#0,d0
+		move.w	(a5)+,d0
+		moveq	#4,d1
+		bra.s	h_com
+
+p_long		startline
+		bsr.s	p_align
+		move.l	(a5)+,d0
+h8_com		moveq	#8,d1
+
+h_com		cmp.b	#10,d5
+		beq.s	dec_num
+		call	put_hexnum
+		clr.b	(a3)
+		call	JUMP,printstring
+
+p_addr		startline
+		move.l	a5,d0
+		bra.s	h8_com
+
+;
+; formatted memory display
+; mf [addr [end_addr]] "fmt_string"
+;
+; format string:
+;
+;  %b  -  hex byte
+;  %w  -  hex word
+;  %l  -  hex longword
+;  %db -  decimal byte
+;  %dw -  decimal word
+;  %dl -  decimal long
+;  %a  -  hex address
+;  %da -  decimal address
+;  \n  -  linefeed
+;
+;
+		cmd	fmt_memdisplay
+
+		clr.l	EndAddr(a4)
+		call	skipspaces
+		cmp.b	#'"',(a3)
+		beq.s	get_fmtstring
+
+		call	GetExpr
+		move.l	d0,Addr(a4)
+
+		call	skipspaces
+		cmp.b	#'"',(a3)
+		beq.s	get_fmtstring
+
+		call	GetExpr
+		move.l	d0,EndAddr(a4)	;!!!!!!
+
+get_fmtstring	call	GetName
+		move.l	d0,instrad(a4)
+
+		move.l	Addr(a4),a5
+
+fmt_memdisp_next
+		move.l	instrad(a4),a2
+
+fmt_memdisp_loop
+		move.l	a2,d2
+
+1$		move.b	(a2)+,d0
+		beq.s	p_end
+		cmp.b	#'\',d0
+		beq.s	p_esc
+		cmp.b	#'%',d0
+		bne.s	1$
+
+		subq.l	#1,a2
+		bsr.s	p_putstr
+		addq.l	#1,a2
+		move.b	(a2)+,d0
+
+		moveq	#16,d5		;base hex
+		cmp.b	#'d',d0
+		bne.s	10$
+		moveq	#10,d5		;base decimal
+		move.b	(a2)+,d0
+
+10$		lea	p_chars(pc),a0
+		move.l	a0,d1
+2$		tst.b	(a0)
+		beq.s	fmt_memdisp_loop
+		cmp.b	(a0)+,d0
+		bne.s	2$
+		sub.l	d1,a0
+		add.w	a0,a0
+		lea	p_jumps-2(pc,a0.w),a0
+		add.w	(a0),a0
+		jsr	(a0)
+		jmp	fmt_memdisp_loop
+
+p_esc		move.b	(a2)+,d0
+		beq.s	p_end
+		cmp.b	#'n',d0
+		bne.s	p_str		;!!
+		subq.l	#2,a2
+		bsr.s	p_putstr
+		addq.l	#2,a2
+		emit	LF
+		bra.s	p_end_test
+
+p_str		bsr.s	p_putstr
+
+p_end_test	tst.b	-1(a2)
+		bne.s	fmt_memdisp_loop
+	;!!!!
+
+p_end		move.l	a5,Addr(a4)
+		bsr.s	p_putstr
+		emit	LF
+		call	CheckKeys
+		bne.s	p_main
+		cmp.w	#0,a5
+		beq.s	p_main
+		cmp.l	EndAddr(a4),a5
+		bls	fmt_memdisp_next
+
+p_main		bra	mainloop
+
+p_percent	emit	'%'
+		bra	fmt_memdisp_loop
+
+p_putstr	move.l	a2,d3
+		sub.l	d2,d3
+		beq.s	1$
+		move.l	OutputFile(a4),d1
+		lib	Dos,Write
+1$		rts
+
+;
+;
+p_jumps		rw	p_byte
+		rw	p_word
+		rw	p_long
+		rw	p_addr
+		rw	p_percent
+
+p_chars		dc.b	'bwla%',0
+		ds.w	0
+
+;
+;*** MODIFY MEMORY ***
+;
+		cmd	modifymem
+
+		call	GetExpr
+		move.l	D0,A0
+		call	GetString
+		bra	mainloop
+;
+;
+comp_hunt_fmt	dc.b	'%08lx ',0
+
+alloc_fail_msg	dc.b	'Allocation failed',LF,0
 noalloctx	dc.b	'Not allocated that',LF,0
 
 no_alloc	dc.b	'No memory '

@@ -1,22 +1,23 @@
 ;
-; mon_main.asm
+; mon_main.asm -- monitor main program -- must be first module to be linked in
 ;
 
 		include	"monitor.i"
+;
+; This module defines the following command routines:
+;
+;	clear_screen,help,info,exit_monitor
+;
 
 		xdef	mainloop
 
 		xdef	help
 
-		xref	ChrOut
-		xref	ChrOutWin
-		xref	getdecnum
-		xref	gethexnum
 		xref	FreeAllMem
 		xref	remove_all_breaks
 		xref	clear_all_variables
 		xref	loadseg1
-		xref	set_cmdline		;from misc_cmd.asm
+		xref	set_cmdline	;from misc_cmd.asm
 
 		xref	trapreturn	;execute.asm
 		xref	returncode	;execute.asm
@@ -62,6 +63,7 @@ monitor_code_start
 		move.l	D0,a5
 		tst.l	pr_CLI(a5)		;started from CLI ?
 		bne.s	main			;branch if yes
+
 		lea	pr_MsgPort(a5),A0	;started from workbench
 		lib	WaitPort		;wait for WB startup message
 		lea	pr_MsgPort(a5),A0
@@ -122,21 +124,24 @@ parse_cmdline	call	skipspaces
 		move.b	(a3)+,d0
 		cmp.b	#SPACE,d0
 		bls.s	no_opt
+
 		cmp.b	#'w',d0
 		bne.s	no_w
-		bsr	getdecnum
+		call	GetDecNum
 		bcs.s	put_usage
 		move.l	d0,d4
 		bra.s	parse_cmdline
+
 no_w		cmp.b	#'h',d0
 		bne.s	no_h
-		bsr	getdecnum
+		call	GetDecNum
 		bcs.s	put_usage
 		move.l	d0,d5
 		bra.s	parse_cmdline
+
 no_h		cmp.b	#'o',d0
 		bne.s	no_o
-		bsr	gethexnum
+		call	GetHexNum
 		bcs.s	put_usage
 		move.b	d0,MonOptions(a4)
 		bra.s	parse_cmdline
@@ -492,13 +497,24 @@ command_names	dc.b	'?',0		;calculator
 		dc.b	'h',0		;hunt memory
 		dc.b	't',0		;transfer memory
 		dc.b	'f',0		;fill memory
+		dc.b	'mf',0		;formatted memory display
 		dc.b	'mi',0		;memory info
 		dc.b	'm',0		;display memory
 		dc.b	'x',0		;exit monitor
 		dc.b	'opt',0		;set/reset options
 		dc.b	'o',0		;redirect
 		dc.b	'i',0		;display info text
+
+		dc.b	'vt',0		;list tasks
+		dc.b	'vl',0		;list libraries
+		dc.b	'vd',0		;list devices
+		dc.b	'vr',0		;list resources
+		dc.b	'vp',0		;list ports
+		dc.b	'vs',0		;list semaphores
+
 		dc.b	0		;end of command table
+
+		ds.w	0
 
 command_table	command	calculator
 		command	cmdline
@@ -544,6 +560,7 @@ command_table	command	calculator
 		command	memhunt
 		command	memtransfer
 		command	memfill
+		command	fmt_memdisplay
 		command	memory_info
 		command	memdisplay
 		command	exit_monitor
@@ -551,21 +568,27 @@ command_table	command	calculator
 		command	redirect
 		command	info
 
+		command list_tasks
+		command list_libraries
+		command list_devices
+		command list_resources
+		command list_ports
+		command list_semaphores
 
 **** HELP TEXT ****
 helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		VERSION
 		dc.b	' help (i=info, x=exit) --',LF
 		dc.b	'o [name]',TAB,':redirect output'
-		dc.b	'| \',TAB,TAB,TAB,': NewShell',LF
+		dc.b	'| vt,vl,vd,vr,vp,vs :show tasks/libs/devs/etc',LF
 		dc.b	'dir [name]',TAB,': directory',TAB
 		dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
 		dc.b	'cd [name]',TAB,': current dir',TAB
 		dc.b	'| ] addr length name',TAB,': save absolute',LF
 		dc.b	'l name',TAB,TAB,': load exefile',TAB
-		dc.b	'| < addr dr block cnt',TAB,': read disk blocks',LF
+		dc.b	'| < addr unit block cnt',TAB,': read disk blocks',LF
 		dc.b	'sl',TAB,TAB,': hunk list',TAB
-		dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
+		dc.b	'| > addr unit block cnt',TAB,': write disk blocks',LF
 		dc.b	'u',TAB,TAB,': unload exefile'
 		dc.b	'| dev [devicename]',TAB,': set disk device',LF
 		dc.b	'r [reg=num]',TAB,': set/show regs',TAB
@@ -584,7 +607,7 @@ helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'| e [addr]',TAB,TAB,': execute one instr.',LF
 		dc.b	'br addr/all',TAB,':remove brkpoint'
 		dc.b	'| q [addr]',TAB,TAB,': quicktrace',LF
-		dc.b	'f addr1 addr2 bytes: fill mem',TAB
+		dc.b	'f adr1 adr2 bytes: fill mem',TAB
 		dc.b	'| ( length',TAB,TAB,': allocate memory',LF
 		dc.b	'@ [line]',TAB,': enter cmd line'
 		dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF
@@ -594,9 +617,9 @@ helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'| sm',TAB,TAB,TAB,': show allocated mem',LF
 		dc.b	'mi addr',TAB,TAB,': memory info',TAB
 		dc.b	'| c addr1 addr2 dest',TAB,': compare memory',LF
-		dc.b	'cv',TAB,TAB,': clear vars',TAB
+		dc.b	'h adr1 adr2 bytes: hunt memory',TAB
 		dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
-		dc.b	'h addr1 addr2 bytes :hunt memory'
+		dc.b	'cv',TAB,TAB,': clear vars',TAB
 		dc.b	'| set [var=expr]',TAB,': set/show variables',LF,0
 
 **** INFO TEXT ****
@@ -610,13 +633,13 @@ infotext	dc.b LF
 		dc.b	' Pressing the HELP-key displays a list of commands.',LF,LF
 		dc.b	' Note1: Some of the assembler instructions require the',LF
 		dc.b	' size specifier (.B, .W or .L), but it can''t be used by some others.',LF,LF
-		dc.b	' Note2: the default number base is again hex, use ''_'' as prefix',LF
+		dc.b	' Note2: the default number base is hex, use ''_'' as prefix',LF
 		dc.b	' for decimal or change the base with the ba-command.',LF
-		dc.b	' You can now use expressions in most places where',LF
+		dc.b	' You can use expressions in most places where',LF
 		dc.b	' numbers are needed.',LF,LF
-		dc.b	' I hope you find this program useful, but if you find any bugs in this',LF
-		dc.b	' program, please let me know.',LF,LF
-		dc.b	' Read the ''mon.doc''-file for more information. (My address is also there)',LF,0
+		dc.b	' I hope you find this program useful, but if you find any bugs',LF
+		dc.b	' in this program, please let me know.',LF,LF
+		dc.b	' Read the ''mon.doc''-file for more information.',LF,0
 
 dosname		dc.b	'dos.library',0
 gfxname		dc.b	'graphics.library',0

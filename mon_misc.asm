@@ -7,8 +7,12 @@
 ;
 
 		include	"monitor.i"
+;
+; This module defines the following public subroutines:
+;
+;	GetString,CheckKeys,GetParams,CheckEnd
+;
 
-		xdef	getstring
 		xdef	showrange
 
 		xdef	seghead
@@ -21,8 +25,6 @@
 		xref	puthex1_68
 		xref	phex1_8
 		xref	getdecnum
-		xref	ChrOutWin
-		xref	GetKey
 
 		xdef	monitor_code_end
 
@@ -39,14 +41,17 @@ showrange	;start addr in D5, length in D6
 *** GET STRING FROM INPUT LINE TO ADDR IN A0, LENGTH IN D2 ***
 * NOTE: this version requires commas between numbers and strings
 ; a1 is end addr of string on return
-getstring	move.l	A0,A1
+
+		pub	GetString
+
+		move.l	A0,A1
 gstr1		call	tolower
 		move.b	(A3)+,D0
 		beq.s	gstr9		;branch if end of input line
 		cmp.b	#'''',D0	;if single quote, then string follows
 		beq.s	stringi
 		subq.l	#1,A3
-		call	get_expr		;else get number
+		call	GetExpr		;else get number
 		move.b	D0,(A1)+
 gstr1a		call	tolower
 		cmp.b	#COMMA,(a3)+
@@ -67,6 +72,9 @@ gstr9		move.l	A1,D2
 		rts
 
 **** WAIT IF SPACE PRESSED, BREAK IF CTRL-C (status non-zero) ****
+;
+; 1991-09-01 --> now works also with Ctrl-S/Ctrl-Q
+;
 		pub	CheckKeys
 
 		movem.l	D2/a6,-(sp)
@@ -87,22 +95,29 @@ gstr9		move.l	A1,D2
 		lib	Dos,WaitForChar
 		tst.l	D0
 		beq.s	nobreak		;branch if no key pressed
-		bsr	GetKey
+		call	GetKey
+		cmp.w	#CtrlS,d0
+		beq.s	waitspc
 		cmp.w	#SPACE,D0
 		bne.s	nospc
+
 waitspc		;space pressed, wait for another space or Ctrl-C
-		bsr	GetKey
+		call	GetKey
 		cmp.w	#CtrlC,D0
 		beq.s	break
+		cmp.w	#CtrlQ,d0
+		beq.s	nobreak
 		cmp.w	#SPACE,D0
 		bne.s	waitspc
 		bra.s	nobreak
+
 nospc		cmp.w	#CtrlC,D0
 		bne.s	nobreak
 break		lea	break_txt(pc),A0	;message '*** break ***'
 		call	printstring_a0_window
 		moveq	#-1,D0
 		bra.s	brk_1
+
 nobreak		moveq	#0,D0
 brk_1		movem.l	(sp)+,D2/a6
 		rts
@@ -111,17 +126,17 @@ brk_1		movem.l	(sp)+,D2/a6
 * get Addr and EndAddr & number of lines to display in D7
 * if D7 is zero then display from Addr to EndAddr
 * if D7 is non-zero EndAddr is ignored
-		pub	getparams
+		pub	GetParams
 
 		call	tolower
 		tst.b	(A3)
 		beq.s	param9
-		call	get_expr
+		call	GetExpr
 		move.l	D0,Addr(a4)
 		call	tolower
 		tst.b	(A3)
 		beq.s	param9
-		call	get_expr
+		call	GetExpr
 		move.l	D0,EndAddr(a4)
 		moveq	#0,D7
 		rts

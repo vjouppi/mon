@@ -3,7 +3,11 @@
 ;
 
 		include	"monitor.i"
-
+;
+; This module defines the following command routine:
+;
+;	setshow_regs
+;
 		xdef	displayregs
 		xdef	displayregs_d
 
@@ -27,13 +31,14 @@ displayregs_d	bsr	displayregs
 		tst.w	(a5)
 		beq.s	rr9
 		startline
-		call	disassemble
+		call	Disassemble
 		tst.w	d0
 		bne.s	rr9
 		call	printstring
 rr9		rts
 
 skipequal ;the syntax of the register change command can include a '=' sign
+		call	skipspaces
 		cmp.b	#'=',(A3)	;but it is not necessary
 		bne.s	01$
 		addq.l	#1,A3
@@ -47,7 +52,7 @@ changeregs	move.b	(A3)+,D0	;** CHANGE REGISTERS **
 		cmp.w	#'pc',D0	;program counter
 		bne.s	nopc
 		bsr.s	skipequal
-		call	get_expr
+		call	GetExpr
 		move.l	D0,RegPC(a4)
 		rts
 
@@ -62,7 +67,7 @@ nopc		cmp.w	#'cc',D0	;condition code register
 		bne.s	01$
 		addq.l	#1,a3
 01$		bsr.s	skipequal
-		call	get_expr
+		call	GetExpr
 		move.b	D0,RegCCR_B(a4)
 		rts
 
@@ -74,7 +79,7 @@ nocc		cmp.w	#'d0',D0
 		lsl.w	#2,D0
 		move.w	D0,D2
 		bsr	skipequal
-		call	get_expr
+		call	GetExpr
 		lea	DataRegs(a4),A0
 		move.l	D0,0(A0,D2.W)
 		rts
@@ -91,7 +96,7 @@ nosp		cmp.w	#'a0',D0
 setareg		lsl.w	#2,D0
 		move.w	D0,D2
 		bsr	skipequal
-		call	get_expr
+		call	GetExpr
 		lea	AddrRegs(a4),A0
 		move.l	D0,0(A0,D2.W)
 		rts

@@ -10,23 +10,24 @@
 ;			  nonzero on a 68010/20/30/40... system
 ;	   1990-08-22 --> added includes, added this to makefile, uses
 ;			  new macros...
+;	   1991-10-27 --> changed includes & macros again...
 ;
 
-		include	'include.i'
+		include	'exec/types.i'
+		include	'exec/memory.i'
+		include	'exec/execbase.i'
 		include	'offsets.i'
-		include	'macros.i'
 
 trace_vector	equ	$24	;offset from start of vector table
 
-
-	getbase	Exec
+	move.l	4,a6		;get execbase
 
 	lea	supercode(pc),a5
-	lib	Supervisor		;get VBR into a4
+	jsr	_LVOSupervisor(a6)		;get VBR into a4
 
 	moveq	#copylen+4,d0
 	moveq	#MEMF_PUBLIC,d1
-	lib	AllocMem
+	jsr	_LVOAllocMem(a6)
 	tst.l	d0
 	beq.s	exit
 	move.l	d0,a1
