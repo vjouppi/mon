@@ -1,5 +1,7 @@
 ;
-; mon_main.asm -- monitor main program -- must be first module to be linked in
+; mon_main.asm -- monitor main program
+;
+; must be first module to be linked in
 ;
 		nolist
 		include	"exec/types.i"
@@ -12,7 +14,9 @@
 		list
 
 		include	"monitor.i"
+		include	"script.i"
 		include "mon_version.i"
+
 ;
 ; This module defines the following command routines:
 ;
@@ -20,6 +24,8 @@
 ;
 
 		xdef	mainloop
+		xdef	error_com
+		xdef	exec_cmd
 
 		xdef	help
 
@@ -32,8 +38,11 @@
 		xdef	out_memory_error
 		xdef	expression_error
 		xdef	addrmode_error
+		xdef	scriptonly_error
+		xdef	undeflabel_error
 
 		xdef	out_range_txt
+		xdef	break_txt
 
 		xdef	monitor_code_start
 
@@ -63,7 +72,7 @@ monitor_code_start
 
 		moveq	#0,d5
 		move.l	d5,a1
-		lib	Exec,FindTask		;find our task
+		lib	AbsExec,FindTask		;find our task
 		move.l	D0,a5
 		tst.l	pr_CLI(a5)		;started from CLI ?
 		bne.s	main			;branch if yes
@@ -80,7 +89,7 @@ main		move.l	#MonitorData_SIZE,d0
 		tst.l	d0
 		beq	exit10
 		move.l	d0,a4
-
+		move.l	a6,_ExecBase(a4)
 		move.l	4(sp),mon_StackSize(a4)
 		move.l	d5,mon_WBenchMsg(a4)
 		move.l	a5,mon_Task(a4)
@@ -120,7 +129,7 @@ handle_cli_start
 		clr.b	-1(a3,d3.l)		;null-terminate command line
 parse_cmdline	call	skipspaces
 		tst.b	(a3)
-		beq.s	cmdline_done
+		beq	cmdline_done
 		cmp.b	#'?',(a3)
 		beq.s	put_usage0
 		cmp.b	#'-',(a3)
@@ -135,25 +144,32 @@ parse_cmdline	call	skipspaces
 		call	GetDecNum
 		bcs.s	put_usage
 		move.l	d0,d4
-		bra.s	parse_cmdline
+		bra	parse_cmdline
 
 no_w		cmp.b	#'h',d0
 		bne.s	no_h
 		call	GetDecNum
 		bcs.s	put_usage
 		move.l	d0,d5
-		bra.s	parse_cmdline
+		bra	parse_cmdline
 
 no_h		cmp.b	#'o',d0
 		bne.s	no_o
 		call	GetHexNum
 		bcs.s	put_usage
 		move.b	d0,mon_Options(a4)
-		bra.s	parse_cmdline
+		bra	parse_cmdline
+
+no_o		cmp.b	#'s',d0
+		bne.s	put_usage
+		call	GetName
+		move.l	d0,mon_InitialScriptName(a4)
+		beq	put_usage
+		bra	parse_cmdline
 
 put_usage0	lea	version_msg(pc),a0
 		call	puts_stdout
-no_o
+
 put_usage	lea	usage_txt(pc),a0
 		call	puts_stdout
 		bra	cleanexit
@@ -162,7 +178,7 @@ no_opt		cmp.b	#'+',(a3)
 		bne.s	get_name
 		st	d6
 		addq.l	#1,a3
-		bra.s	parse_cmdline
+		bra	parse_cmdline
 
 get_name	call	GetName
 		move.l	d0,mon_InitialFileName(a4)
@@ -192,7 +208,7 @@ win_1		lib	Dos,Input
 		tst.l	d0
 		beq.s	open_win1
 		move.l	mon_WinFile(a4),d0
-		bra.s	win_com
+		bra	win_open
 
 nogfx_win	moveq	#0,d0
 		move.l	#200,d2
@@ -225,10 +241,21 @@ open_win	lea	window_fmt(pc),a0
 		move.l	a0,d1
 		move.l	#MODE_OLDFILE,D2
 		lib	Dos,Open		open the window
+		move.l	d0,mon_WinFile(a4)
+		bne.s	own_win_open
 
-win_com		move.l	d0,mon_WinFile(a4)
-		beq	cleanexit
-		move.l	D0,mon_OutputFile(a4) 	;default output is monitor window
+		lea	win_openerr_txt(pc),a0
+		call	puts_stdout
+		bra	cleanexit
+
+own_win_open	move.l	d0,d1
+		lsl.l	#2,d1
+		move.l	d1,a1
+		move.l	mon_Task(a4),a0
+		move.l	pr_ConsoleTask(a0),mon_OrigConTask(a4)
+		move.l	fh_Type(a1),pr_ConsoleTask(a0)
+
+win_open	move.l	D0,mon_OutputFile(a4) 	;default output is monitor window
 
 		call	FindConUnit		;this may return zero
 		move.l	d0,mon_ConsoleUnit(a4)
@@ -257,7 +284,8 @@ win_com		move.l	d0,mon_WinFile(a4)
 		move.l	mon_Task(a4),A0
 		move.l	TC_TRAPCODE(A0),mon_OrigTrapCode(a4)	;save old TrapCode
 		move.l	TC_Userdata(a0),mon_OrigUserData(a4)	; & UserData
-		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
+
+set_tc		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
 		move.l	a4,TC_Userdata(a0)
 
 ; save pr_ReturnAddr pointer
@@ -298,40 +326,86 @@ win_com		move.l	d0,mon_WinFile(a4)
 ; try to load the file specified on the command line
 ;
 		move.l	mon_InitialFileName(a4),d1
-		beq.s	mainloop
+		beq.s	check_initial_script
 
 		move.l	d6,d5		;'+' flag from cmdline
 		call	loadseg1
 
+check_initial_script
+		move.l	mon_InitialScriptName(a4),d0
+		beq.s	mainloop
+
+		move.l	d0,a0
+		call	exec_script
+
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
 mainloop	move.l	mon_StackPtr(a4),sp	;restore stack pointer
+		move.l	mon_ScriptList(a4),d2
+		beq.s	do_cmdline
 
-		lea	main_prompt(pc),A0
+		moveq	#0,d0
+		moveq	#0,d1
+		lib	Exec,SetSignal
+		btst	#SIGBREAKB_CTRL_C,d0
+		bne	break_error
+
+do_script	move.l	d2,a0
+		call	get_script_line
+		bra.s	do_command
+
+do_cmdline	lea	main_prompt(pc),A0
 		call	printstring_a0_window	;display prompt
 
 		moveq	#0,D0
 		call	GetInput
 
+do_command	lea	mon_InputBuf(a4),a3
 		moveq	#0,D0		;clear CTRL-C/D/E/F flags
 		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
 		lib	Exec,SetSignal
 
+		btst	#OPTB_CMDECHO,mon_Options(a4)
+		beq.s	do_cmd1
+
+		move.l	a3,a0
+		call	printstring_a0
+		emit	LF
+
+do_cmd1		call	skipspaces
+		cmp.b	#'.',(a3)	;label?
+		bne.s	exec_cmd
+
+; skip label
+1$		addq.l	#1,a3
+		move.b	(a3),d0
+		beq.s	3$
+		cmp.b	#SPACE,d0
+		beq.s	2$
+		cmp.b	#TAB,d0
+		beq.s	2$
+		cmp.b	#':',d0
+		bne.s	1$
+
+2$		addq.l	#1,a3
+3$		call	skipspaces
+
+exec_cmd	cmp.b	#';',(a3)		;comment?
+		beq	mainloop
 		tst.b	(A3)
-		bne.s	execute_command
+		bne	do_cmd2
 
 		move.l	mon_WinFile(a4),D0	;empty command line
 		cmp.l	mon_OutputFile(a4),D0
-		beq.s	mainloop
+		beq	mainloop
 
 		emit	LF
-		bra.s	mainloop
+		bra	mainloop
 
-execute_command	call	skipspaces
-		lea	command_names(pc),a0
+do_cmd2		lea	command_names(pc),a0
 		call	find_name
 
 		tst.l	d0
-		bmi	generic_error
+		bmi.s	unknown_command
 
 		move.l	a1,a3
 		call	skipspaces
@@ -340,6 +414,11 @@ execute_command	call	skipspaces
 		add.w	d0,a0
 		jsr	(a0)
 		bra	mainloop
+
+unknown_command	move.l	a3,d0
+		lea	unknown_cmd_fmt(pc),a0
+		call	printf_window
+		bra.s	error_com1
 
 ;#
 ;# error handling routines
@@ -351,6 +430,9 @@ out_range_error		bsr.s	errorhandler
 out_memory_error	bsr.s	errorhandler
 expression_error	bsr.s	errorhandler
 addrmode_error		bsr.s	errorhandler
+scriptonly_error	bsr.s	errorhandler
+undeflabel_error	bsr.s	errorhandler
+break_error		bsr.s	errorhandler
 		nop
 errorhandler	lea	error_routines+2(pc),a0
 		move.l	(sp)+,d0
@@ -359,7 +441,16 @@ errorhandler	lea	error_routines+2(pc),a0
 		lea	error_messages(pc),a0
 		call	getnth
 		call	printstring_a0_window
-		emitwin	LF
+error_com1	emitwin	LF
+error_com	move.l	mon_ScriptList(a4),d0
+		beq.s	1$
+		move.l	d0,a0
+		lea	sh_Name(a0),a1
+		move.l	a1,d0
+		move.l	sh_LineNum(a0),d1
+		lea	script_err_fmt(pc),a0
+		call	printf_window
+1$		call	free_all_scripts
 		bra	mainloop
 
 ;
@@ -393,6 +484,37 @@ hinfo		call	JUMP,printstring_a0
 		bra.s	hinfo
 
 ;
+;show version & date
+;
+		cmd	version
+
+		lea	version_msg(pc),a0
+		call	JUMP,printstring_a0
+
+;
+;quickhelp
+;
+		cmd	list_commands
+
+		lea	command_names(pc),a2
+list_cmd_loop	startline
+		lea	60(a3),a5
+1$		move.b	(a2)+,(a3)+
+		bne.s	1$
+		move.b	#SPACE,-1(a3)
+		tst.b	(a2)
+		beq.s	2$
+		cmp.l	a5,a3
+		bcs.s	1$
+2$		endline
+		call	printstring
+		call	CheckKeys
+		bne.s	9$
+		tst.b	(a2)
+		bne.s	list_cmd_loop
+9$		rts
+
+;
 ;*** EXIT FROM MONITOR ***
 ;
 		cmd	exit_monitor
@@ -418,6 +540,7 @@ cleanexit	move.l	mon_StackPtr(a4),sp
 		call	unload_seg		unload exefile, if necessary
 		call	remove_all_breaks	remove all breakpoints (free memory)
 		call	clear_all_variables
+		call	free_all_scripts
 
 		getbase Dos
 		move.l	mon_OutputFile(a4),D1	if output is redirected, close output file
@@ -427,6 +550,8 @@ cleanexit	move.l	mon_StackPtr(a4),sp
 
 04$		btst	#MONB_OWNWINDOW,mon_Flags(a4)
 		beq.s	05$
+		move.l	mon_Task(a4),a0
+		move.l	mon_OrigConTask(a4),pr_ConsoleTask(a4)
 		move.l	mon_WinFile(a4),D1
 		beq.s	05$
 		lib	Close			close window file
@@ -469,7 +594,16 @@ command		macro
 		bra	\1_cmd
 		endm
 
-command_names	dc.b	'?',0		;calculator
+command_names
+		dc.b	'??',0		;list commands
+		dc.b	'?',0		;calculator
+		dc.b	'exec',0	;execute script
+		dc.b	'quit',0	;return from script
+		dc.b	'goto',0	;script goto command
+		dc.b	'if',0		;script if command
+		dc.b	'pokel',0	;put longword in memory
+		dc.b	'pokew',0	;put word in memory
+		dc.b	'poke',0	;put byte in memory
 		dc.b	'@',0		;command line
 		dc.b	'^',0		;showtrap/baseptr
 		dc.b	'\',0		;newshell
@@ -487,6 +621,7 @@ command_names	dc.b	'?',0		;calculator
 		dc.b	'del',0		;delete file
 		dc.b	'dev',0		;set/show disk device
 		dc.b	'd',0		;disassemble
+		dc.b	'echo',0	;display text
 		dc.b	'u',0		;unload segment
 		dc.b	'l',0		;load segment (executable file)
 		dc.b	'sl',0		;show seglist
@@ -521,7 +656,7 @@ command_names	dc.b	'?',0		;calculator
 		dc.b	'opt',0		;set/reset options
 		dc.b	'o',0		;redirect
 		dc.b	'i',0		;display info text
-
+		dc.b	'ver',0		;show version & date
 		dc.b	'vt',0		;list tasks
 		dc.b	'vl',0		;list libraries
 		dc.b	'vd',0		;list devices
@@ -533,10 +668,18 @@ command_names	dc.b	'?',0		;calculator
 
 		ds.w	0
 
-command_table	command	calculator
+command_table	command	list_commands
+		command	calculator
+		command	exec_script
+		command	quit_script
+		command	goto
+		command	if
+		command	pokel
+		command pokew
+		command poke
 		command	cmdline
 		command	showtrap
-		command	new_cli
+		command	shell
 		command	boot_check
 		command	block_check
 		command	digisound
@@ -551,6 +694,7 @@ command_table	command	calculator
 		command	deletefile
 		command	setshow_device
 		command	disassem
+		command	echo
 		command	unloadseg
 		command	loadseg
 		command	showseglist
@@ -585,7 +729,7 @@ command_table	command	calculator
 		command	options
 		command	redirect
 		command	info
-
+		command	version
 		command list_tasks
 		command list_libraries
 		command list_devices
@@ -594,9 +738,9 @@ command_table	command	calculator
 		command list_semaphores
 
 **** HELP TEXT ****
-help_text	dc.b	TAB,TAB,'-- Amiga Monitor v'
+help_text	dc.b	TAB,'-- Amiga Monitor v'
 		VERSION
-		dc.b	' help (i=info, x=exit) --',LF
+		dc.b	' help (??=list cmds, i=info, x=exit) --',LF
 		dc.b	'o [name]',TAB,':redirect output'
 		dc.b	'| vt,vl,vd,vr,vp,vs :show tasks/libs/devs/etc',LF
 		dc.b	'dir [name]',TAB,': directory',TAB
@@ -646,7 +790,7 @@ info_text	dc.b LF
 		VERSION
 		dc.b	')',LF
 		dc.b	TAB,TAB,'---------------------------',LF
-		dc.b	TAB,' Copyright 1987-1991 by Timo Rossi',LF,LF
+		dc.b	TAB,'   Copyright 1987-1991 by Timo Rossi',LF,LF
 		dc.b	'   This is a machine code monitor/debugger for the Amiga.',LF
 		dc.b	' Pressing the HELP-key displays a list of commands.',LF,LF
 		dc.b	' Note1: Some of the assembler instructions require the',LF
@@ -654,7 +798,8 @@ info_text	dc.b LF
 		dc.b	' Note2: the default number base is hex, use ''_'' as prefix',LF
 		dc.b	' for decimal or change the base with the ba-command.',LF
 		dc.b	' You can use expressions in most places where',LF
-		dc.b	' numbers are needed. This version also supports symbols.',LF,LF
+		dc.b	' numbers are needed. This version also supports symbols',LF
+		dc.b	' and has a built-in script language.',LF,LF
 		dc.b	' I hope you find this program useful, but if you find any bugs',LF
 		dc.b	' in this program, please let me know.',LF,LF
 		dc.b	' Read the ''mon.doc''-file for more information.',LF,0
@@ -686,17 +831,25 @@ welcome_txt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
 main_prompt	dc.b	'-> ',0
 
 usage_txt	dc.b	'Usage: [run] mon [-w<width>] [-h<height>] '
-		dc.b	'[-o<opt>] [[+] filename [cmdline]]',LF,0
+		dc.b	'[-o<opt>]',LF
+		dc.b	'    [-s<script>] [[+] filename [cmdline]]',LF,0
 win_openerr_txt	dc.b	'Can''t open window',LF,0
 
 cls_str		dc.b	ESC,'[H',ESC,'[J',0
 cls2_str	dc.b	12,12,0
 
-error_messages	dc.b	'???',0			; 0
+unknown_cmd_fmt	dc.b	"Unknown command '%s'",0
+
+script_err_fmt	dc.b	"in script '%s' line %ld",LF,0
+
+error_messages	dc.b	'Syntax error',0	; 0
 		dc.b	'odd address',0		; 1
 out_range_txt	dc.b	'out of range',0	; 2
 		dc.b	'out of memory',0	; 3
 		dc.b	'invalid expression',0	; 4
 		dc.b	'illegal addrmode',0	; 5
+		dc.b	'script only',0		; 6
+		dc.b	'undefined label',0	; 7
+break_txt	dc.b	'***Break',0		; 8
 
 		end

@@ -92,7 +92,6 @@ disasmloop	move.l	a5,d0
 		call	printstring
 		call	CheckEnd
 		bne.s	disasmloop
-
 		move.l	a5,mon_CurrentAddr(a4)
 		rts
 

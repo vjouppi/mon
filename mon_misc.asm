@@ -20,6 +20,7 @@
 ;
 
 		xdef	monitor_code_end
+		xref	break_txt
 
 ;
 ;start addr in D5, length in D6
@@ -109,8 +110,11 @@ waitspc		;space pressed, wait for another space or Ctrl-C
 
 nospc		cmp.w	#CtrlC,D0
 		bne.s	nobreak
-break		lea	break_txt(pc),A0	;message '*** break ***'
+
+break		lea	break_txt(pc),A0
 		call	printstring_a0_window
+		emitwin	LF
+		call	free_all_scripts
 		moveq	#-1,D0
 		bra.s	brk_1
 
@@ -133,7 +137,10 @@ brk_1		movem.l	(sp)+,D2/a6
 		tst.b	(A3)
 		beq.s	param9
 		call	GetExpr
-		move.l	D0,mon_EndAddr(a4)
+		tst.l	d0
+		bne.s	1$
+		moveq	#1,d0	;EndAddr zero means that none is used...
+1$		move.l	D0,mon_EndAddr(a4)
 		moveq	#0,D7
 		rts
 
@@ -187,7 +194,6 @@ cont		moveq	#-1,D0
 **** text data ****
 
 range_fmt	dc.b	'%ld bytes read from $%08lx to $%08lx',LF,0
-break_txt	dc.b	'*** Break ***',LF,0
 
 		cnop	0,4
 

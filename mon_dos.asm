@@ -2,10 +2,16 @@
 ; mon_dos.asm
 ;
 
+;
+; note: this module currently requires 2.0 includes to assemble
+;
+
 		nolist
 		include "exec/types.i"
 		include "exec/memory.i"
-		include "libraries/dos.i"
+		include	"exec/libraries.i"
+		include "dos/dos.i"
+		include	"dos/dostags.i"
 		include "offsets.i"
 		list
 
@@ -14,7 +20,7 @@
 ; This module defines the following command routines:
 ;
 ;	directory,loadseg,unloadseg,showseglist,abs_save,abs_load,redirect
-;	new_cli,deletefile,current_dir
+;	shell,deletefile,current_dir
 ;
 ; and the following public subroutine:
 ;
@@ -77,7 +83,7 @@ dir_display_entry
 dir_error	lib	IoErr
 dir_error1	tst.l	D0
 		beq.s	dir_end
-		bsr	DosErr
+		call	DosErr
 		bra.s	dir_end
 
 dir_show_free_blocks
@@ -172,10 +178,15 @@ oldseg		;message 'unload old segment first'
 		call	JUMP,printstring_a0_window
 
 segerr		;come here if LoadSeg failed
-DosIoErr	lib	IoErr
+
+ 		pub	DosIoErr
+
+DosIoErr	lib	Dos,IoErr
 
 *** PRINT DOS ERROR NUMBER ***
-DosErr		;error number in D0
+		pub	DosErr
+
+		;error number in D0
 		cmp.l	#ERROR_OBJECT_NOT_FOUND,d0
 		beq.s	dos_err205
 		lea	dos_error_fmt(pc),a0
@@ -365,7 +376,7 @@ seglist_endline	endline
 		lib	Dos,Open
 		move.l	D0,D7
 		bne.s	abs_save_1
-		bra	DosIoErr
+		call	JUMP,DosIoErr
 
 abs_save_1	move.l	D7,D1
 		move.l	a5,D2
@@ -420,7 +431,7 @@ abs_load_1	move.l	D7,D1
 
 redir1		call	skipspaces
 		tst.b	(A3)
-		beq.s	redir9
+		beq.s	ret_02
 
 		call	GetName
 		move.l	d0,d3
@@ -444,30 +455,91 @@ redir_no_oldfile
 		beq	DosIoErr
 
 		move.l	D0,mon_OutputFile(a4)
-redir9		rts
+ret_02		rts
 
 *** NEW SHELL/CLI ***
 ;
 ; Now tries first to start a shell...TR 1990-05-24
+; -- and now can also be used to give any cli/shell commands.. TR 1991-11-03
 ;
-		cmd	new_cli
+		cmd	shell
 
+		call	GetName
+		getbase	Dos
+		move.l	mon_WinFile(a4),d3
+		move.l	d0,d5
+		beq.s	new_shell
+
+		lea	con_name(pc),a0
+		move.l	a0,d1
+		move.l	#MODE_OLDFILE,d2
+		lib	Open
+		move.l	d0,d4
+		beq.s	ret_02
+
+		move.l	d3,d0
+		moveq	#0,d1
+		call	SetConMode
+
+		move.l	d5,d1
+		bsr.s	shellcmd
+
+		move.l	d3,d0
+		moveq	#1,d1
+		call	SetConMode
+		move.l	d4,d1
+		jlib	Close
+
+new_shell	move.l	d3,d4
+		moveq	#0,d3
 		lea	NewShellCom(pc),A0
 		move.l	A0,D1
-		moveq	#0,D2
-		move.l	mon_WinFile(a4),D3
-		lib	Dos,Execute
+		bsr.s	shellcmd
 		tst.l	d0
-		beq.s	01$
-		lib	IoErr
-		tst.l	d0
-		beq.s	redir9
+		beq.s	ret_02
 
-01$		lea	NewCLICom(pc),a0
-		move.l	a0,d1	
+		lea	NewCLICom(pc),a0
+		move.l	a0,d1
+
+shellcmd	cmp.w	#36,LIB_VERSION(a6)
+		bcc.s	use_system
+; on 1.3, use Execute()
 		moveq	#0,d2
-		move.l	mon_WinFile(a4),d3
-		jlib	Execute
+		lib	Execute
+		tst.l	d0
+		beq.s	1$
+		lib	IoErr
+		rts
+1$		moveq	#1,d0
+		rts
+
+; on 2.0 use System()
+use_system	lea	-20(sp),sp
+		move.l	sp,a0
+
+		ifne	SYS_Output-$80000022
+		FAIL	SYS_Output Tag value wrong!
+		endc
+
+		moveq	#$45,d0
+		ror.l	#1,d0		;now d0 should be SYS_Output...
+		move.l	d0,(a0)+
+		move.l	d4,(a0)+
+		subq.l	#SYS_Output-SYS_Input,d0
+		move.l	d0,(a0)+
+		move.l	d3,(a0)+
+
+		ifne	TAG_DONE
+		move.l	#TAG_DONE,(a0)
+		endc
+		ifeq	TAG_DONE
+		clr.l	(a0)
+		endc
+
+		move.l	sp,d2
+		lib	SystemTagList
+		lea	20(sp),sp
+		rts
 
 *** DELETE A FILE ***
 		cmd	deletefile
@@ -516,6 +588,7 @@ freeblocks_fmt	dc.b	'%ld Blocks free.',LF,0
 
 NewShellCom	dc.b	'NewShell',0
 NewCLICom	dc.b	'NewCLI',0
+con_name	dc.b	'*',0
 
 hunktypes_txt	dc.b	'code',0
 		dc.b	'data',0

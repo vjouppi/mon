@@ -33,9 +33,11 @@
 *							 *
 * operations supported (32 bit integer arithmetic):	 *
 *							 *
+* == != < > <= >=	-- new in v1.52			 *
+*							 *
 * + - * / %  -- add, subtract, multiply, divide, modulo  *
 *							 *
-* !| & ^      -- bitwise or, and, xor			 *
+* | & ^      -- bitwise or, and, xor			 *
 * << >>       -- left & right bit shifts		 *
 * - + ~       -- unary plus, minus, bit complement	 *
 *							 *
@@ -63,31 +65,108 @@
 		pub	GetExpr
 
 		movem.l	d1-d2/a0-a1/a6,-(sp)
+		bsr	get_ex0
+		move.l	d0,d2
+;
+; ==, !=, <, >, <=, >=, also <>, =<, =>
+;
+get_expr_loop	call	skipspaces
+		move.b	(a3)+,d0
+		cmp.b	#'=',d0
+		bne.s	ex1
+		cmp.b	#'<',(a3)	;=< ?
+		beq.s	lt_eq
+		cmp.b	#'>',(a3)	;=> ?
+		beq.s	gt_eq
+		cmp.b	#'=',(a3)+	;==
+		bne	expression_error
+		bsr.s	get_ex0
+		cmp.l	d0,d2
+		beq.s	ex_true
+
+ex_false	moveq	#0,d2
+		bra.s	get_expr_loop
+
+ex_true		moveq	#1,d2
+		bra.s	get_expr_loop
+
+ex1		cmp.b	#'!',d0
+		bne.s	ex2
+		cmp.b	#'=',(a3)	;!=
+		bne	expression_error
+not_eq		addq.l	#1,a3
+		bsr	get_ex0
+		cmp.l	d0,d2
+		bne.s	ex_true
+		bra.s	ex_false
+
+ex2		cmp.b	#'<',d0
+		bne.s	ex3
+		cmp.b	#'>',(a3)
+		beq.s	not_eq
+		cmp.b	#'=',(a3)
+		beq.s	lt_eq
+		bsr.s	get_ex0
+		cmp.l	d0,d2	;<
+		blt.s	ex_true
+		bra.s	ex_false
+
+lt_eq		addq.l	#1,a3	;<=
+		bsr.s	get_ex0
+		cmp.l	d0,d2
+		ble.s	ex_true
+		bra.s	ex_false
+
+ex3		cmp.b	#'>',d0
+		bne.s	ex4
+		cmp.b	#'=',(a3)
+		beq.s	gt_eq
+		bsr.s	get_ex0
+		cmp.l	d0,d2	;>
+		bhi.s	ex_true
+		bra.s	ex_false
+
+gt_eq		addq.l	#1,a3	;>=
+		bsr.s	get_ex0
+		cmp.l	d0,d2
+		bge.s	ex_true
+		bra.s	ex_false
+
+ex4		subq.l	#1,a3
+		move.l	d2,d0
+		movem.l	(sp)+,d1-d2/a0-a1/a6
+		rts
+
+;
+; +/-
+;
+get_ex0		move.l	d2,-(sp)
 		bsr.s	get_ex1
 		move.l	d0,d2
 
-get_expr_loop	call	skipspaces
+get_ex0_loop	call	skipspaces
 		move.b	(a3)+,d0
 		cmp.b	#'+',d0
 		bne.s	expr1
 		bsr.s	get_ex1
 		add.l	d0,d2
-		bra.s	get_expr_loop
+		bra.s	get_ex0_loop
+
 expr1		cmp.b	#'-',d0
 		bne.s	expr2
 		bsr.s	get_ex1
 		sub.l	d0,d2
-		bra.s	get_expr_loop
-expr2		cmp.b	#'!',d0
-		beq.s	bit_or
-		cmp.b	#'|',d0
+		bra.s	get_ex0_loop
+
+expr2		cmp.b	#'|',d0
 		bne.s	expr3
-bit_or		bsr.s	get_ex1
+		bsr.s	get_ex1
 		or.l	d0,d2
-		bra.s	get_expr_loop
+		bra.s	get_ex0_loop
+
 expr3		subq.l	#1,a3
 		move.l	d2,d0
-		movem.l	(sp)+,d1-d2/a0-a1/a6
+		move.l	(sp)+,d2
 		rts
 
 get_ex1		move.l	d2,-(sp)
@@ -102,6 +181,7 @@ get_ex1_loop	call	skipspaces
 		bsr	multiply
 		move.l	d0,d2
 		bra.s	get_ex1_loop
+
 ex11		cmp.b	#'/',d0
 		bne.s	ex12
 		bsr.s	get_ex2
@@ -111,6 +191,7 @@ ex11		cmp.b	#'/',d0
 		bsr	divide
 		move.l	d0,d2
 		bra.s	get_ex1_loop
+
 ex12		cmp.b	#'%',d0
 		bne.s	ex13
 		bsr.s	get_ex2
@@ -120,16 +201,19 @@ ex12		cmp.b	#'%',d0
 		bsr	modulo
 		move.l	d0,d2
 		bra.s	get_ex1_loop
+
 ex13		cmp.b	#'&',d0
 		bne.s	ex14
 		bsr.s	get_ex2
 		and.l	d0,d2
 		bra.s	get_ex1_loop
+
 ex14		cmp.b	#'^',d0
 		bne.s	ex15
 		bsr.s	get_ex2
 		eor.l	d0,d2
 		bra.s	get_ex1_loop
+
 ex15		subq.l	#1,a3
 		move.l	d2,d0
 		move.l	(sp)+,d2
@@ -142,18 +226,22 @@ get_ex2_loop	call	skipspaces
 		move.b	(a3)+,d0
 		cmp.b	#'<',d0
 		bne.s	ex21
-		cmp.b	#'<',(a3)+
-		bne	expression_error		;syntax error
+		cmp.b	#'<',(a3)
+		bne.s	ex21
+		addq.l	#1,a3
 		bsr.s	get_ex3
 		lsl.l	d0,d2
 		bra.s	get_ex2_loop
+
 ex21		cmp.b	#'>',d0
 		bne.s	ex22
-		cmp.b	#'>',(a3)+
-		bne	expression_error		;syntax error
+		cmp.b	#'>',(a3)
+		bne.s	ex22
+		addq.l	#1,a3
 		bsr.s	get_ex3
 		lsr.l	d0,d2
 		bra.s	get_ex2_loop
+
 ex22		subq.l	#1,a3
 		move.l	d2,d0
 		move.l	(sp)+,d2
@@ -457,11 +545,15 @@ r_avail		bsr	get_first_arg
 ;
 r_port		move.w	#PortList,d1
 		bra.s	r_execlist
+
 r_lib		move.w	#LibList,d1
 		bra.s	r_execlist
+
 r_dev		move.w	#DeviceList,d1
 		bra.s	r_execlist
+
 r_res		move.w	#ResourceList,d1
+
 r_execlist	call	skipspaces
 		cmp.b	#'(',(a3)+
 		bne	expression_error
@@ -577,6 +669,7 @@ getnum3		cmp.b	d2,d1
 		add.l	d3,d0
 		add.l	d1,d0
 		bra.s	getnum1
+
 getnum9		subq.l	#1,a3
 		cmp.l	a3,a0
 		eor	#1,ccr		complement carry
@@ -591,6 +684,7 @@ strnum1		move.b	(a3)+,d1
 strnum1a	lsl.l	#8,d0
 		move.b	d1,d0
 		bra.s	strnum1
+
 strnum2		cmp.b	#'''',(a3)+
 		beq.s	strnum1a
 		subq.l	#1,a3
@@ -616,6 +710,7 @@ gt2a		tst.b	d2
 		move.l	a2,a3
 		subq.l	#1,a3
 		bra.s	gt_ret
+
 gt3		cmp.b	d1,d2
 		beq.s	gt2
 

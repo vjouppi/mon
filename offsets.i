@@ -40,6 +40,8 @@ _LVOWaitForChar		equ	-204
 _LVOParentDir		equ	-210
 _LVOIsInteractive	equ	-216
 _LVOExecute		equ	-222
+;--
+_LVOSystemTagList	equ	-$25E
 *** File exec_lib.i ***
 _LVOSupervisor		equ	-30
 _LVOExitIntr		equ	-36
@@ -142,6 +144,8 @@ _LVOSumKickData		equ	-612
 _LVOAddMemList		equ	-618
 _LVOCopyMem		equ	-624
 _LVOCopyMemQuick	equ	-630
+;--
+_LVOCacheClearU		equ	-$27c
 *** File graphics_lib.i ***
 _LVOBltBitMap		equ	-30
 _LVOBltTemplate		equ	-36

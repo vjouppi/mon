@@ -16,8 +16,11 @@
 ; This module defines the following public subroutines:
 ;
 ;	tolower,isalnum,isalpha,to_printable,skipspaces,getnth,find_name
-;	putstring,PutLong,mgetw,CreatePort,DeletePort,CreateIOReq,DeleteIO
-;	FindConUnit,SetConMode,sendpacket,GetName
+;	putstring,PutLong,mgetw
+;
+;	CreatePort,DeletePort,CreateIOReq,DeleteIO
+;	FindConUnit,SetConMode,SendPacket
+;
 ;	put_signed_hexnum,put_hexnum,put_hexnum1,put_number
 ;	puthex8,puthex68,puthex68a,put_decimal_number
 ;
@@ -92,9 +95,13 @@ yes		sec
 ;
 ; **** SKIP SPACES ****
 ;
+; this only modifies a3
+;
 		pub	skipspaces
 
 1$		cmp.b	#SPACE,(A3)+
+		beq.s	1$
+		cmp.b	#TAB,-1(a3)
 		beq.s	1$
 		subq.l	#1,A3
 		rts
@@ -298,7 +305,7 @@ cr_ioreq_end	rts
 		lea	mon_OutputBuf(a4),a1	we use output buffer for InfoData
 		move.l	a1,d1
 		lsr.l	#2,d1			infodataptr APTR->BPTR
-		call.s	sendpacket
+		call.s	SendPacket
 		tst.l	d0
 		beq	FindCU_End
 
@@ -321,7 +328,7 @@ FindCU_End	rts
 		move.l	fh_Type(a0),a0
 		move.l	#ACTION_SCREEN_MODE,d0
 ;
-; drop to sendpacket...
+; drop to SendPacket...
 ;
 
 *** SEND A DOS PACKET TO A HANDLER ***
@@ -339,7 +346,7 @@ FindCU_End	rts
 * registers affected:
 *  d0/d1/a0/a1
 *
-		pub	sendpacket
+		pub	SendPacket
 
 		movem.l	a2-a3/a6,-(sp)
 		getbase	Exec			only exec will be called here
@@ -404,59 +411,6 @@ sp8		move.l	sp_Pkt+dp_Res2(a2),-(sp)	save result codes to stack
 sp9		movem.l	(sp)+,a2-a3/a6
 		rts
 
-*{
-;
-; string=GetName(cmdline)
-;   d0             a3
-;
-; Inputs:
-;  a3  -  Pointer to string or command line
-;
-; Returns:
-;  d0  -  Pointer to string argument or zero if failed.
-;  a3  -  Updated to the position after the end of the argument in the string.
-;
-; Gets the next string argument from command line pointed by a3 to
-; d0. returns zero if no valid string argument found. Arguments are
-; separated by spaces and can enclosed in double quotes if they contain
-; spaces. After the call, a3 points to the command line to a position
-; immediately after the argument.
-; NOTE: The command line itself is modified as this routine null-terminates
-; the strings it returns.
-;
-; modifies only registers d0 and a3.
-;
-; no libraries used.
-;
-*}
-
-		pub	GetName
-
-01$		cmp.b	#' ',(a3)+
-		beq.s	01$		;skip spaces
-		bcs.s	noname
-		subq.l	#1,a3
-		cmp.b	#'"',(a3)
-		beq.s	quoted
-		move.l	a3,D0
-
-getname1	cmp.b	#' ',(a3)+
-		bhi.s	getname1
-		clr.b	-1(a3)
-		rts
-
-quoted		addq.l	#1,a3
-		move.l	a3,D0
-
-getname2	cmp.b	#' ',(a3)
-		bcs.s	noname
-		cmp.b	#'"',(a3)+
-		bne.s	getname2
-		clr.b	-1(a3)
-		rts
-
-noname		moveq	#0,D0
-		rts
 
 *** HEX OUTPUT ROUTINES ***
 ;
@@ -549,8 +503,6 @@ shex1		moveq	#-2,d1
 ;
 ; number output routine d0:number d1:length d2:base
 ;
-another_dummy_label_here_to_separate_blocks_with_identical_local_labels
-
 		movem.l	D2-d4,-(sp)
 		move.w	d1,d4
 		move.w	d2,d3

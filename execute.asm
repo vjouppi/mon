@@ -12,11 +12,6 @@
 		include	"monitor.i"
 		include "breakpoint.i"
 
-
-		ifnd	_LVOCacheClearU
-_LVOCacheClearU	equ	-$27c
-		endc
-
 ;
 ; This module defines the following command routines:
 ;
@@ -180,7 +175,6 @@ break_list_loop	tst.l	d4
 		call	printf
 		call	CheckKeys
 		bne	brset9
-
 		move.l	brk_Next(a5),d4
 		addq.l	#1,d3
 		bra.s	break_list_loop
@@ -425,7 +419,7 @@ special_go_here
 
 *** CONTROLS RETURNS HERE AFTER THE Jsr COMMAND ***
 returncode	movem.l	d0-d2/a0-a1/a4/a6,-(sp)
-		lib	Exec,GetCC
+		lib	AbsExec,GetCC
 		move.l	d0,d2
 		clra	a1
 		lib	FindTask
@@ -452,7 +446,7 @@ returncode	movem.l	d0-d2/a0-a1/a4/a6,-(sp)
 *** TASK TRAP CODE ***
 trapreturn	;Note! We are in supervisor mode!
 		movem.l	d0/a0/a4/a6,-(sp)
-		getbase	Exec,a6
+		getbase	AbsExec,a6
 		move.l	ThisTask(a6),a4
 		move.l	TC_Userdata(a4),a4
 

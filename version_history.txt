@@ -456,3 +456,19 @@ lm;		  and trap numbers.
 ;		- added one lsl.l #2,d0 in loadsym.asm -- without that it
 ;		  displayed bss hunks split in a strange way...
 ;
+;  1991-12-02/03 --> 1.52/1.53
+;		- added stringstuff.asm
+;		- GetName now calls EscapeString
+;		- assembler local labels (starting with a digit) are
+;		  alphabetized after other chars (except '.')
+;		- scripts, goto, if
+;		- \ can be used to run any cli/shell command
+;		- monitor sets pr_ConsoleTask to its own window
+;		- \ uses now System() on AmigaDOS 2.0
+;		- added ==, !=, <, >, <=, >= to the expression parser
+;		- echo commmand now has [expr] syntax for number output
+;
+;
+; 1991-12-??(23) --> 1.54b
+;		- poke, pokew, pokel
+;

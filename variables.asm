@@ -258,16 +258,30 @@ addvar_ret	rts
 ; string pointers in a0 and a1
 ;
 ; note: '.' is special. it comes last in comparison.
+; digits 0..9 are also special (they come after normal characters,
+; but before '.')
 ;
-str_comp_ch	move.b	(a1)+,d1
-		cmp.b	#'.',d1
-		bne.s	1$
-		st	d1
-1$		move.b	(a0)+,d0
-		cmp.b	#'.',d0
+str_comp_ch	moveq	#0,d0
+		moveq	#0,d1
+		move.b	(a1)+,d1
+		cmp.b	#'9',d1
+		bhi.s	2$
+		cmp.b	#'0',d1
+		bcs.s	1$
+		bset	#8,d1
+1$		cmp.b	#'.',d1
 		bne.s	2$
-		st	d0
-2$		cmp.b	d0,d1
+		not.w	d1
+2$		move.b	(a0)+,d0
+		cmp.b	#'9',d0
+		bhi.s	4$
+		cmp.b	#'0',d0
+		bcs.s	3$
+		bset	#8,d0
+3$		cmp.b	#'.',d0
+		bne.s	4$
+		not.w	d0
+4$		cmp.w	d0,d1
 		bne.s	str_comp_end
 		tst.b	d0
 		bne.s	str_comp_ch

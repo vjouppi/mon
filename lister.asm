@@ -393,7 +393,7 @@ t_states	dc.b	'iacrwez?'
 lib_hdr_txt	dc.b	'  Node    Ver  Rev  Cnt   Name',LF,0
 lib_list_fmt	dc.b	'%08lx %4ld %4ld %4ld   %s',LF,0
 port_hdr_txt	dc.b	'  Node  SigBit Flags  Name',LF,0
-port_list_fmt	dc.b	'%08lx   %2ld   %2ld    %s',LF,0
+port_list_fmt	dc.b	'%08lx  %3ld   %2ld    %s',LF,0
 res_hdr_txt	dc.b	'  Node     Name',LF,0
 res_list_fmt	dc.b	'%08lx   %s',LF,0
 

@@ -5,7 +5,8 @@
 ;
 ; This module defines the following command routines:
 ;
-;	setshow_base,cmdline,calculator,options
+;	setshow_base,cmdline,calculator,options,echo
+;	pokel,pokew,poke
 ;
 ; And the following public subroutine:
 ;
@@ -13,6 +14,7 @@
 ;
 
 		xref	generic_error
+		xref	odd_address_error
 
 ;
 ; display/change default number base
@@ -66,11 +68,46 @@ set_cmd_line	lea	mon_CmdLineBuf(a4),a1
 		move.l	a2,mon_AddrRegs(a4)		;set a0
 		rts
 
+;
+; display text command
+;
+		cmd	echo
+
+echo_loop	call	skipspaces
+		cmp.b	#'[',(a3)
+		beq.s	echo_dec
+		cmp.b	#'$',(a3)
+		beq.s	echo_hex
+		call	GetName
+		tst.l	d0
+		beq.s	echo_end
+		move.l	d0,a0
+		call	printstring_a0
+
+echo_space	emit	SPACE
+		bra.s	echo_loop
+
+echo_end	moveq	#LF,d0
+		call	JUMP,ChrOut
+
+echo_dec	addq.l	#1,a3
+		call	GetExpr
+		lea	echo_dec_fmt(pc),a0
+echo_num_com	call	printf
+		cmp.b	#']',(a3)+
+		bne	generic_error
+		bra.s	echo_space
+
+echo_hex	addq.l	#1,a3
+		cmp.b	#'[',(a3)+
+		bne	generic_error
+		call	GetExpr
+		lea	echo_hex_fmt(pc),a0
+		bra.s	echo_num_com
 
 *** Calculator command ***
 		cmd	calculator
 
-		call	tolower
 		tst.b	(a3)
 		bne.s	01$
 		lea	calc_prompt(pc),a0
@@ -211,11 +248,44 @@ skip_opt_str	tst.b	(a2)+
 		move.b	mon_Options(a4),d0
 		lea	optvalue_fmt(pc),a0
 		call	JUMP,printf
+;
+; poke[w|l]
+;
+		cmd	poke
+
+		call	GetExpr
+		move.l	d0,a2
+		call	GetExpr
+		move.b	d0,(a2)
+		rts
+
+		cmd	pokew
+
+		call	GetExpr
+		btst	#0,d0
+		bne	odd_address_error
+		move.l	d0,a2
+		call	GetExpr
+		move.w	d0,(a2)
+		rts
+
+		cmd	pokel
+
+		call	GetExpr
+		btst	#0,d0
+		bne	odd_address_error
+		move.l	d0,a2
+		call	GetExpr
+		move.l	d0,(a2)
+		rts
 
 sign_txt	dc.b	'unsigned',0
 base_fmt	dc.b	'Base is %ld',LF,0
 cmdline_prompt	dc.b	'Cmdline> ',0
 calc_prompt	dc.b	'Calc> ',0
+
+echo_hex_fmt	dc.b	'%lx',0
+echo_dec_fmt	dc.b	'%ld',0
 
 option_fmt	dc.b	'(%ld) %s: %s',LF,0
 optvalue_fmt	dc.b	'Option flag value %02lx hex',LF,0
@@ -225,6 +295,7 @@ on_txt		dc.b	'on',0
 option_strings	dc.b	'Narrow disassembly',0
 		dc.b	'8BitChars printable',0
 		dc.b	'Dumb terminal',0
+		dc.b	'Echo commands',0
 		dc.b	0
 
 		end

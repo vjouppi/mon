@@ -603,8 +603,6 @@ p_addr		startline
 ;  %dl -  decimal long
 ;  %a  -  hex address
 ;  %da -  decimal address
-;  \n  -  linefeed
-;
 ;
 		cmd	fmt_memdisplay
 
@@ -644,8 +642,6 @@ fmt_memdisp_loop
 
 1$		move.b	(a2)+,d0
 		beq.s	p_end
-		cmp.b	#'\',d0
-		beq.s	p_esc
 		cmp.b	#'%',d0
 		bne.s	1$
 
@@ -672,16 +668,6 @@ fmt_memdisp_loop
 		add.w	(a0),a0
 		jsr	(a0)
 		bra	fmt_memdisp_loop
-
-p_esc		move.b	(a2)+,d0
-		beq.s	p_end
-		cmp.b	#'n',d0
-		bne.s	p_str
-		subq.l	#2,a2
-		bsr.s	p_putstr
-		addq.l	#2,a2
-		emit	LF
-		bra.s	p_end_test
 
 p_str		bsr.s	p_putstr
 
