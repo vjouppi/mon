@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.26 instructions
+                 Amiga Monitor v1.27 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -385,6 +385,13 @@ q [addr] -- QuickTrace (execute until flow-control instruction)
  until it encounters a program flow control instruction (jump, branch,
  subroutine call or return, trap).
 
+z -- skip current instruction
+ This command can be used to advance the PC register over one instruction.
+ Note that this does not actually execute or trace code, it only changes
+ the monitor internal register values. An address can also be given as
+ a parameter to this command but it is normally not useful (the current
+ PC value will normally be used).
+
 Note: there is no easy way to run BCPL programs (CLI commands) or other
 programs that use the internal BCPL library from the monitor.
 
@@ -486,13 +493,14 @@ dev -- set/show current disk device
   = <addr> -- if there is a DOS-format disk block read into memory at <addr>,
  calculates the correct checksum for the block and stores it in the block.
  Displays old and new checksums. This command is useful if use use the
- monitor as a disk editor.
+ monitor as a disk editor. Addr must be even.
 
 #  -- Corrects bootblock checksum
  Usage:
   # <addr> -- if there is a disk bootblock (2 disk blocks, 1024 bytes) read
  into memory at <addr>, calculates a new checksum for the bootblock and stores
  it in the bootblock (in memory). Displays old and new checksums.
+ Addr must be even.
 
 !  -- Play digisound
  Usage:
@@ -524,6 +532,12 @@ x -- Exit
 
 Version history:
 ----------------
+1.27 ->
+ - disk block/bootblock checksum functions and jump/go/trace etc. now
+   check properly for odd addresses.
+ - 'odd address'-error message
+ - skip instruction-command
+ - Exit() now returns back to the monitor.
 1.26 ->
  - added hend() and nhunks-functions to the expression parser.
  - added command line options for window width and height
@@ -609,7 +623,7 @@ Version history:
 
 
 
-Amiga Monitor v1.26 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.27 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
 way of distribution is the zoo-file 'mon126.zoo'.

@@ -17,6 +17,7 @@
 * v1.23 -> last mod. 1990-01-08    *
 * v1.24 -> last mod. 1990-01-13    *
 * v1.26 -> last mod. 1990-05-25    *
+* v1.27 -> last mod. 1990-06-26    *
 *                                  *
 ************************************
 
@@ -335,6 +336,15 @@
 ;		  * initial file name to load from command line
 ;		  * usage message
 ;
+;   1990-06-26 --> v1.27
+;		- disk block check and bootblock checksum now check
+;		  properly for odd addresses.
+;		- jump/go/trace now report error if current PC is odd
+;		  (check added in getpc-routine)
+;		- added 'skip next instruction'-command 'z'
+;		- if a program calls Exit() when it is being run from the
+;		  monitor, control returns back to the monitor.
+;
 
 		include	'exec/types.i'
 		include	'include.i'
@@ -344,7 +354,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.26'
+		dc.b	'1.27'
 		endm
 
 *** macro to display a single character ***
@@ -406,6 +416,9 @@ DNBUFSIZE	equ	50	;length of disk device name buffer
 
 DISKBLOCKSIZE	equ	512	; 9
 DISKBLOCKSHIFT	equ	9	;2 = 512
+BOOTBLOCKSIZE	equ	2*DISKBLOCKSIZE
+
+MONSTACK	equ	2000
 
 ILLEGAL		equ	$4AFC	;illegal instruction (used by breakpoints)
 
@@ -433,6 +446,8 @@ ILLEGAL		equ	$4AFC	;illegal instruction (used by breakpoints)
 		 APTR	DosBase		;DOS library base
 		 APTR	WBenchMsg	;Workbench startup message pointer
 		 APTR	MyTask		;pointer to TCB of monitor process
+		 LONG	StackSize	;monitor stack size
+		 APTR	OldRetAddr	;monitor process pr_ReturnAddr when monitor was started
 		 APTR	OldTrapCode	;task trap code when monitor was started
 		 APTR	OldUserData	;task user data when monitor was started
 
@@ -471,6 +486,7 @@ ILLEGAL		equ	$4AFC	;illegal instruction (used by breakpoints)
 ; processor register storage
 		 STRUCT	DataRegs,8*4	;data registers
 		 STRUCT	AddrRegs,8*4	;address registers
+RegSP		equ	AddrRegs+7*4
 		 APTR	RegPC		;program counter
 ;
 ; note: the following is because move ea,ccr moves a word and ignores
@@ -582,6 +598,7 @@ main		move.l	#MonitorData_SIZE,d0
 		beq	exit10
 		move.l	d0,a5
 
+		move.l	4(sp),StackSize(a5)
 		move.l	d5,WBenchMsg(a5)
 		move.l	a4,MyTask(a5)
 
@@ -708,7 +725,8 @@ cmdline_done
 		move.l	TC_Userdata(a0),OldUserData(a5)	; & UserData
 		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
 		move.l	a5,TC_Userdata(a0)
-
+; save pr_ReturnAddr pointer
+		move.l	pr_ReturnAddr(a0),OldRetAddr(a5)
 ;
 ; find pointer to intuition window structure of the monitor output window
 ; also find pointer to the console device unit structure
@@ -740,14 +758,26 @@ cmdline_done
 ; set the stack pointer
 ;
 		move.l	sp,a0
-		sub.w	#2000,a0	;a safe area from this task's stack
+		sub.w	#MONSTACK,a0	;a safe area from this task's stack
 		move.l	a0,d0
 		and.b	#$fc,d0			;long word align
-		move.l	d0,AddrRegs+4*7(a5)	;set stack pointer
+		move.l	d0,RegSP(a5)		;set stack pointer
 		move.l	d0,StackHigh(a5)
 		lea	returncode(pc),a1
 		move.l	d0,a0
+		move.l	a1,(a0)+
+		move.l	StackSize(a5),a1
+		sub.w	#MONSTACK,a1
 		move.l	a1,(a0)
+; set pr_ReturnAddr
+		move.l	MyTask(a5),a1
+		move.l	a0,pr_ReturnAddr(a1)
+;;
+;; set the PC-register to an odd value, so jump/go/trace without
+;; setting pc is error...
+;;
+;;		moveq	#-1,d0
+;;		move.l	d0,RegPC(a5)
 
 		lea	welcometxt(pc),A0
 		bsr	printstring_a0_window		;display welcome message
@@ -811,8 +841,10 @@ info		lea	infotext(pc),A0
 
 *** EXIT FROM MONITOR ***
 exit		move.l	MyTask(A5),A0
-		move.l	OldTrapCode(A5),TC_TRAPCODE(A0)	;restore old TrapCode
-		move.l	OldUserData(a5),TC_Userdata(a0)	; and UserData
+		move.l	OldTrapCode(A5),TC_TRAPCODE(A0)	 ;restore old TrapCode
+		move.l	OldUserData(a5),TC_Userdata(a0)	 ; and UserData
+		move.l	OldRetAddr(a5),pr_ReturnAddr(a0) ; and ReturnAddr
+
 		bsr	FreeAllMem		free all memory allocated by commands & and (
 		bsr	remove_all_breaks	remove all breakpoints (free memory)
 		bsr	clear_all_variables
@@ -1541,7 +1573,7 @@ disk_write	moveq	#-1,D7
 
 disk_rw		bsr	get_expr
 		btst	#0,D0
-		bne	error		;error: odd address
+		bne	oddaddr_error
 		move.l	D0,Addr(A5)
 		beq	error
 		bsr	get_expr
@@ -1700,14 +1732,14 @@ showdev		lea	DevNameBuf(a5),a0
 		emit	LF
 		bra.s	d_mloop_1
 
-*** PLAY DIGITIZED SOUND ***
-digisound	bsr	get_expr
-		btst	#0,D0	;test: if the address if odd, then error
-		beq.s	digi1
-
 digi_err	bra	error
 
-digi1		move.l	D0,D5
+*** PLAY DIGITIZED SOUND ***
+digisound	bsr	get_expr
+		btst	#0,d0
+		bne	oddaddr_error
+
+		move.l	D0,D5
 		bsr	get_expr
 		tst.l	D0
 		beq.s	digi_err	;error: zero length
@@ -1780,10 +1812,12 @@ digi9		bra	mainloop
 block_check	bsr	get_expr
 		tst.l	d0
 		beq.s	errx02
+		btst	#0,d0		;error if odd address
+		bne	oddaddr_error
 		move.l	D0,A0
 		move.l	D0,A1
 		moveq	#0,D0
-		moveq	#DISKBLOCKSIZE/4-1,D1	;disk block size 512 bytes
+		moveq	#DISKBLOCKSIZE/4-1,D1
 
 bl_check	add.l	(A0)+,D0
 		dbf	D1,bl_check
@@ -1800,10 +1834,13 @@ errx02		bra	error
 boot_check	bsr	get_expr
 		tst.l	d0
 		beq.s	errx02
+		btst	#0,d0		;error if odd address
+		bne	oddaddr_error
+
 		move.l	D0,A0
 		move.l	D0,A1
 		moveq	#0,D0
-		move.w	#1024/4-1,D1	;bootblock size 1024 bytes
+		move.w	#BOOTBLOCKSIZE/4-1,D1
 
 boot_ch		add.l	(A0)+,D0
 		bcc.s	boot_1
@@ -3220,7 +3257,7 @@ ex37a		cmp.b	#'[',d0
 01$		moveq	#0,d0
 		move.b	RegCCR_B(a5),d0
 		bra.s	ex37z
-ex37b		lea	AddrRegs+4*7(a5),a0
+ex37b		lea	RegSP(a5),a0
 		cmp.b	#'sp',d0
 		beq.s	ex37x
 		sub.w	#'a0',d0
@@ -3409,7 +3446,7 @@ r_peek		bsr.s	get_first_arg
 
 r_peekw		bsr.s	get_first_arg
 		btst	#0,d0
-		bne	expr_error		;odd address
+		bne	oddaddr_error
 		move.l	d0,a0
 		moveq	#0,d0
 		move.w	(a0),d0
@@ -3417,7 +3454,7 @@ r_peekw		bsr.s	get_first_arg
 
 r_peekl		bsr.s	get_first_arg
 		btst	#0,d0
-		bne	expr_error		;odd address
+		bne	oddaddr_error
 		move.l	d0,a0
 		move.l	(a0),d0
 		bra.s	no_more_args
@@ -3606,7 +3643,7 @@ assemble	bsr	skipspaces
 		bra.s	assem_02
 assem_01	bsr	get_expr
 		btst	#0,D0
-		bne	error	;assembling to odd address is illegal
+		bne	oddaddr_error	;assembling to odd address is illegal
 		move.l	D0,Addr(A5)
 assem_02	move.l	D0,EndAddr(A5)
 		bsr	skipspaces
@@ -5705,7 +5742,7 @@ RemBr9		rts
 ; check stack pointer and reset it if necessary
 ; now resets also if stack pointer is odd
 ;
-check_stackptr	move.l	AddrRegs+4*7(a5),d0
+check_stackptr	move.l	RegSP(a5),d0
 		btst	#0,d0
 		bne.s	reset_stack
 		move.l	d0,a2
@@ -5713,7 +5750,7 @@ check_stackptr	move.l	AddrRegs+4*7(a5),d0
 		move.l	StackHigh(a5),a0
 		cmp.l	a0,a2
 		bhi.s	reset_stack
-		lea	-2000(a0),a1
+		lea	-MONSTACK(a0),a1
 		cmp.l	a1,a2
 		bcc.s	stack_set
 
@@ -5723,8 +5760,8 @@ reset_stack	move.l	a0,a2
 		lea	stackreset_txt(pc),a0
 		bsr	printstring_a0_window
 
-stack_set	move.l	a2,AddrRegs+4*7(a5)		;sp
-		rts
+stack_set	move.l	a2,RegSP(a5)		;sp
+rts_001		rts
 
 *** QUICK TRACE ***
 ;executes code in trace mode until a flow control-instruction is encountered
@@ -5748,7 +5785,27 @@ getpc		bsr	skipspaces
 		beq.s	01$
 		bsr	get_expr
 		move.l	d0,RegPC(a5)
-01$		rts
+01$		btst	#0,RegPC+3(a5)		;error if current
+		beq.s	rts_001			;PC is odd
+
+oddaddr_error	lea	oddaddr_txt(pc),a0
+		bra	errcom
+
+*** SKIP ONE INSTRUCTION
+;
+; find the length of the current instruction by disassembling it
+; Note that this does not execute or trace any code, it simply
+; advances the monitor internal PC register.
+;
+skip_one	bsr	check_stackptr
+		bsr.s	getpc
+		move.l	RegPC(a5),a4
+		lea	OutputBuffer(a5),a3
+		bsr	disassemble
+		move.l	a4,RegPC(a5)
+		lea	skip_txt(pc),a0
+		bsr	printstring_a0
+		bra	displayregs_d
 
 *** EXECUTE ONE INSTRUCTION ***
 ;
@@ -5760,10 +5817,7 @@ getpc		bsr	skipspaces
 ;
 exe_one		bsr	check_stackptr
 		bsr.s	getpc
-		move.l	RegPC(a5),d0
-		btst	#0,d0		;test if current pc is even
-		bne	error		;error if it is
-		move.l	d0,a4
+		move.l	RegPC(a5),a4
 		lea	OutputBuffer(a5),a3
 		bsr	disassemble
 		move.l	a4,d0
@@ -5772,27 +5826,32 @@ exe_one		bsr	check_stackptr
 **** EXECUTE MACHINE CODE (GO) ****
 go		bsr	check_stackptr
 		bsr.s	getpc
-		moveq	#0,d0
+		moveq	#0,d0		;no temporary breakpoint
 		bra.s	go_com
 
 **** JUMP TO SUBROUTINE (RETURN WITH RTS) ***
 jumpsr		bsr	check_stackptr
 		bsr.s	getpc
-		moveq	#0,d0
+		moveq	#0,d0		;no temporary breakpoint
 ;
 ; put return address in stack
 ;
-		move.l	AddrRegs+7*4(a5),a0
+		move.l	RegSP(a5),a0
 		lea	returncode(pc),A1
 		move.l	a1,-(a0)
-		move.l	a0,AddrRegs+7*4(a5)
+		move.l	a0,RegSP(a5)
 
+;
+; common code for jump/go/execute/skip
+;  temporary breakpoint address in d0, if d0==0 then no temporary
+;  breakpoint is used
+;
 go_com		bsr	SetBreaks
 		move.l	RegPC(a5),d0
 		bsr	find_break
 		bpl.s	go_special
 
-		move.l	AddrRegs+7*4(a5),sp
+		move.l	RegSP(a5),sp
 		move.l	RegPC(a5),-(sp)
 ;
 ; move <ea>,ccr size is WORD! assemblers should check size specifiers better.
@@ -5818,7 +5877,7 @@ returncode	movem.l	d0-d2/a0-a1/a5-a6,-(sp)
 		movem.l	d0-d7/a0-a4,DataRegs(a5)
 		move.l	(sp)+,AddrRegs+4*5(a5)		a5
 		move.l	(sp)+,AddrRegs+4*6(a5)		a6
-		move.l	sp,AddrRegs+4*7(a5)		sp
+		move.l	sp,RegSP(a5)		sp
 
 		move.l	StackPtr(a5),sp			restore monitor sp
 
@@ -5875,7 +5934,7 @@ walk_trap	lea	4*4+4(sp),sp		clean up stack
 		bclr	#13,d0			supervisor mode off
 		bset	#15,d0			trace mode on
 		move.w	d0,(sp)
-		move.l	AddrRegs+4*7(a5),a0
+		move.l	RegSP(a5),a0
 		move.l	a0,usp
 		movem.l	DataRegs(a5),d0-d7/a0-a6
 		rte
@@ -5885,7 +5944,7 @@ normtrap_1	movem.l	(sp)+,d0/a0
 		move.l	(sp)+,AddrRegs+5*4(a5)		;a5
 		move.l	(sp)+,AddrRegs+6*4(a5)		;a6
 		move	usp,a0
-		move.l	a0,AddrRegs+7*4(a5)		;sp
+		move.l	a0,RegSP(a5)
 
 		move.w	AttnFlags(A6),D1
 		move.l	(sp)+,D5
@@ -6881,7 +6940,7 @@ noname		moveq	#0,D0
 
 **** Command & address tables ****
 
-comtable	dc.b	'ioxmfthc:arbgjqwelsud()&[]<>!=#\^@?'
+comtable	dc.b	'ioxmfthc:arbgjqwezlsud()&[]<>!=#\^@?'
 
 NUMCOM		equ	*-comtable
 
@@ -6905,6 +6964,7 @@ comadrs		rw	calculator
 		rw	unloadseg
 		rw	show
 		rw	loadseg
+		rw	skip_one
 		rw	exe_one
 		rw	walk
 		rw	quicktrace
@@ -7598,11 +7658,11 @@ helptext	dc.b	FF,TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
 		dc.b	'cd [name]',TAB,': current dir',TAB
 		dc.b	'| ] addr length name',TAB,': save absolute',LF
-		dc.b	'l name',TAB,TAB,': load segment',TAB
+		dc.b	'l name',TAB,TAB,': load exefile',TAB
 		dc.b	'| < addr dr block cnt',TAB,': read disk blocks',LF
-		dc.b	'sl',TAB,TAB,': segment list',TAB
+		dc.b	'sl',TAB,TAB,': hunk list',TAB
 		dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
-		dc.b	'u',TAB,TAB,': unload segment'
+		dc.b	'u',TAB,TAB,': unload exefile'
 		dc.b	'| dev [devicename]',TAB,': set disk device',LF
 		dc.b	'r [reg=num]',TAB,': set/show regs',TAB
 		dc.b	'| = addr',TAB,TAB,': disk block checksum',LF
@@ -7743,6 +7803,9 @@ assemfmt	dc.b	'%08lx: ',0
 dnam		dc.b	'(dir)',0
 freeblkfmt	dc.b	'%ld Blocks free.',LF,0
 
+oddaddr_txt	dc.b	'Odd address',0
+
+skip_txt	dc.b	'*** Skipping ***',LF,0
 stackreset_txt	dc.b	'*** Stack reset ***',LF,0
 break_txt	dc.b	'*** Break ***',LF,0
 returned_txt	dc.b	'*** Returned ***',LF,0
