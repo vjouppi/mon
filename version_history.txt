@@ -414,7 +414,10 @@ lm;		  and trap numbers.
 ;  1991-10-27	--> 1.44
 ;		- added task/lib/dev/res/port/semaphore list display.
 ;
-;  1991-11-10   -->
+;  1991-11-10   --> 1.45
 ;		- small correction in help message
 ;
-
+;  1991-11-15	--> 1.46
+;		- breakpoints with counts
+;		  (these don't work with qtrace)
+;

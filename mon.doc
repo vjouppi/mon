@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.45 instructions
+                 Amiga Monitor v1.46 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -438,11 +438,20 @@ r -- Show or change registers
 
 b -- Set breakpoints
  Usage:
-  b <addr> -- sets a breakpoint to <addr>
+  b <addr> [count] -- sets a breakpoint to <addr> with optional count
    Breakpoints are implemented by putting an illegal opcode ($4AFC) in the
   breakpoint locations when a G or J command is given. After returning to
   the monitor the original contents of the breakpoints are restored. This
   means that you can not put breakpoints to ROM (but you can trace ROM code).
+
+  If no count is specified, default count of one is used. That means that
+  the execution of a program stops and control returns to the monitor
+  immediately when the breakpoint is encountered. If the breakpoint has
+  a count that is greater than one, then control returns to the monitor
+  when the breakpoint has been 'hit' as many times as the count is.
+
+  Breakpoint counts do not work with the 'q' (quicktrace) command.
+
 
 br -- Remove breakpoints
  usage:
@@ -451,7 +460,7 @@ br -- Remove breakpoints
 
 bl -- List breakpoints
  Usage:
-  bl -- display a list of all breakpoints
+  bl -- display a list of all breakpoints.
 
 The g, j, w, q and e-commands use the current program counter value
 (displayed with the r-command) if you don't give them an address.
@@ -691,8 +700,11 @@ x -- Exit
 
 Version history:
 ----------------
+1.46 ->
+ - added breakpoint counts.
+
 1.45 ->
- - small change in help text
+ - small change in help text.
 1.44 ->
  - added task/library/device/resource/port/semaphore list viewing commands.
 
@@ -865,10 +877,10 @@ Version history:
 
 
 
-  Amiga Monitor v1.45 Copyright © 1987-1991 by Timo Rossi. The monitor
+  Amiga Monitor v1.46 Copyright © 1987-1991 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lharc-archive 'mon145.lzh'.
+way of distribution is the lharc-archive 'mon146.lzh'.
 
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.

@@ -286,7 +286,6 @@ win_com		move.l	d0,WinFile(a4)
 
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
 mainloop	move.l	StackPtr(a4),sp		;restore stack pointer
-		bclr	#MONB_QTRACE,flags(a4)
 
 		moveq	#0,D0		;clear CTRL-C/D/E/F flags
 		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
@@ -601,11 +600,11 @@ helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'| g [addr]',TAB,TAB,': execute (go)',LF
 		dc.b	': addr bytes',TAB,': modify memory',TAB
 		dc.b	'| j [addr]',TAB,TAB,': jump to subroutine',LF
-		dc.b	'b addr',TAB,TAB,': set breakpoint'
+		dc.b	'b addr [cnt]',TAB,': set breakpoint'
 		dc.b	'| w [addr]',TAB,TAB,': single step (walk)',LF
 		dc.b	'bl',TAB,TAB,': list brkpoints'
 		dc.b	'| e [addr]',TAB,TAB,': execute one instr.',LF
-		dc.b	'br addr/all',TAB,':remove brkpoint'
+		dc.b	'br addr/#n/all',TAB,':remove brkpoint'
 		dc.b	'| q [addr]',TAB,TAB,': quicktrace',LF
 		dc.b	'f adr1 adr2 bytes: fill mem',TAB
 		dc.b	'| ( length',TAB,TAB,': allocate memory',LF

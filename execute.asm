@@ -3,6 +3,10 @@
 ;
 		include	"monitor.i"
 
+		ifnd	_LVOCacheClearU
+_LVOCacheClearU	equ	-$27c
+		endc
+
 ;
 ; This module defines the following command routines:
 ;
@@ -33,8 +37,19 @@
 		btst	#0,D0
 		bne.s	brk_err
 		move.l	D0,a5
+
+		moveq	#1,d2
+		tst.b	(a3)
+		beq.s	1$
+
+		call	GetExpr
+		move.l	d0,d2
+		ble.s	brk_err
+
+1$		move.l	a5,d0
 		bsr	find_break
-		bpl.s	brk_err
+		bpl.s	brk_err		;break already set
+
 		move.l	A1,D3
 		moveq	#brk_SIZE,D0
 		move.l	#MEMF_CLEAR!MEMF_PUBLIC,D1
@@ -43,6 +58,7 @@
 		beq	out_memory_error
 		move.l	D0,A0
 		move.l	a5,brk_Address(A0)
+		move.w	d2,brk_Count(a0)
 		tst.l	D3
 		bne.s	no_start_of_list
 		move.l	BreakList(a4),(A0)
@@ -81,7 +97,8 @@ break_remove	call	skipspaces
 
 break_rem1	call	GetExpr
 		bsr	find_break
-		bmi.s	brk_err
+		bmi.s	brk_err		;break not set
+
 do_remove_brk	move.l	A1,D0
 		bne.s	no_remove_from_start_of_list
 		move.l	(A0),BreakList(a4)
@@ -125,23 +142,27 @@ find_brk_num	clra	a1
 ;
 		cmd	list_breaks
 
-		move.l	BreakList(a4),D2
+		move.l	BreakList(a4),d4
 		bne.s	break_list_1
 		lea	noBrkTxt(pc),A0
 		call	JUMP,printstring_a0_window
 break_list_1	lea	brklistTx(pc),A0
 		call	printstring_a0
 		moveq	#0,d3
-break_list_loop	tst.l	D2
+
+break_list_loop	tst.l	d4
 		beq	brset9
-		move.l	D2,a5
+		move.l	d4,a5
 		move.l	d3,d0
 		move.l	brk_Address(a5),D1
+		moveq	#0,d2
+		move.l	brk_Count(a5),d2
 		lea	brk_fmt(pc),a0
 		call	printf
 		call	CheckKeys
 		bne	brset9
-		move.l	brk_Next(a5),D2
+
+		move.l	brk_Next(a5),d4
 		addq.l	#1,d3
 		bra.s	break_list_loop
 
@@ -163,7 +184,7 @@ find_br_1	beq.s	break_not_found
 break_not_found	moveq	#-1,D0
 		rts
 break_found	moveq	#0,D0
-brk_ret		rts
+		rts
 
 remove_all_breaks
 * executed before exit of when the 'br all' command is given
@@ -206,7 +227,7 @@ SetBreaks	bset	#MONB_BRKACTIVE,flags(a4)
 
 SetBr0		move.l	BreakList(a4),D2
 SetBr1		tst.l	D2
-		beq.s	brk_ret
+		beq.s	Flush_Cache
 		move.l	D2,A1
 		move.l	brk_Address(A1),A0
 		cmp.l	RegPC(a4),a0
@@ -215,12 +236,19 @@ SetBr1		tst.l	D2
 		bra.s	SetBr2
 01$		move.w	(A0),brk_Content(A1)
 		move.w	#ILLEGAL_INSTR,(A0)
-SetBr2		move.l	(A1),D2
+SetBr2		move.w	brk_Count(a1),brk_ActCount(a1)
+		move.l	(A1),D2
 		bra.s	SetBr1
+
+Flush_Cache	getbase	Exec,a6
+		cmp.w	#36,LIB_VERSION(a6)
+		bcs.s	flsh_end
+		lib	CacheClearU
+flsh_end	rts
 
 *** RESTORE ORIGINAL CONTENTS OF BREAKPOINTS ***
 RemBreaks	bclr	#MONB_BRKACTIVE,flags(a4)
-		beq.s	brk_ret
+		beq.s	flsh_end
 RemBr0		move.l	BreakList(a4),D2
 RemBr1		tst.l	D2
 		beq.s	RemBr3
@@ -232,12 +260,11 @@ RemBr2		move.l	(A1),D2
 		bra.s	RemBr1
 
 RemBr3		bclr	#MONB_TMPBRK,flags(a4)
-		beq.s	RemBr9
+		beq.s	Flush_Cache
 
 		move.l	TmpBrkAddr(a4),a0
 		move.w	TmpBrkSave(a4),(a0)
-
-RemBr9		rts
+		bra.s	Flush_Cache
 
 ;
 ; check stack pointer and reset it if necessary
@@ -392,6 +419,7 @@ returncode	movem.l	d0-d2/a0-a1/a4/a6,-(sp)
 
 		move.l	StackPtr(a4),sp			restore monitor sp
 
+		bclr	#MONB_QTRACE,flags(a4)
 		bsr	RemBreaks
 
 		lea	returned_txt(pc),A0
@@ -419,6 +447,9 @@ trapreturn	;Note! We are in supervisor mode!
 		move.l	brk_Address(a4),a0
 		move.w	(a0),brk_Content(a4)
 		move.w	#ILLEGAL_INSTR,(a0)
+;
+; it might be a good idea to try to flush the cache here...
+;
 		movem.l	(sp)+,d0/a0/a4/a6
 		addq.l	#4,sp			remove exception # from stack
 		bclr	#7,(sp)			clear trace bit
@@ -537,43 +568,65 @@ go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 		endc
 
 		cmp.w	#9,d5		;trace ?
-		bne.s	450$
+		bne.s	no_qtrace
 		btst	#MONB_QTRACE,flags(a4)
-		beq.s	450$
-		move.l	RegPC(a4),d0
+		beq.s	no_qtrace
+
+handle_qtrace	move.l	RegPC(a4),d0
 		btst	#0,d0
-		bne.s	450$
+		bne.s	no_qtrace
+
 		move.l	d0,a5
 		move.w	(a5),d0
-		bsr.s	is_flowctrl
+		bsr	is_flowctrl
 		bcc	walk_001
+
 		lea	OutputBuf(a4),a3
 		call	Disassemble
 		tst.w	d0
 		bne	walk_001
 
 		lea	qtrace_txt(pc),a0
-		bra.s	500$
+		bra.s	trap_msg_dregs
 
-450$		move.l	RegPC(a4),D0
+no_qtrace	move.l	RegPC(a4),D0
 		cmp.w	#4,D5
 		bne.s	normal_trap
 		cmp.l	TmpBrkAddr(a4),d0
-		bne.s	480$
+		bne.s	1$
 		lea	etrace_txt(pc),a0
-		bra.s	500$
+		bra.s	trap_msg_dregs
 
-480$		bsr	find_break
-		bne.s	normal_trap
+1$		bsr	find_break
+		bmi.s	normal_trap
 		tst.b	d7
 		beq.s	normal_trap
-		lea	brkpoint_txt(pc),A0
-500$		call	printstring_a0
+;
+; handle breakpoint counts here
+;
+		sub.w	#1,brk_ActCount(a0)
+		bne.s	handle_brk_count
+
+do_brkpoint	lea	brkpoint_txt(pc),A0
+
+trap_msg_dregs	call	printstring_a0
 		bra.s	trap_dregs
+
+handle_brk_count
+		btst	#MONB_QTRACE,flags(a4)
+		bne	do_brkpoint
+
+		move.l	brk_Address(a0),a1
+		move.w	brk_Content(a0),(a1)
+		move.l	a0,GoBrkPtr(a4)
+
+		bsr	Flush_Cache
+		bra	go_special
 
 normal_trap	bsr.s	show_trap_name
 
-trap_dregs	bsr	RemBreaks
+trap_dregs	bclr	#MONB_QTRACE,flags(a4)
+		bsr	RemBreaks
 		bsr	displayregs
 		move.l	RegPC(a4),D0
 		btst	#0,D0
@@ -692,7 +745,7 @@ brklistTx	dc.b	'Breakpoints:',LF,0
 skip_txt	dc.b	'*** Skipping ***',LF,0
 stackreset_txt	dc.b	'*** Stack reset ***',LF,0
 
-brk_fmt		dc.b	'%3ld   '
+brk_fmt		dc.b	'%3ld   $%08lx   [%d]',LF,0
 hexfmt		dc.b	'$%08lx',LF,0
 oddaddr_txt	dc.b	'Odd address',0
 
