@@ -28,12 +28,12 @@
 ; fall to printstring
 		pub	printstring
 
-		lea	OutputBuf(a4),a0
+		lea	mon_OutputBuf(a4),a0
 ; fall to printstring_a0
 *** Output a string (possibly redirected output) ***
 		pub	printstring_a0
 
-		move.l	OutputFile(a4),d1
+		move.l	mon_OutputFile(a4),d1
 ;
 ; print text, line at time
 ; inputs: a0 - pointer to zero-terminated string
@@ -68,12 +68,12 @@ print_loop	move.l	a2,d2
 
 		pub	printstring_window
 
-		lea	OutputBuf(a4),a0
+		lea	mon_OutputBuf(a4),a0
 *** Output a string to the window ***
 * used in error messages etc.
 		pub	printstring_a0_window
 
-		move.l	WinFile(a4),d1
+		move.l	mon_WinFile(a4),d1
 		bra.s	print_text
 
 ;
@@ -101,7 +101,7 @@ print_loop	move.l	a2,d2
 		movem.l	d0-d4,-(sp)
 		move.l	sp,a1
 		lea	putch(pc),a2
-		lea	OutputBuf(a4),a3
+		lea	mon_OutputBuf(a4),a3
 		lib	Exec,RawDoFmt
 		lea	20(sp),sp
 		movem.l	(sp)+,a2-a3/a6
@@ -114,13 +114,13 @@ putch		move.b	d0,(a3)+
 ; Output a character to the window
 		pub	ChrOutWin
 
-		move.l	WinFile(a4),D1
+		move.l	mon_WinFile(a4),D1
 		bra.s	xChrOut
 
 ; output a character to current output
 		pub	ChrOut
 
-		move.l	OutputFile(a4),d1
+		move.l	mon_OutputFile(a4),d1
 
 xChrOut		movem.l	D2-D3/a6,-(sp)
 		move.b	d0,-(sp)
@@ -133,7 +133,7 @@ xChrOut		movem.l	D2-D3/a6,-(sp)
 
 **** Get a character ****
 GetChar		movem.l	D2-D3/a6,-(sp)
-		move.l	WinFile(a4),D1
+		move.l	mon_WinFile(a4),D1
 		clr.b	-(sp)
 		move.l	sp,d2
 		moveq	#1,d3
@@ -249,12 +249,12 @@ input_jumps	inpjump	CR,input_end
 ;
 		pub	GetInput
 
-		btst	#OPTB_DUMBTERM,MonOptions(a4)
+		btst	#OPTB_DUMBTERM,mon_Options(a4)
 		bne	Dumb_GetInput
 
 		move.w	D0,d3
 		moveq	#0,D4
-		lea	InputBuf(a4),a2
+		lea	mon_InputBuf(a4),a2
 		moveq	#0,D5
 		moveq	#0,D7	;length
 		cmp.w	#2,D0
@@ -326,7 +326,7 @@ put_char_to_input
 		bne.s	080$
 
 iputchr		move.b	D0,D2
-		lea	insch(pc),a0
+		lea	insert_char_txt(pc),a0
 		call	printstring_a0_window
 		move.b	D2,D0
 		call	ChrOutWin
@@ -342,7 +342,7 @@ input_end	clr.b	0(a2,D7.L)
 		tst.b	(A3)
 		beq.s	inp99
 
-		lea	History(a4),A0
+		lea	mon_History(a4),A0
 		move.w	#(NLINES-1)*LEN/4-1,D0
 099$		move.l	LEN(A0),(A0)+
 		dbf	D0,099$		;scroll command line history to make space for current line
@@ -385,7 +385,7 @@ backspace	tst.l	D6
 		emitwin	BS
 delchar		cmp.l	D6,D7
 		beq	input_loop
-		lea	delch(pc),a0
+		lea	del_char_txt(pc),a0
 		call	printstring_a0_window
 		subq.l	#1,D7
 		cmp.l	D6,D7
@@ -416,7 +416,7 @@ prnxl1		add.b	D1,D4
 linct_neg	move.b	#NLINES-1,D4
 
 linct_ok	move.b	D4,D0
-		lea	History(a4),A0
+		lea	mon_History(a4),A0
 		ext.w	D0
 		mulu	#LEN,D0
 		add.l	D0,A0
@@ -446,14 +446,14 @@ lef9		moveq	#0,D6
 
 eraseline	bsr.s	gotoleftedge
 		moveq	#0,D7
-		lea	ClearEol(pc),a0
+		lea	clear_eol_txt(pc),a0
 		call	JUMP,printstring_a0_window
 
 ;
 ; GetInput for dumb terminal
 ;
-Dumb_GetInput	lea	InputBuf(a4),a2
-		lea	InputBuf(a4),a3
+Dumb_GetInput	lea	mon_InputBuf(a4),a2
+		move.l	a2,a3
 		moveq	#0,d7
 
 dumb_input_loop	bsr	GetChar
@@ -472,7 +472,7 @@ dumb_delch	cmp.l	a3,a2
 
 dumb_delch_loop	subq.l	#1,a2
 		subq.w	#1,d7
-		lea	dumb_delchar(pc),a0
+		lea	dumb_delch_txt(pc),a0
 		call	printstring_a0_window
 dumb_delch1	dbf	d3,dumb_delch_loop
 		bra.s	dumb_input_loop
@@ -499,11 +499,11 @@ dumb_input_end	clr.b	(a2)
 		rts
 
 UpAndClearEol	dc.b	ESC,'[A'
-ClearEol	dc.b	ESC,'[K',0
-delch		dc.b	ESC,'[P',0
-insch		dc.b	ESC,'[@',0
+clear_eol_txt	dc.b	ESC,'[K',0
+del_char_txt	dc.b	ESC,'[P',0
+insert_char_txt	dc.b	ESC,'[@',0
 go_left_fmt	dc.b	ESC,'[%ldD',0
 go_right_fmt	dc.b	ESC,'[%ldC',0
-dumb_delchar	dc.b	BS,' ',BS,0
+dumb_delch_txt	dc.b	BS,' ',BS,0
 
 		end

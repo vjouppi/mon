@@ -23,13 +23,6 @@
 
 		xdef	help
 
-		xref	FreeAllMem
-		xref	remove_all_breaks
-		xref	clear_all_variables
-		xref	loadseg1
-		xref	set_cmdline	;from misc_cmd.asm
-		xref	unload_seg	;from mon_dos.asm
-
 		xref	trapreturn	;execute.asm
 		xref	returncode	;execute.asm
 
@@ -88,18 +81,18 @@ main		move.l	#MonitorData_SIZE,d0
 		beq	exit10
 		move.l	d0,a4
 
-		move.l	4(sp),StackSize(a4)
-		move.l	d5,WBenchMsg(a4)
-		move.l	a5,MyTask(a4)
-		move.l	sp,StackPtr(a4)
+		move.l	4(sp),mon_StackSize(a4)
+		move.l	d5,mon_WBenchMsg(a4)
+		move.l	a5,mon_Task(a4)
+		move.l	sp,mon_StackPtr(a4)
 
 		moveq	#-1,d0
-		move.l	d0,OldCD(a4)
-		bset	#MONB_FIRSTCD,flags(a4)
+		move.l	d0,mon_OrigCD(a4)
+		bset	#MONB_FIRSTCD,mon_Flags(a4)
 *
 * OPEN DOS LIBRARY
 *
-		lea	dosname(pc),A1
+		lea	dos_name(pc),A1
 		moveq	#ONE_POINT_TWO,d0
 		lib	OpenLibrary
 		move.l	d0,_DosBase(a4)
@@ -108,7 +101,7 @@ main		move.l	#MonitorData_SIZE,d0
 		moveq	#-1,d4			window width
 		moveq	#-1,d5			window height
 
-		move.l	WBenchMsg(a4),d0
+		move.l	mon_WBenchMsg(a4),d0
 		beq.s	handle_cli_start
 ;
 ; workbench startup....set current directory
@@ -117,11 +110,11 @@ main		move.l	#MonitorData_SIZE,d0
 		move.l	sm_ArgList(a0),a0
 		move.l	wa_Lock(a0),d1
 		lib	Dos,CurrentDir
-		move.l	d0,OldCD(a4)
+		move.l	d0,mon_OrigCD(a4)
 		bra	cmdline_done
 
 handle_cli_start
-		move.l	pr_CurrentDir(a5),OldCD(a4)
+		move.l	pr_CurrentDir(a5),mon_OrigCD(a4)
 
 		moveq	#0,d6
 		clr.b	-1(a3,d3.l)		;null-terminate command line
@@ -155,7 +148,7 @@ no_h		cmp.b	#'o',d0
 		bne.s	no_o
 		call	GetHexNum
 		bcs.s	put_usage
-		move.b	d0,MonOptions(a4)
+		move.b	d0,mon_Options(a4)
 		bra.s	parse_cmdline
 
 put_usage0	lea	version_msg(pc),a0
@@ -172,16 +165,16 @@ no_opt		cmp.b	#'+',(a3)
 		bra.s	parse_cmdline
 
 get_name	call	GetName
-		move.l	d0,InitialFileName(a4)
+		move.l	d0,mon_InitialFileName(a4)
 
 		call	skipspaces
-		bsr	set_cmdline	; set a0/d0 for cmdline...
+		call	set_cmdline	; set a0/d0 for cmdline...
 					; (rest of actual monitor command line)
 cmdline_done
 ;
 ; set default number base, currently hex....
 ;
-		move.b	#16,defbase(a4)
+		move.b	#16,mon_DefNumBase(a4)
 
 		moveq	#0,d0
 		moveq	#0,d1
@@ -192,20 +185,20 @@ cmdline_done
 		bpl.s	open_win
 
 win_1		lib	Dos,Input
-		move.l	d0,WinFile(a4)
+		move.l	d0,mon_WinFile(a4)
 		beq.s	open_win1
 		move.l	d0,d1
 		lib	IsInteractive
 		tst.l	d0
 		beq.s	open_win1
-		move.l	WinFile(a4),d0
+		move.l	mon_WinFile(a4),d0
 		bra.s	win_com
 
 nogfx_win	moveq	#0,d0
 		move.l	#200,d2
 		bra.s	open_win2
 
-open_win1	lea	gfxname(pc),a1
+open_win1	lea	gfx_name(pc),a1
 		moveq	#ONE_POINT_TWO,d0
 		lib	Exec,OpenLibrary
 		tst.l	d0
@@ -224,25 +217,25 @@ open_win1	lea	gfxname(pc),a1
 
 open_win2	move.w	#640,d1
 
-open_win	lea	windowfmt(pc),a0
+open_win	lea	window_fmt(pc),a0
 		call	fmtstring
 
-		bset	#MONB_OWNWINDOW,flags(a4)
-		lea	OutputBuf(a4),a0
+		bset	#MONB_OWNWINDOW,mon_Flags(a4)
+		lea	mon_OutputBuf(a4),a0
 		move.l	a0,d1
 		move.l	#MODE_OLDFILE,D2
 		lib	Dos,Open		open the window
 
-win_com		move.l	d0,WinFile(a4)
+win_com		move.l	d0,mon_WinFile(a4)
 		beq	cleanexit
-		move.l	D0,OutputFile(a4) 	;default output is monitor window
+		move.l	D0,mon_OutputFile(a4) 	;default output is monitor window
 
 		call	FindConUnit		;this may return zero
-		move.l	d0,ConsoleUnit(a4)
+		move.l	d0,mon_ConsoleUnit(a4)
 
 		;; set stdout to raw mode
 
-01$		move.l	WinFile(a4),d0
+01$		move.l	mon_WinFile(a4),d0
 		moveq	#-1,d1
 		call	SetConMode
 		tst.l	d0
@@ -252,8 +245,8 @@ win_com		move.l	d0,WinFile(a4)
 ;
 ; set default disk device name ("trackdisk.device")
 ;
-		lea	tdname(pc),a0
-		lea	DevNameBuf(a4),a1
+		lea	trackdisk_name(pc),a0
+		lea	mon_DevNameBuf(a4),a1
 02$		move.b	(a0)+,(a1)+
 		bne.s	02$
 
@@ -261,15 +254,15 @@ win_com		move.l	d0,WinFile(a4)
 ; set the the task trap code and data pointers
 ;
 		lea	trapreturn(pc),A1
-		move.l	MyTask(a4),A0
-		move.l	TC_TRAPCODE(A0),OldTrapCode(a4)	;save old TrapCode
-		move.l	TC_Userdata(a0),OldUserData(a4)	; & UserData
+		move.l	mon_Task(a4),A0
+		move.l	TC_TRAPCODE(A0),mon_OrigTrapCode(a4)	;save old TrapCode
+		move.l	TC_Userdata(a0),mon_OrigUserData(a4)	; & UserData
 		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
 		move.l	a4,TC_Userdata(a0)
 
 ; save pr_ReturnAddr pointer
-		move.l	pr_ReturnAddr(a0),OldRetAddr(a4)
-		bset	#MONB_TASKSET,flags(a4)
+		move.l	pr_ReturnAddr(a0),mon_OrigRetAddr(a4)
+		bset	#MONB_TASKSET,mon_Flags(a4)
 
 ;
 ; set the stack pointer
@@ -278,40 +271,40 @@ win_com		move.l	d0,WinFile(a4)
 		sub.w	#MONSTACK,a0	;a safe area from this task's stack
 		move.l	a0,d0
 		and.b	#$fc,d0			;long word align
-		move.l	d0,RegSP(a4)		;set stack pointer
-		move.l	d0,StackHigh(a4)
+		move.l	d0,mon_RegSP(a4)	;set stack pointer
+		move.l	d0,mon_StackHigh(a4)
 		lea	returncode(pc),a1
 		move.l	d0,a0
 		move.l	a1,(a0)+
-		move.l	StackSize(a4),a1
+		move.l	mon_StackSize(a4),a1
 		sub.w	#MONSTACK,a1
 		move.l	a1,(a0)
 ; set pr_ReturnAddr
-		move.l	MyTask(a4),a1
+		move.l	mon_Task(a4),a1
 		move.l	a0,pr_ReturnAddr(a1)
 ;;
 ;; set the PC-register to an odd value, so jump/go/trace without
 ;; setting pc is error...
 ;;
 ;;		moveq	#-1,d0
-;;		move.l d0,RegPC(a4)
+;;		move.l d0,mon_RegPC(a4)
 
-		st	RelBaseReg(a4)	;no base register currently used
+		st	mon_RelBaseReg(a4)	;no base register currently used
 
-		lea	welcometxt(pc),A0
+		lea	welcome_txt(pc),A0
 		call	printstring_a0_window ;display welcome message
 
 ;
 ; try to load the file specified on the command line
 ;
-		move.l	InitialFileName(a4),d1
+		move.l	mon_InitialFileName(a4),d1
 		beq.s	mainloop
 
 		move.l	d6,d5		;'+' flag from cmdline
-		bsr	loadseg1
+		call	loadseg1
 
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
-mainloop	move.l	StackPtr(a4),sp		;restore stack pointer
+mainloop	move.l	mon_StackPtr(a4),sp	;restore stack pointer
 
 		moveq	#0,D0		;clear CTRL-C/D/E/F flags
 		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
@@ -326,8 +319,8 @@ mainloop	move.l	StackPtr(a4),sp		;restore stack pointer
 		tst.b	(A3)
 		bne.s	execute_command
 
-		move.l	WinFile(a4),D0		;empty command line
-		cmp.l	OutputFile(a4),D0
+		move.l	mon_WinFile(a4),D0	;empty command line
+		cmp.l	mon_OutputFile(a4),D0
 		beq.s	mainloop
 
 		emit	LF
@@ -375,7 +368,7 @@ errorhandler	lea	error_routines+2(pc),a0
 		cmd	clear_screen
 
 cls		lea	cls_str(pc),a0
-		btst	#OPTB_DUMBTERM,MonOptions(a4)
+		btst	#OPTB_DUMBTERM,mon_Options(a4)
 		beq.s	do_cls
 		addq.l	#cls2_str-cls_str,a0
 do_cls		call	JUMP,printstring_a0_window
@@ -386,7 +379,7 @@ do_cls		call	JUMP,printstring_a0_window
 		cmd	help
 
 help		bsr.s	cls
-		lea	helptext(pc),A0
+		lea	help_text(pc),A0
 hinfo		call	JUMP,printstring_a0
 
 
@@ -396,7 +389,7 @@ hinfo		call	JUMP,printstring_a0
 		cmd	info
 
 		bsr.s	cls
-		lea	infotext(pc),A0
+		lea	info_text(pc),A0
 		bra.s	hinfo
 
 ;
@@ -404,52 +397,54 @@ hinfo		call	JUMP,printstring_a0
 ;
 		cmd	exit_monitor
 
-cleanexit	move.l	StackPtr(a4),sp
+cleanexit	move.l	mon_StackPtr(a4),sp
 
-		move.l	WinFile(a4),d0
+		move.l	mon_WinFile(a4),d0
 		beq.s	01$
 		moveq	#0,d1
 		call	SetConMode
 
-01$		btst	#MONB_TASKSET,flags(a4)
+01$		btst	#MONB_TASKSET,mon_Flags(a4)
 		beq.s	02$
 ;
 ; restore task TrapCode/UserData & pr_ReturnAddr fields
 ;
-		move.l	MyTask(a4),A0
-		move.l	OldTrapCode(a4),TC_TRAPCODE(A0)	 ;restore old TrapCode
-		move.l	OldUserData(a4),TC_Userdata(a0)	 ; and UserData
-		move.l	OldRetAddr(a4),pr_ReturnAddr(a0) ; and ReturnAddr
+		move.l	mon_Task(a4),A0
+		move.l	mon_OrigTrapCode(a4),TC_TRAPCODE(A0)	;restore old TrapCode
+		move.l	mon_OrigUserData(a4),TC_Userdata(a0)	;and UserData
+		move.l	mon_OrigRetAddr(a4),pr_ReturnAddr(a0)	;and ReturnAddr
 
-02$		bsr	FreeAllMem		free all memory allocated by commands & and (
-
-		bsr	unload_seg		unload exefile, if necessary
-
-		bsr	remove_all_breaks	remove all breakpoints (free memory)
-		bsr	clear_all_variables
+02$		call	free_all_mem		free all memory allocated by commands & and (
+		call	unload_seg		unload exefile, if necessary
+		call	remove_all_breaks	remove all breakpoints (free memory)
+		call	clear_all_variables
 
 		getbase Dos
-		move.l	OutputFile(a4),D1	if output is redirected, close output file
-		cmp.l	WinFile(a4),D1
+		move.l	mon_OutputFile(a4),D1	if output is redirected, close output file
+		cmp.l	mon_WinFile(a4),D1
 		beq.s	04$
 		lib	Close
 
-04$		btst	#MONB_OWNWINDOW,flags(a4)
+04$		btst	#MONB_OWNWINDOW,mon_Flags(a4)
 		beq.s	05$
-		move.l	WinFile(a4),D1
+		move.l	mon_WinFile(a4),D1
 		beq.s	05$
 		lib	Close			close window file
 
 05$		moveq	#-1,d0
-		move.l	OldCD(a4),d1
+		move.l	mon_OrigCD(a4),d1
 		cmp.l	d0,d1
 		beq.s	06$
 		lib	CurrentDir
+		btst	#MONB_FIRSTCD,mon_Flags(a4)
+		bne.s	06$
+		move.l	d0,d1
+		lib	UnLock
 
 06$		move.l	a6,a1
 		lib	Exec,CloseLibrary	close dos library
 
-exit9		move.l	WBenchMsg(a4),D3	started from workbench??
+exit9		move.l	mon_WBenchMsg(a4),D3	started from workbench??
 
 		move.l	a4,a1
 		move.l	#MonitorData_SIZE,d0
@@ -599,7 +594,7 @@ command_table	command	calculator
 		command list_semaphores
 
 **** HELP TEXT ****
-helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
+help_text	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		VERSION
 		dc.b	' help (i=info, x=exit) --',LF
 		dc.b	'o [name]',TAB,':redirect output'
@@ -646,7 +641,7 @@ helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'| set [var=expr] [hunk]',TAB,': set/show variables',LF,0
 
 **** INFO TEXT ****
-infotext	dc.b LF
+info_text	dc.b LF
 		dc.b	TAB,TAB,'Monitor info (version '
 		VERSION
 		dc.b	')',LF
@@ -664,9 +659,9 @@ infotext	dc.b LF
 		dc.b	' in this program, please let me know.',LF,LF
 		dc.b	' Read the ''mon.doc''-file for more information.',LF,0
 
-dosname		dc.b	'dos.library',0
-gfxname		dc.b	'graphics.library',0
-tdname		dc.b	'trackdisk.device',0
+dos_name	dc.b	'dos.library',0
+gfx_name	dc.b	'graphics.library',0
+trackdisk_name	dc.b	'trackdisk.device',0
 
 version_string	dc.b	0,'$VER: '
 version_msg	dc.b	'Amiga Monitor v'
@@ -675,11 +670,11 @@ version_msg	dc.b	'Amiga Monitor v'
 		DATE
 		dc.b	')',LF,0
 
-windowfmt	dc.b	'RAW:0/%ld/%ld/%ld/Amiga Monitor v'
+window_fmt	dc.b	'RAW:0/%ld/%ld/%ld/Amiga Monitor v'
 		VERSION
 		dc.b	0
 
-welcometxt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
+welcome_txt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
 		dc.b	TAB,'   Copyright 1987-1991 by Timo Rossi, version '
 		VERSION
 		ifne	BETA
@@ -691,7 +686,7 @@ welcometxt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
 main_prompt	dc.b	'-> ',0
 
 usage_txt	dc.b	'Usage: [run] mon [-w<width>] [-h<height>] '
-		dc.b	'[-o<opt>] [+] [filename [cmdline]]',LF,0
+		dc.b	'[-o<opt>] [[+] filename [cmdline]]',LF,0
 win_openerr_txt	dc.b	'Can''t open window',LF,0
 
 cls_str		dc.b	ESC,'[H',ESC,'[J',0

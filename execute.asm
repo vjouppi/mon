@@ -23,13 +23,14 @@ _LVOCacheClearU	equ	-$27c
 ;	set_break,remove_break,list_breaks,quicktrace,walk,skip_one
 ;	exe_one,go,jumpsr,showtrap
 ;
+; And the following public subroutines:
+;
+;	find_brk_num,remove_all_breaks
+;
 
 
 		xdef	trapreturn
 		xdef	returncode
-
-		xdef	remove_all_breaks
-		xdef	find_brk_num
 
 		xref	displayregs
 		xref	displayregs_d
@@ -71,8 +72,8 @@ _LVOCacheClearU	equ	-$27c
 		move.w	d2,brk_Count(a0)
 		tst.l	D3
 		bne.s	no_start_of_list
-		move.l	BreakList(a4),(A0)
-		move.l	A0,BreakList(a4)
+		move.l	mon_BreakList(a4),(A0)
+		move.l	A0,mon_BreakList(a4)
 		rts
 
 no_start_of_list
@@ -103,7 +104,7 @@ break_remove	call	skipspaces
 		move.b	2(a3),d0
 		call	tolower
 		cmp.b	#'l',d0
-		beq	remove_all_breaks
+		beq	remove_all_breaks_routine
 
 break_rem1	call	GetExpr
 		bsr	find_break
@@ -111,7 +112,7 @@ break_rem1	call	GetExpr
 
 do_remove_brk	move.l	A1,D0
 		bne.s	no_remove_from_start_of_list
-		move.l	(A0),BreakList(a4)
+		move.l	(A0),mon_BreakList(a4)
 		bra.s	break_remove_1
 no_remove_from_start_of_list
 		move.l	(A0),(A1)
@@ -124,14 +125,20 @@ break_remove_1	move.l	A0,A1
 ;
 rembrk_num	addq.l	#1,a3
 		call	GetExpr
-		bsr.s	find_brk_num
+		call.s	find_brk_num
 		moveq	#-1,d1
 		cmp.l	d1,d0
 		beq	brk_err
 		bra.s	do_remove_brk
 
-find_brk_num	clra	a1
-		move.l	BreakList(a4),d1
+
+;
+; params: breakpoint number in d0, returns breakpoint address or -1
+;
+		pub	find_brk_num
+
+		clra	a1
+		move.l	mon_BreakList(a4),d1
 1$		beq	3$
 		tst.l	d0
 		beq.s	2$
@@ -139,9 +146,11 @@ find_brk_num	clra	a1
 		move.l	d1,a1
 		move.l	brk_Next(a1),d1
 		bra.s	1$
+
 2$		move.l	d1,a0
 		move.l	brk_Address(a0),d0
 		rts
+
 3$		moveq	#-1,d0
 		rts
 
@@ -152,11 +161,12 @@ find_brk_num	clra	a1
 ;
 		cmd	list_breaks
 
-		move.l	BreakList(a4),d4
+		move.l	mon_BreakList(a4),d4
 		bne.s	break_list_1
-		lea	noBrkTxt(pc),A0
+		lea	nobreak_txt(pc),A0
 		call	JUMP,printstring_a0_window
-break_list_1	lea	brklistTx(pc),A0
+
+break_list_1	lea	breaklist_txt(pc),A0
 		call	printstring_a0
 		moveq	#0,d3
 
@@ -182,7 +192,7 @@ break_list_loop	tst.l	d4
 *  if A1=0 then insert to start of the list
 * if N=0 then found, A0 points to the node, A1 points to predecessor
 find_break	clra	a1
-		move.l	BreakList(a4),D1
+		move.l	mon_BreakList(a4),D1
 find_br_1	beq.s	break_not_found
 		move.l	D1,A0
 		cmp.l	brk_Address(A0),D0
@@ -191,16 +201,18 @@ find_br_1	beq.s	break_not_found
 		move.l	A0,A1
 		move.l	brk_Next(A0),D1
 		bra.s	find_br_1
+
 break_not_found	moveq	#-1,D0
 		rts
+
 break_found	moveq	#0,D0
 		rts
 
-remove_all_breaks
+		pub	remove_all_breaks
 * executed before exit of when the 'br all' command is given
 ; this changes d2 and a6
 		getbase	Exec
-		move.l	BreakList(a4),D2
+		move.l	mon_BreakList(a4),D2
 
 all_breaks_loop	tst.l	D2
 		beq.s	brk_ret2
@@ -210,7 +222,7 @@ all_breaks_loop	tst.l	D2
 		lib	FreeMem
 		bra.s	all_breaks_loop
 
-brk_ret2	clr.l	BreakList(a4)
+brk_ret2	clr.l	mon_BreakList(a4)
 		rts
 
 *** PUT THE ILLEGAL ($4AFC) INSTRUCTION TO BREAKPOINTS ***
@@ -226,24 +238,25 @@ brk_ret2	clr.l	BreakList(a4)
 ;# in the register d0. if it is zero, no temporary breakpoint is used.
 ;# temporary breakpoint is used by the e-command.
 ;#
-SetBreaks	bset	#MONB_BRKACTIVE,flags(a4)
+SetBreaks	bset	#MONB_BRKACTIVE,mon_Flags(a4)
 		tst.l	d0
 		beq.s	SetBr0
-		move.l	d0,TmpBrkAddr(a4)
-		bset	#MONB_TMPBRK,flags(a4)
+		move.l	d0,mon_TempBreakAddr(a4)
+		bset	#MONB_TMPBRK,mon_Flags(a4)
 		move.l	d0,a0
-		move.w	(a0),TmpBrkSave(a4)
+		move.w	(a0),mon_TempBreakSave(a4)
 		move.w	#ILLEGAL_INSTR,(a0)
 
-SetBr0		move.l	BreakList(a4),D2
+SetBr0		move.l	mon_BreakList(a4),D2
 SetBr1		tst.l	D2
 		beq.s	Flush_Cache
 		move.l	D2,A1
 		move.l	brk_Address(A1),A0
-		cmp.l	RegPC(a4),a0
+		cmp.l	mon_RegPC(a4),a0
 		bne.s	01$
-		move.l	a1,GoBrkPtr(a4)
+		move.l	a1,mon_GoBreakPtr(a4)
 		bra.s	SetBr2
+
 01$		move.w	(A0),brk_Content(A1)
 		move.w	#ILLEGAL_INSTR,(A0)
 SetBr2		move.w	brk_Count(a1),brk_ActCount(a1)
@@ -257,9 +270,9 @@ Flush_Cache	getbase	Exec,a6
 flsh_end	rts
 
 *** RESTORE ORIGINAL CONTENTS OF BREAKPOINTS ***
-RemBreaks	bclr	#MONB_BRKACTIVE,flags(a4)
+RemBreaks	bclr	#MONB_BRKACTIVE,mon_Flags(a4)
 		beq.s	flsh_end
-RemBr0		move.l	BreakList(a4),D2
+RemBr0		move.l	mon_BreakList(a4),D2
 RemBr1		tst.l	D2
 		beq.s	RemBr3
 		move.l	D2,A1
@@ -269,23 +282,23 @@ RemBr1		tst.l	D2
 RemBr2		move.l	(A1),D2
 		bra.s	RemBr1
 
-RemBr3		bclr	#MONB_TMPBRK,flags(a4)
+RemBr3		bclr	#MONB_TMPBRK,mon_Flags(a4)
 		beq.s	Flush_Cache
 
-		move.l	TmpBrkAddr(a4),a0
-		move.w	TmpBrkSave(a4),(a0)
+		move.l	mon_TempBreakAddr(a4),a0
+		move.w	mon_TempBreakSave(a4),(a0)
 		bra.s	Flush_Cache
 
 ;
 ; check stack pointer and reset it if necessary
 ; now resets also if stack pointer is odd
 ;
-check_stackptr	move.l	RegSP(a4),d0
+check_stackptr	move.l	mon_RegSP(a4),d0
 		btst	#0,d0
 		bne.s	reset_stack
 		move.l	d0,a2
 
-		move.l	StackHigh(a4),a0
+		move.l	mon_StackHigh(a4),a0
 		cmp.l	a0,a2
 		bhi.s	reset_stack
 		lea	-MONSTACK(a0),a1
@@ -298,7 +311,7 @@ reset_stack	move.l	a0,a2
 		lea	stackreset_txt(pc),a0
 		call	printstring_a0_window
 
-stack_set	move.l	a2,RegSP(a4)		;sp
+stack_set	move.l	a2,mon_RegSP(a4)		;sp
 rts_001		rts
 
 *** QUICK TRACE ***
@@ -307,7 +320,7 @@ rts_001		rts
 
 		bsr.s	check_stackptr
 		bsr.s	getpc
-		bset	#MONB_QTRACE,flags(a4)
+		bset	#MONB_QTRACE,mon_Flags(a4)
 		moveq	#0,d0
 		bsr	SetBreaks
 		bra.s	walk_001
@@ -326,9 +339,9 @@ getpc		call	skipspaces
 		tst.b	(a3)
 		beq.s	01$
 		call	GetExpr
-		move.l	d0,RegPC(a4)
-01$		btst	#0,RegPC+3(a4)		;error if current
-		beq.s	rts_001			;PC is odd
+		move.l	d0,mon_RegPC(a4)
+01$		btst	#0,mon_RegPC+3(a4)	;error if current PC is odd
+		beq.s	rts_001
 
 *** SKIP ONE INSTRUCTION
 ;
@@ -340,10 +353,10 @@ getpc		call	skipspaces
 
 		bsr	check_stackptr
 		bsr.s	getpc
-		move.l	RegPC(a4),a5
-		lea	OutputBuf(a4),a3
+		move.l	mon_RegPC(a4),a5
+		lea	mon_OutputBuf(a4),a3
 		call	Disassemble
-		move.l	a5,RegPC(a4)
+		move.l	a5,mon_RegPC(a4)
 		lea	skip_txt(pc),a0
 		call	printstring_a0
 		bra	displayregs_d
@@ -360,8 +373,8 @@ getpc		call	skipspaces
 
 		bsr	check_stackptr
 		bsr.s	getpc
-		move.l	RegPC(a4),a5
-		lea	OutputBuf(a4),a3
+		move.l	mon_RegPC(a4),a5
+		lea	mon_OutputBuf(a4),a3
 		call	Disassemble
 		move.l	a5,d0
 		bra.s	go_com
@@ -383,10 +396,10 @@ getpc		call	skipspaces
 ;
 ; put return address in stack
 ;
-		move.l	RegSP(a4),a0
+		move.l	mon_RegSP(a4),a0
 		lea	returncode(pc),A1
 		move.l	a1,-(a0)
-		move.l	a0,RegSP(a4)
+		move.l	a0,mon_RegSP(a4)
 
 ;
 ; common code for jump/go/execute/skip
@@ -394,17 +407,17 @@ getpc		call	skipspaces
 ;  breakpoint is used
 ;
 go_com		bsr	SetBreaks
-		move.l	RegPC(a4),d0
+		move.l	mon_RegPC(a4),d0
 		bsr	find_break
 		bpl.s	go_special
 
-		move.l	RegSP(a4),sp
-		move.l	RegPC(a4),-(sp)
+		move.l	mon_RegSP(a4),sp
+		move.l	mon_RegPC(a4),-(sp)
 ;
 ; move <ea>,ccr size is WORD! assemblers should check size specifiers better.
 ;
-		move.w	RegCCR_W(a4),ccr
-		movem.l	DataRegs(a4),D0-D7/A0-A6
+		move.w	mon_RegCCR_W(a4),ccr
+		movem.l	mon_DataRegs(a4),D0-D7/A0-A6
 		rts	;this really jumps to the user program
 
 go_special	or	#2,ccr		set overflow flag
@@ -419,17 +432,17 @@ returncode	movem.l	d0-d2/a0-a1/a4/a6,-(sp)
 		lib	FindTask
 		move.l	d0,a1
 		move.l	TC_Userdata(a1),a4
-		move.b	d2,RegCCR_B(a4)
+		move.b	d2,mon_RegCCR_B(a4)
 		movem.l	(sp)+,d0-d2/a0-a1
-		movem.l	d0-d7/a0-a3,DataRegs(a4)
-		move.l	a5,AddrRegs+4*5(a4)		a5
-		move.l	(sp)+,AddrRegs+4*4(a4)		a4
-		move.l	(sp)+,AddrRegs+4*6(a4)		a6
-		move.l	sp,RegSP(a4)			sp
+		movem.l	d0-d7/a0-a3,mon_DataRegs(a4)
+		move.l	a5,mon_AddrRegs+4*5(a4)		a5
+		move.l	(sp)+,mon_AddrRegs+4*4(a4)	a4
+		move.l	(sp)+,mon_AddrRegs+4*6(a4)	a6
+		move.l	sp,mon_RegSP(a4)		sp
 
-		move.l	StackPtr(a4),sp			restore monitor sp
+		move.l	mon_StackPtr(a4),sp		restore monitor sp
 
-		bclr	#MONB_QTRACE,flags(a4)
+		bclr	#MONB_QTRACE,mon_Flags(a4)
 		bsr	RemBreaks
 
 		lea	returned_txt(pc),A0
@@ -446,14 +459,14 @@ trapreturn	;Note! We are in supervisor mode!
 
 		cmp.l	#9,4*4(sp)			trace?
 		bne.s	noskipbrk
-		bclr	#MONB_BRKSKIP,flags(a4)
+		bclr	#MONB_BRKSKIP,mon_Flags(a4)
 		beq.s	noskipbrk
 ;
 ; we have just skipped a breakpoint in trace mode
 ;
 ; note: user stack pointer does not need to be initialized here
 ;
-		move.l	GoBrkPtr(a4),a4
+		move.l	mon_GoBreakPtr(a4),a4
 		move.l	brk_Address(a4),a0
 		move.w	(a0),brk_Content(a4)
 		move.w	#ILLEGAL_INSTR,(a0)
@@ -477,28 +490,28 @@ noskipbrk	cmp.l	#7,4*4(sp)		is this a TRAPV-trap
 ; this is the special go-routine if the address we are going to enter
 ; the code contains a breakpoint. in that case we trace over the
 ; instruction and then continue at full speed
-		bset	#MONB_BRKSKIP,flags(a4)
+		bset	#MONB_BRKSKIP,mon_Flags(a4)
 
 ; fall to walk trap routine
 walk_trap	lea	4*4+4(sp),sp		clean up stack
-		move.l	RegPC(a4),2(sp)
+		move.l	mon_RegPC(a4),2(sp)
 		move	sr,d0
-		move.b	RegCCR_B(a4),d0
+		move.b	mon_RegCCR_B(a4),d0
 		bclr	#13,d0			supervisor mode off
 		bset	#15,d0			trace mode on
 		move.w	d0,(sp)
-		move.l	RegSP(a4),a0
+		move.l	mon_RegSP(a4),a0
 		move.l	a0,usp
-		movem.l	DataRegs(a4),d0-d7/a0-a6
+		movem.l	mon_DataRegs(a4),d0-d7/a0-a6
 		rte
 
 normtrap_1	movem.l	(sp)+,d0/a0
-		movem.l	d0-d7/a0-a3,DataRegs(a4)
-		move.l	a5,AddrRegs+4*5(a4)		;a5
-		move.l	(sp)+,AddrRegs+4*4(a4)		;a4
-		move.l	(sp)+,AddrRegs+6*4(a4)		;a6
+		movem.l	d0-d7/a0-a3,mon_DataRegs(a4)
+		move.l	a5,mon_AddrRegs+4*5(a4)		;a5
+		move.l	(sp)+,mon_AddrRegs+4*4(a4)	;a4
+		move.l	(sp)+,mon_AddrRegs+6*4(a4)	;a6
 		move	usp,a0
-		move.l	a0,RegSP(a4)
+		move.l	a0,mon_RegSP(a4)
 
 		move.w	AttnFlags(A6),D1
 		move.l	(sp)+,D5
@@ -510,11 +523,11 @@ normtrap_1	movem.l	(sp)+,d0/a0
 					;by the 68000
 
 pop_SR_and_PC	move.w	(sp)+,D0	status register
-		move.b	D0,RegCCR_B(a4)
+		move.b	D0,mon_RegCCR_B(a4)
 		move.l	(sp)+,a5
 		cmp.w	#ILLEGAL_INSTR,(a5)
 		seq	d7
-		move.l	a5,RegPC(a4)
+		move.l	a5,mon_RegPC(a4)
 
 		btst	#AFB_68010,d1
 		beq.s	go_user_mode
@@ -546,7 +559,8 @@ drop_stack	add.w	d2,sp
 go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 		move	D0,SR		back to the user mode!
 
-		movea.l	StackPtr(a4),sp		restore monitor (user) stack pointer
+		movea.l	mon_StackPtr(a4),sp
+					;restore monitor (user) stack pointer
 ;
 ; if MONF_BRKSKIP is set when we enter here, some other exception has
 ; occurred before the trace-exception that should have cleared the
@@ -554,14 +568,14 @@ go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 ; breakpoint here (RemBreaks tries to remove it anyway, and that could
 ; cause problems...)
 ;
-		bclr	#MONB_BRKSKIP,flags(a4)
+		bclr	#MONB_BRKSKIP,mon_Flags(a4)
 		beq.s	01$
-		move.l	GoBrkPtr(a4),a1		activate breakpoint
+		move.l	mon_GoBreakPtr(a4),a1		activate breakpoint
 		move.l	brk_Address(a1),a3
 		move.w	(a3),brk_Content(a1)
 		move.w	#ILLEGAL_INSTR,(a3)
 01$
-		btst	#MONB_BRKACTIVE,flags(a4)
+		btst	#MONB_BRKACTIVE,mon_Flags(a4)
 		bne.s	02$
 		clr.b	d7
 02$
@@ -579,10 +593,10 @@ go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 
 		cmp.w	#9,d5		;trace ?
 		bne.s	no_qtrace
-		btst	#MONB_QTRACE,flags(a4)
+		btst	#MONB_QTRACE,mon_Flags(a4)
 		beq.s	no_qtrace
 
-handle_qtrace	move.l	RegPC(a4),d0
+handle_qtrace	move.l	mon_RegPC(a4),d0
 		btst	#0,d0
 		bne.s	no_qtrace
 
@@ -591,7 +605,7 @@ handle_qtrace	move.l	RegPC(a4),d0
 		bsr	is_flowctrl
 		bcc	walk_001
 
-		lea	OutputBuf(a4),a3
+		lea	mon_OutputBuf(a4),a3
 		call	Disassemble
 		tst.w	d0
 		bne	walk_001
@@ -599,10 +613,10 @@ handle_qtrace	move.l	RegPC(a4),d0
 		lea	qtrace_txt(pc),a0
 		bra.s	trap_msg_dregs
 
-no_qtrace	move.l	RegPC(a4),D0
+no_qtrace	move.l	mon_RegPC(a4),D0
 		cmp.w	#4,D5
 		bne.s	normal_trap
-		cmp.l	TmpBrkAddr(a4),d0
+		cmp.l	mon_TempBreakAddr(a4),d0
 		bne.s	1$
 		lea	etrace_txt(pc),a0
 		bra.s	trap_msg_dregs
@@ -623,27 +637,27 @@ trap_msg_dregs	call	printstring_a0
 		bra.s	trap_dregs
 
 handle_brk_count
-		btst	#MONB_QTRACE,flags(a4)
+		btst	#MONB_QTRACE,mon_Flags(a4)
 		bne	do_brkpoint
 
 		move.l	brk_Address(a0),a1
 		move.w	brk_Content(a0),(a1)
-		move.l	a0,GoBrkPtr(a4)
+		move.l	a0,mon_GoBreakPtr(a4)
 
 		bsr	Flush_Cache
 		bra	go_special
 
 normal_trap	bsr.s	show_trap_name
 
-trap_dregs	bclr	#MONB_QTRACE,flags(a4)
+trap_dregs	bclr	#MONB_QTRACE,mon_Flags(a4)
 		bsr	RemBreaks
 		bsr	displayregs
-		move.l	RegPC(a4),D0
+		move.l	mon_RegPC(a4),D0
 		btst	#0,D0
 		bne.s	tr99
-		move.l	D0,Addr(a4)
+		move.l	D0,mon_CurrentAddr(a4)
 		move.l	D0,a5
-		call	PutLabel
+		call	put_label
 		startline
 		call	Disassemble
 		call	printstring
@@ -684,11 +698,13 @@ show_trap_name	;trap number in D5
 		subq.w	#2,D0
 		cmp.w	#10,D0
 		bcs.s	txout1
+
 unknown_trap	lea	unknowntrap(pc),a1
 		call	putstring
 		move.l	d5,d0
 		call	put_signed_hexnum
 		bra.s	notraps
+
 traps		moveq	#10,D0
 txout1		lea	trapnametable(pc),A0
 		call	getnth
@@ -699,6 +715,7 @@ txout1		lea	trapnametable(pc),A0
 		move.w	D5,D0
 		sub.w	#$20,D0
 		call	put_signed_hexnum
+
 notraps		putchr	SPACE
 		moveq	#'*',D0
 		move.b	D0,(A3)+
@@ -750,14 +767,13 @@ trapnametable	dc.b	'Bus error',0
 frametypefmt	dc.b	'Frame type #$%02lx',LF,0
 		endc
 
-noBrkTxt	dc.b	'No Breakpoints set',LF,0
-brklistTx	dc.b	'Breakpoints:',LF,0
+nobreak_txt	dc.b	'No Breakpoints set',LF,0
+breaklist_txt	dc.b	'Breakpoints:',LF,0
 
 skip_txt	dc.b	'*** Skipping ***',LF,0
 stackreset_txt	dc.b	'*** Stack reset ***',LF,0
 
 brk_fmt		dc.b	'%3ld   $%08lx   [%d]',LF,0
 hexfmt		dc.b	'$%08lx',LF,0
-oddaddr_txt	dc.b	'Odd address',0
 
 		end

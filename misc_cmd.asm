@@ -7,11 +7,13 @@
 ;
 ;	setshow_base,cmdline,calculator,options
 ;
+; And the following public subroutine:
+;
+;	set_cmdline
+;
 
 		xref	generic_error
 		xref	mainloop
-
-		xdef	set_cmdline
 
 ;
 ; display/change default number base
@@ -29,14 +31,14 @@
 		moveq	#36,d1
 		cmp.b	d1,d0
 		bhi.s	base_err
-		move.b	d0,defbase(a4)
+		move.b	d0,mon_DefNumBase(a4)
 mloop_bx	bra	mainloop
 
 base_err	bra	generic_error
 
 showbase	moveq	#0,d0
-		move.b	defbase(a4),d0
-		lea	basefmt(pc),a0
+		move.b	mon_DefNumBase(a4),d0
+		lea	base_fmt(pc),a0
 		call	printf_window
 		bra.s	mloop_bx
 
@@ -49,18 +51,23 @@ showbase	moveq	#0,d0
 		call	printstring_a0_window
 		moveq	#0,d0
 		call	GetInput
-01$		bsr.s	set_cmdline
+01$		call.s	set_cmdline
 		bra	mainloop
 
-set_cmdline	lea	CmdLineBuf(a4),a1
+;
+; copy string from input buffer to command line & set d0 & a0
+;
+		pub	set_cmdline
+
+		lea	mon_CmdLineBuf(a4),a1
 		move.l	a1,a2
 02$		move.b	(a3)+,(a1)+
 		bne.s	02$
 		move.b	#LF,-1(a1)
 		clr.b	(a1)
 		sub.l	a2,a1
-		move.l	a1,DataRegs(a4)		;set d0
-		move.l	a2,AddrRegs(a4)		;set a0
+		move.l	a1,mon_DataRegs(a4)		;set d0
+		move.l	a2,mon_AddrRegs(a4)		;set a0
 		rts
 
 
@@ -115,7 +122,7 @@ set_cmdline	lea	CmdLineBuf(a4),a1
 PrintNumber	startline
 		tst.l	D5
 		bpl.s	num_A1
-		lea	signtxt(pc),A1
+		lea	sign_txt(pc),A1
 		call	putstring
 num_A1		swap	d6
 		move.w	d6,d3
@@ -143,7 +150,7 @@ num_A1		swap	d6
 		moveq	#SPACE,D0
 		move.b	D0,(A3)+
 		move.b	D0,(A3)+
-		lea	signtxt+2(pc),A1
+		lea	sign_txt+2(pc),A1
 		call	putstring
 		move.l	d6,D0
 		call	PutLong
@@ -178,19 +185,19 @@ num_A2		rts
 ; remove option
 		call	GetExpr
 		subq.w	#1,d0
-		bclr	d0,MonOptions(a4)
+		bclr	d0,mon_Options(a4)
 		bra.s	opt_9
 
 add_option	call	GetExpr
 		subq.w	#1,d0
-		bset	d0,MonOptions(a4)
+		bset	d0,mon_Options(a4)
 		bra.s	opt_9
 
 show_options	moveq	#0,d3
 		lea	option_strings(pc),a2
 
 0$		lea	off_txt(pc),a1
-		btst	d3,MonOptions(a4)
+		btst	d3,mon_Options(a4)
 		beq.s	1$
 		addq.l	#on_txt-off_txt,a1
 1$		move.l	a1,d2
@@ -206,14 +213,14 @@ show_options	moveq	#0,d3
 		bne	0$
 
 		moveq	#0,d0
-		move.b	MonOptions(a4),d0
+		move.b	mon_Options(a4),d0
 		lea	optvalue_fmt(pc),a0
 		call	printf
 
 opt_9		bra	mainloop
 
-signtxt		dc.b	'unsigned',0
-basefmt		dc.b	'Base is %ld',LF,0
+sign_txt	dc.b	'unsigned',0
+base_fmt	dc.b	'Base is %ld',LF,0
 cmdline_prompt	dc.b	'Cmdline> ',0
 calc_prompt	dc.b	'Calc> ',0
 

@@ -1,7 +1,7 @@
 ************************************
 *                                  *
 *   Amiga machine code monitor     *
-* Timo Rossi  1987-1988-1989-1990  *
+*     Timo Rossi  1987-1991	   *
 *                                  *
 * v1.06 -> last mod. 1988-05-02    *
 * v1.07 -> last mod. 1989-08-28    *
@@ -30,6 +30,8 @@
 * v1.43 ->           1991-09-01    *
 * v1.44 ->           1991-10-27    *
 * v1.45 ->           1991-11-10    *
+* v1.47 ->	     1991-11-21    *
+* v1.49 ->	     1991-11-29    *
 ************************************
 
 ;
@@ -428,3 +430,16 @@ lm;		  and trap numbers.
 ;		- 2.0-compatible version string
 ;		- symbol sorting: '.' last
 ;
+;  1991-11-25   --> 1.48
+;		- base register relative symbol support
+;
+;  1991-11-25   --> 1.49
+;		- hunk type display shows chip/fast
+;		- symbol names can contain '$'-characters
+;		- changed a4-relative variable names to mon_XX
+;		- symbols with names beginning with a number can be
+;		  used by prefixing them with "`"
+;		- disassembly automatically stops at hunk end
+;		- CD/exit now should't leave any extra locks unlocked
+;
+

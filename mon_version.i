@@ -6,7 +6,7 @@
 BETA		equ	0	;special 'Beta version' flag
 
 VERSION		macro
-		dc.b	'1.48'
+		dc.b	'1.49'
 		ifne	BETA
 		dc.b	'b'
 		endc

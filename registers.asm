@@ -11,8 +11,6 @@
 		xdef	displayregs
 		xdef	displayregs_d
 
-		xref	phex1_8
-
 		xref	generic_error
 
 *** DISPLAY & CHANGE REGISTERS ***
@@ -23,14 +21,14 @@
 		bne.s	changeregs
 
 displayregs_d	bsr	displayregs
-		move.l	RegPC(a4),D0
+		move.l	mon_RegPC(a4),D0
 		beq.s	rr9
 		btst	#0,D0
 		bne.s	rr9
 		move.l	D0,a5
 		tst.w	(a5)
 		beq.s	rr9
-		call	PutLabel
+		call	put_label
 		startline
 		call	Disassemble
 		tst.w	d0
@@ -54,7 +52,7 @@ changeregs	move.b	(A3)+,D0	;** CHANGE REGISTERS **
 		bne.s	nopc
 		bsr.s	skipequal
 		call	GetExpr
-		move.l	D0,RegPC(a4)
+		move.l	D0,mon_RegPC(a4)
 		rts
 
 ;#
@@ -69,7 +67,7 @@ nopc		cmp.w	#'cc',D0	;condition code register
 		addq.l	#1,a3
 01$		bsr.s	skipequal
 		call	GetExpr
-		move.b	D0,RegCCR_B(a4)
+		move.b	D0,mon_RegCCR_B(a4)
 		rts
 
 nocc		cmp.w	#'d0',D0
@@ -81,7 +79,7 @@ nocc		cmp.w	#'d0',D0
 		move.w	D0,D2
 		bsr	skipequal
 		call	GetExpr
-		lea	DataRegs(a4),A0
+		lea	mon_DataRegs(a4),A0
 		move.l	D0,0(A0,D2.W)
 		rts
 
@@ -98,7 +96,7 @@ setareg		lsl.w	#2,D0
 		move.w	D0,D2
 		bsr	skipequal
 		call	GetExpr
-		lea	AddrRegs(a4),A0
+		lea	mon_AddrRegs(a4),A0
 		move.l	D0,0(A0,D2.W)
 		rts
 
@@ -108,11 +106,11 @@ setareg		lsl.w	#2,D0
 ;#
 displayregs	startline
 		move.l	#' PC=',(A3)+
-		move.l	RegPC(a4),D0
-		bsr	phex1_8
+		move.l	mon_RegPC(a4),D0
+		call	puthex8
 		move.l	#' CCR',(A3)+
 		putchr	<'='>
-		move.b	RegCCR_B(a4),D0
+		move.b	mon_RegCCR_B(a4),D0
 		move.b	D0,D2
 		moveq	#2,d1
 		call	put_hexnum1
@@ -135,19 +133,18 @@ flag1		move.b	D0,(A3)+
 		bpl.s	flagloop
 		endline
 		call	printstring
-		lea	DataRegs(a4),A2
+		lea	mon_DataRegs(a4),A2
 		move.l	#' D0=',D2
 		bsr.s	PrintRegLine
 		bsr.s	PrintRegLine
 		move.l	#' A0=',D2
-		bsr.s	PrintRegLine
-		nop
+		bsr	PrintRegLine
 
 PrintRegLine	startline
 		moveq	#4-1,D3
 regl1		move.l	D2,(A3)+
 		move.l	(A2)+,D0
-		bsr	phex1_8
+		call	puthex8
 		add.w	#$0100,D2
 		dbf	D3,regl1
 		endline

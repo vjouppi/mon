@@ -23,9 +23,6 @@
 		xdef	instr_names
 		xdef	ccodes
 
-		xref	puthex1_68
-		xref	puthex_68
-		xref	find_var_value
 ;
 ; equates for disassembler routine
 ;
@@ -72,21 +69,35 @@ BIT	equ	$92	; bit instruction type
 		cmd	disassem
 
 		call	GetParams
-		bclr	#0,Addr+3(a4)
-		move.l	Addr(a4),a5
+		bclr	#0,mon_CurrentAddr+3(a4)
+		move.l	mon_CurrentAddr(a4),a5
+
+		move.l	a5,a0
+		call	find_hunk_addr
+		tst.l	d0
+		beq.s	disasmloop
+
+		move.l	d0,a0
+		add.l	-4(a0),a0
+		subq.l	#5,a0
+
+		tst.l	mon_EndAddr(a4)
+		beq.s	1$
+		cmp.l	mon_EndAddr(a4),a0
+		bcc.s	disasmloop
+
+1$		move.l	a0,mon_EndAddr(a4)
 
 disasmloop	move.l	a5,d0
-		call	PutLabel
+		call	put_label
 
 		startline
-	;;	call	disassemble
-		bsr	Disassemble_routine
-
+		call.s	Disassemble
 		call	printstring
 		call	CheckEnd
 		bne.s	disasmloop
 
-		move.l	a5,Addr(a4)
+		move.l	a5,mon_CurrentAddr(a4)
 		rts
 
 
@@ -109,9 +120,9 @@ disasmloop	move.l	a5,d0
 		movem.l	d2-d7/a2/a4/a6,-(sp)
 
 		move.l	a5,d0
-		bsr	puthex1_68
+		call	puthex68
 
-		btst	#OPTB_NARROWDIS,MonOptions(a4)
+		btst	#OPTB_NARROWDIS,mon_Options(a4)
 		beq.s	00$
 
 		clra	a4
@@ -396,7 +407,8 @@ immsizes	bra.s	invalid
 		bra.s	imm_word
 ; imm_long
 		bsr	GetLong
-		bra	puthex_68
+		move.b	#'$',(a3)+
+		call	JUMP,puthex68a
 
 imm_byte	bsr	GetWord
 		moveq	#2,d1
@@ -493,10 +505,10 @@ put_addr	move.l	a4,-(sp)
 		move.l	ThisTask(a4),a4
 		move.l	TC_Userdata(a4),a4
 
-		tst.l	HunkTypeTable(a4)
+		tst.l	mon_HunkTypeTable(a4)
 		beq.s	put_adr1a
 		move.l	d0,-(sp)
-		bsr	find_var_value
+		call	find_var_value
 		tst.l	d0
 		beq.s	put_adr1
 		move.l	d0,a0
@@ -508,13 +520,15 @@ put_addr	move.l	a4,-(sp)
 
 		move.b	#'[',-1(a3)
 		move.l	(sp)+,d0
-		bsr	puthex_68
+		move.b	#'$',(a3)+
+		call	puthex68a
 		move.b	#']',(a3)+
 		move.l	(sp)+,a4
 		rts
 
 put_adr1	move.l	(sp)+,d0
-put_adr1a	bsr	puthex_68
+put_adr1a	move.b	#'$',(a3)+
+		call	puthex68a
 		move.l	(sp)+,a4
 		rts
 
@@ -673,17 +687,17 @@ displ		move.w	d0,-(sp)
 		move.l	ThisTask(a4),a4
 		move.l	TC_Userdata(a4),a4
 
-		tst.l	HunkTypeTable(a4)
+		tst.l	mon_HunkTypeTable(a4)
 		beq.s	8$
 
 		move.b	5(sp),d1
-		cmp.b	RelBaseReg(a4),d1
+		cmp.b	mon_RelBaseReg(a4),d1
 		bne.s	8$
 
 		ext.l	d0
-		add.l	RelBaseAddr(a4),d0
+		add.l	mon_RelBaseAddr(a4),d0
 
-		bsr	find_var_value
+		call	find_var_value
 		tst.l	d0
 		beq.s	7$
 		move.l	d0,a0

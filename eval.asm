@@ -21,11 +21,6 @@
 ;		GetExpr, GetDecNum, GetHexNum
 ;
 
-;
-;
-		xref	findvar
-		xref	find_brk_num
-
 		xref	expression_error
 		xref	odd_address_error
 ;
@@ -201,7 +196,7 @@ gnum_j		bra	get_num
 
 ex37		cmp.b	#'*',d0		;current address
 		bne.s	ex37a
-		move.l	Addr(a4),d0
+		move.l	mon_CurrentAddr(a4),d0
 		rts
 
 ex37a		cmp.b	#'[',d0		;register?
@@ -211,7 +206,7 @@ ex37a		cmp.b	#'[',d0		;register?
 		lsl.w	#8,d0
 		move.b	(a3)+,d0
 		call	tolower
-		lea	RegPC(a4),a0
+		lea	mon_RegPC(a4),a0
 		cmp.w	#'pc',d0
 		beq.s	ex37x
 		cmp.w	#'cc',d0
@@ -222,23 +217,25 @@ ex37a		cmp.b	#'[',d0		;register?
 		bne.s	01$
 		addq.l	#1,a3
 01$		moveq	#0,d0
-		move.b	RegCCR_B(a4),d0
+		move.b	mon_RegCCR_B(a4),d0
 		bra.s	ex37z
 
-ex37b		lea	RegSP(a4),a0
+ex37b		lea	mon_RegSP(a4),a0
 		cmp.w	#'sp',d0
 		beq.s	ex37x
 		sub.w	#'a0',d0
 		bcs.s	ex37_err
 		cmp.w	#7,d0
 		bhi.s	ex37c
-		lea	AddrRegs(a4),a0
+		lea	mon_AddrRegs(a4),a0
 		bra.s	ex37r
+
 ex37c		sub.w	#'d0'-'a0',d0
 		bcs.s	ex37_err
 		cmp.w	#7,d0
 		bhi.s	ex37_err
-		lea	DataRegs(a4),a0
+
+		lea	mon_DataRegs(a4),a0
 ex37r		lsl.w	#2,d0
 		add.w	d0,a0
 ex37x		move.l	(a0),d0
@@ -256,18 +253,30 @@ ex38		subq.l	#1,a3
 		add.w	(a0),a0
 		jmp	(a0)
 
+ex38a		addq.l	#1,a3
+		bra.s	ex_var
+
 ex38b		move.b	(a3),d0
+		cmp.b	#'`',d0
+		beq.s	ex38a
 		cmp.b	#'@',d0
-		beq.s	00$
+		beq.s	ex_var
 		cmp.b	#'.',d0
-		beq.s	00$
+		beq.s	ex_var
 		call	isalpha
 		bcc.s	ex39b
 
-00$		move.l	a3,a0			;variable?
+ex_var		move.l	a3,a0			;variable?
 		addq.l	#1,a0
 
+;
+; variable names can contain '$' and '.'
+;
 01$		move.b	(a0)+,d0
+		cmp.b	#'.',d0
+		beq.s	01$
+		cmp.b	#'$',d0
+		beq.s	01$
 		call	isalnum
 		bcs.s	01$
 		subq.l	#1,a0
@@ -277,7 +286,7 @@ ex38b		move.b	(a3),d0
 
 		movem.l	d0/a0,-(sp)
 		move.l	a3,a0
-		bsr	findvar
+		call	find_variable
 		movem.l	(sp)+,d1/a0
 		bcs.s	ex39
 
@@ -296,7 +305,7 @@ ex39c		moveq	#10,d0
 		cmp.b	#'_',(a3)+		;decimal perix '_'
 		beq.s	ex39x
 		subq.l	#1,a3
-		move.b	defbase(a4),d0
+		move.b	mon_DefNumBase(a4),d0
 ex39x		bra	get_num
 
 multiply	movem.l	d4-d6,-(sp)
@@ -397,7 +406,7 @@ r_hend		bsr.s	gethunk
 		bra	no_more_args
 
 r_nhunks	moveq	#0,d0
-		move.l	SegList(a4),d1
+		move.l	mon_SegList(a4),d1
 01$		lsl.l	#2,d1
 		beq.s	g_rts
 		move.l	d1,a0
@@ -406,7 +415,7 @@ r_nhunks	moveq	#0,d0
 		bra.s	01$
 
 gethunk		bsr	get_first_arg
-		move.l	SegList(a4),d1
+		move.l	mon_SegList(a4),d1
 01$		lsl.l	#2,d1
 		beq	expression_error		;hunk not found
 		tst.l	d0
@@ -470,7 +479,7 @@ r_execlist	call	skipspaces
 		lea	0(a6,d1.w),a0	;to preserve all registers
 		lib	FindName
 		lib	Permit
-		bra	no_more_args
+		bra.s	no_more_args
 
 ;
 ; find a task by name or CLI number (or find current task)
@@ -508,7 +517,7 @@ r_ftask		move.l	d0,a1
 		bra	no_more_args
 
 r_brk		bsr	get_first_arg
-		bsr	find_brk_num
+		call	find_brk_num
 		moveq	#-1,d1
 		cmp.l	d0,d1
 		beq	expression_error

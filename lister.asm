@@ -156,8 +156,9 @@ ResPrint	move.l	bdat_NodeAddr(a3),d0
 		move.l	a3,d1
 		lea	res_list_fmt(pc),a0
 		call	JUMP,printf
+
 ;
-;
+; task list
 ;
 		cmd	list_tasks
 
@@ -293,6 +294,8 @@ list_bufo1	movem.l	(sp)+,d2/a2/a3
 		moveq	#0,d0
 		rts
 
+;
+; (here we must Disable() -- Forbid() is not enough)
 ;
 ; buffer ptr a0, length d0
 ;

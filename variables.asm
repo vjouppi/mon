@@ -10,25 +10,28 @@
 		include	"monitor.i"
 		include "variables.i"
 
-		xdef	find_var_value
-
 ;
 ; This module defines the following command routines:
 ;
 ;	setvariable,clearvars
 ;
-		xdef	clear_all_variables
-		xdef	findvar
+; and the following public subroutines:
+;
+;	clear_all_variables,clear_hunk_vars,find_variable
+;	set_variable,put_label
+;
 
 		xref	generic_error
 		xref	out_memory_error
 
+
 ; clear all variables
 ; called before exit and when the cv-command is executed
 ; changes d2 and a6
-clear_all_variables
+		pub	clear_all_variables
+
 		getbase	Exec
-		move.l	VarList(a4),d2
+		move.l	mon_VarList(a4),d2
 
 clrvarloop	tst.l	d2
 		beq.s	cleared_vars
@@ -39,7 +42,7 @@ clrvarloop	tst.l	d2
 		lib	FreeMem
 		bra.s	clrvarloop
 
-cleared_vars	clr.l	VarList(a4)
+cleared_vars	clr.l	mon_VarList(a4)
 		rts
 
 ; 
@@ -48,7 +51,7 @@ cleared_vars	clr.l	VarList(a4)
 		pub	clear_hunk_vars
 
 		getbase	Exec
-		lea	VarList(a4),a2
+		lea	mon_VarList(a4),a2
 		move.l	(a2),d2
 
 clrhvarloop	tst.l	d2
@@ -79,15 +82,15 @@ cleared_hvars	rts
 		cmd	setvariable
 
 		tst.b	(a3)
-		bne	set_variable
+		bne	set_var_cmd
 
-		move.l	VarList(a4),d5
+		move.l	mon_VarList(a4),d5
 		bne.s	showvar1
-		lea	novartxt(pc),a0
+		lea	no_variables_txt(pc),a0
 		call	printstring_a0_window	;'no variables defined'
 		bra.s	xvar_end
 
-showvar1	lea	varhead(pc),a0
+showvar1	lea	var_head_txt(pc),a0
 		call	printstring_a0
 
 showvarloop	move.l	d5,a2
@@ -96,13 +99,13 @@ showvarloop	move.l	d5,a2
 		move.l	var_Value(a2),d1
 		move.l	d1,d2
 
-		lea	varfmt1(pc),a0
+		lea	var_fmt1(pc),a0
 		tst.w	var_HunkNum(a2)
 		bmi.s	1$
 
 		moveq	#0,d2
 		move.w	var_HunkNum(a2),d2
-		lea	varfmt2(pc),a0
+		lea	var_fmt2(pc),a0
 
 1$		call	printf
 		call	CheckKeys
@@ -116,7 +119,7 @@ xvar_end	rts
 ; set a variable. variable name may begin with '@', '.' ,'_' or alphabetic
 ; character and contain '_' and alphanumeric characters.
 ;
-set_variable	move.b	(a3),d0
+set_var_cmd	move.b	(a3),d0
 		cmp.b	#'@',d0
 		beq.s	00$
 		cmp.b	#'.',d0
@@ -127,7 +130,14 @@ set_variable	move.b	(a3),d0
 00$		move.l	a3,a5
 		addq.l	#1,a3
 
+;
+; variable names can contain '.' and '$'
+;
 01$		move.b	(a3)+,d0
+		cmp.b	#'.',d0
+		beq.s	01$
+		cmp.b	#'$',d0
+		beq.s	01$
 		call	isalnum
 		bcs.s	01$
 
@@ -157,14 +167,14 @@ set_variable	move.b	(a3),d0
 		move.l	(sp)+,d0
 
 03$		move.l	a5,a0
-		call	setvar
+		call.s	set_variable
 		tst.l	d0
 		beq	out_memory_error
 		bra.s	xvar_end
 
 remvar		move.l	a5,a0
 		clr.b	(a2)
-		bsr	findvar
+		bsr	find_variable
 		bcs.s	xvar_end
 		bsr	deletevar
 		bra.s	xvar_end
@@ -177,18 +187,17 @@ remvar		move.l	a5,a0
 ;
 ; returns zero if fails, nonzero if successfull
 ;
-		pub	setvar
-		xdef	setvar_routine	;??
+		pub	set_variable
 
 		movem.l	d0/d1/a0,-(sp)
-		bsr	findvar
-		bcc.s	01$
+		bsr	find_variable
+		bcc.s	setvar1
 		move.l	8(sp),a0
 		bsr.s	addvar
 		tst.l	d0
 		beq.s	setvar_ret
 		move.l	d0,a0
-01$		movem.l	(sp)+,d0/d1/a1		;a1 value no used...
+setvar1		movem.l	(sp)+,d0/d1/a1		;a1 value no used...
 		move.l	d0,var_Value(a0)
 		move.w	d1,var_HunkNum(a0)
 		moveq	#1,d0	;TRUE: successfull
@@ -224,7 +233,7 @@ addvar		movem.l	d2/a2-a3/a6,-(sp)
 ;# ->v1.47 ... case sensitive again
 ;#
 ;
-		lea	VarList(a4),a2
+		lea	mon_VarList(a4),a2
 06$		move.l	(a2),d0
 		beq.s	add_now
 		move.l	d0,a0
@@ -257,14 +266,15 @@ str_comp_ch	move.b	(a1)+,d1
 		bne.s	2$
 		st	d0
 2$		cmp.b	d0,d1
-		bne.s	3$
+		bne.s	str_comp_end
 		tst.b	d0
 		bne.s	str_comp_ch
-3$		rts
+str_comp_end	rts
 
 ;
 ; find a variable and return its value in d0 and variable structure
 ; address in a0. return carry set if not found, else carry clear
+;
 ; parameters: pointer to null-terminated name in a0
 ;
 ;#
@@ -273,7 +283,9 @@ str_comp_ch	move.b	(a1)+,d1
 ;#
 ;# -> v1.47 -> case sensitive again
 ;#
-findvar		move.l	VarList(a4),d1
+		pub	find_variable
+
+find_variable	move.l	mon_VarList(a4),d1
 
 fvloop		beq.s	varnotfound
 		move.l	d1,a1
@@ -295,7 +307,7 @@ varnotfound	sec
 ;
 ; remove variable, variable structure pointer in a0
 ;
-deletevar	lea	VarList(a4),a1
+deletevar	lea	mon_VarList(a4),a1
 01$		cmp.l	(a1),a0
 		beq.s	02$
 		move.l	(a1),d1
@@ -316,14 +328,14 @@ deletevar	lea	VarList(a4),a1
 ;
 		cmd	clearvars
 
-		lea	clvartxt(pc),a0
+		lea	clear_var_txt(pc),a0
 		call	printstring_a0_window
 		call	GetKey
 		call	tolower
 		cmp.b	#'y',d0
 		bne.s	cv_end
 		call	ChrOutWin
-		bsr	clear_all_variables
+		call	clear_all_variables
 cv_end		moveq	#LF,d0
 		call	JUMP,ChrOut
 
@@ -332,12 +344,12 @@ cv_end		moveq	#LF,d0
 ; check if there is a symbol with the given value, if true, display symbol name
 ; used to add labels in the disassembly listing.
 ;
-		pub PutLabel
+		pub	put_label
 
-		tst.l	HunkTypeTable(a4)
+		tst.l	mon_HunkTypeTable(a4)
 		beq.s	1$
 
-		bsr.s	find_var_value
+		call.s	find_var_value
 		tst.l	d0
 		beq.s	1$
 		move.l	d0,a0
@@ -352,8 +364,10 @@ cv_end		moveq	#LF,d0
 ; inputs: value (address) in d0
 ; returns: pointer to variable structure in d0, or zero if failed
 ;
-find_var_value	move.l	d0,d1
-		move.l	VarList(a4),d0
+		pub	find_var_value
+
+		move.l	d0,d1
+		move.l	mon_VarList(a4),d0
 
 fv_loop		beq.s	fv_ret			;not found
 		move.l	d0,a0
@@ -396,33 +410,35 @@ fv_ret		rts
 		cmp.b	#8,d3
 		bcc	generic_error
 
-set_relbase	move.l	d2,RelBaseAddr(a4)
-		move.b	d3,RelBaseReg(a4)
+set_relbase	move.l	d2,mon_RelBaseAddr(a4)
+		move.b	d3,mon_RelBaseReg(a4)
 		rts
 
-relbase_off	st	RelBaseReg(a4)
+relbase_off	st	mon_RelBaseReg(a4)
 		rts
 
 show_relbase	moveq	#0,d1
-		move.b	RelBaseReg(a4),d1
+		move.b	mon_RelBaseReg(a4),d1
 		bmi.s	no_relbase
-		move.l	RelBaseAddr(a4),d0
+
+		move.l	mon_RelBaseAddr(a4),d0
 		lea	relbase_fmt(pc),a0
 		call	JUMP,printf
 
-no_relbase	lea	no_relbase_msg(pc),a0
+no_relbase	lea	no_relbase_txt(pc),a0
 		call	JUMP,printstring_a0
 
 ;
 ; strings...
 ;
-novartxt	dc.b	'No variables defined',LF,0
-varhead		dc.b	'Variables:',LF,0
-varfmt1		dc.b	'%-10.50s = $%08lx (%ld)',LF,0
-varfmt2		dc.b	'%-20.50s = $%08lx  [%ld]',LF,0
-clvartxt	dc.b	'Clear vars (y/n)? ',0
+no_variables_txt
+		dc.b	'No variables defined',LF,0
+var_head_txt	dc.b	'Variables:',LF,0
+var_fmt1	dc.b	'%-10.50s = $%08lx (%ld)',LF,0
+var_fmt2	dc.b	'%-20.50s = $%08lx  [%ld]',LF,0
+clear_var_txt	dc.b	'Clear vars (y/n)? ',0
 label_fmt	dc.b	'%-1.50s:',LF,0
-no_relbase_msg	dc.b	'No base reg/addr defined',LF,0
+no_relbase_txt	dc.b	'No base reg/addr defined',LF,0
 relbase_fmt	dc.b	'Relative base addr $%08lx, register A%ld',LF,0
 
 		end

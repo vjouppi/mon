@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.48 instructions
+                 Amiga Monitor v1.49 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -38,6 +38,9 @@
  The filename must be in quotes if it contains spaces. If there is anything
  on the command line after the file name, that will be used as the command
  line for the program loaded to the monitor (a0/d0 registers, see @-command)
+
+ If a '+' character is used before the filename, the monitor tries to load
+ symbol information from the file (see also 'l'-command).
 
  Using the monitor from a remote terminal
  ----------------------------------------
@@ -426,6 +429,9 @@ d -- Disassemble
   d <addr>            -- disassemble 20 lines from <addr>
   d <addr> <end-addr> -- disassemble from <addr> to <end-addr>
 
+ If the disassembly was started inside a hunk of currently loaded executable,
+ it automatically stops at the end of that hunk.
+
 r -- Show or change registers
  Usage:
   r        -- displays all registers
@@ -555,7 +561,8 @@ sl -- Segment list
  Usage:
   sl -- displays the starting & ending addresses and length of each hunk
   of the currently loaded file. If the 'l +' command has been used to
-  load the file, also the type of each hunk is displayed.
+  load the file, also the type of each hunk is displayed (including chip/fast
+  memory types).
 
 rb -- set base address for address register relative symbols
  Usage:
@@ -723,12 +730,19 @@ x -- Exit
 
 Version history:
 ----------------
+1.49 ->
+ - hunk type display also shows chip/fast
+ - some changes in symbol handling
+ - internal source reorganization
+ - disassembly stops at hunk end
+
 1.48 ->
  - address register relative symbol support (rb-command)
 
 1.47 ->
  - symbol support
  - variables now case sensitive
+ - hunk type display in 'sl'-command
 
 1.46 ->
  - added breakpoint counts.

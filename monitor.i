@@ -131,7 +131,7 @@ emitwin		macro
 
 *** start output line ***
 startline	macro
-		lea	OutputBuf(a4),a3
+		lea	mon_OutputBuf(a4),a3
 		endm
 
 *** end output line (line feed+NULL) ***
@@ -156,8 +156,8 @@ cmd		macro
 ; define a public routine
 ;
 pub		macro
-		xdef	\1_routine
 \1_routine	equ	*
+		xdef	\1_routine
 		endm
 ;
 ; call a public routine
@@ -170,13 +170,13 @@ call		macro
 		  ifnd	\1_routine
 		     xref  \1_routine
 		  endc
-		  bsr	\1_routine
+		  bsr.\0 \1_routine
 		endc
 		ifc	'\1','JUMP'
 		  ifnd	\2_routine
 		    xref  \2_routine
 		  endc
-		  bra	\2_routine
+		  bra.\0 \2_routine
 		endc
 		endm
 
@@ -235,79 +235,81 @@ ILLEGAL_INSTR	equ	$4AFC	;illegal instruction (used by breakpoints)
 		STRUCTURE MonitorData,0
 ; first the long word variables
 		 APTR	_DosBase	;DOS library base
-		 APTR	WBenchMsg	;Workbench startup message pointer
-		 APTR	MyTask		;pointer to TCB of monitor process
-		 LONG	StackSize	;monitor stack size
-		 APTR	OldRetAddr	;monitor process pr_ReturnAddr when monitor was started
-		 APTR	OldTrapCode	;task trap code when monitor was started
-		 APTR	OldUserData	;task user data when monitor was started
+		 APTR	mon_WBenchMsg	;Workbench startup message pointer
+		 APTR	mon_Task	;pointer to TCB of monitor process
+		 LONG	mon_StackSize	;monitor stack size
 
-		 LONG	WinFile		;main window file handle
-		 LONG	OutputFile	;current output file handle
+		 APTR	mon_OrigRetAddr		;monitor process pr_ReturnAddr
+						;when monitor was started
+		 APTR	mon_OrigTrapCode	;original task trap code ptr
+		 APTR	mon_OrigUserData	;original task user data ptr
+		 LONG	mon_OrigCD		;original current dir (BPTR)
+						;(-1 if no change)
 
-		 LONG	OldCD		;current dir when monitor was started
+		 LONG	mon_WinFile	;main window file handle
+		 LONG	mon_OutputFile	;current output file handle
 
-		 APTR	ConsoleUnit	;console device unit pointer for main window
-		 APTR	StackPtr	;saved monitor stack pointer
+		 APTR	mon_ConsoleUnit	;console device unit pointer for main window
+		 APTR	mon_StackPtr	;saved monitor stack pointer
 
-		 APTR	InitialFileName	;file name given in command line
-		 LONG	SegList		;currently loaded segment
-		 LONG	NumHunks
-		 APTR	HunkTypeTable
+		 APTR	mon_InitialFileName	;file name given in command line
+		 LONG	mon_SegList		;currently loaded
+						;exefile seglist (BPTR)
+		 LONG	mon_NumHunks		;number of hunks in currently
+						;loaded exefile segment list
+		 APTR	mon_HunkTypeTable	;pointer to array of hunk type
+						;values, used only if '+'-option
+						;of the 'l'-command has been used
 
-		 APTR	MemoryList	;linked list of allocated memory
-		 APTR	BreakList	;linked list of breakpoints
-		 APTR	VarList		;linked list of variables
+		 APTR	mon_MemoryList	;linked list of allocated memory
+		 APTR	mon_BreakList	;linked list of breakpoints
+		 APTR	mon_VarList	;linked list of variables
 
-		 APTR	Addr		;current address
-		 APTR	EndAddr		;for disassembler & memdisplay
-		 APTR	instrad		;instruction address for disassembler
+		 APTR	mon_CurrentAddr	;current address
+		 APTR	mon_EndAddr	;for disassembler & memdisplay
 
-		 APTR	StackHigh	;high limit of stack used
+		 APTR	mon_StackHigh	;high limit of stack used
 					;by g- and j-commands
 
-		 APTR	TmpBrkAddr	;address of temporary breakpoint
+		 APTR	mon_TempBreakAddr	;address of temporary breakpoint
+		 APTR	mon_GoBreakPtr	;address of skipped brkpoint struct
 
-		 APTR	GoBrkPtr	;address of skipped brkpoint struct
-
-		 APTR	RelBaseAddr	;address pointed by a4 or other base reg
+		 APTR	mon_RelBaseAddr	;address pointed by a4 or other base reg
 
 ; the output buffer must be long word aligned
-		 STRUCT	OutputBuf,LEN
-		 STRUCT	InputBuf,LEN
-		 STRUCT	History,LEN*NLINES
-		 STRUCT	CmdLineBuf,LEN
-		 STRUCT DevNameBuf,DNBUFSIZE
+		 STRUCT	mon_OutputBuf,LEN
+		 STRUCT	mon_InputBuf,LEN
+		 STRUCT	mon_History,LEN*NLINES
+		 STRUCT	mon_CmdLineBuf,LEN
+		 STRUCT mon_DevNameBuf,DNBUFSIZE
 
 ; processor register storage
-		 STRUCT	DataRegs,8*4	;data registers
-		 STRUCT	AddrRegs,8*4	;address registers
-RegSP		equ	AddrRegs+7*4
-		 APTR	RegPC		;program counter
+		 STRUCT	mon_DataRegs,8*4	;data registers
+		 STRUCT	mon_AddrRegs,8*4	;address registers
+mon_RegSP	equ	mon_AddrRegs+7*4
+		 APTR	mon_RegPC		;program counter
 ;
 ; note: the following is because move ea,ccr moves a word and ignores
 ; the high byte of it...
 ;
-		 UBYTE	RegCCR_W
-		 UBYTE	RegCCR_B	;condition code register
+		 UBYTE	mon_RegCCR_W
+		 UBYTE	mon_RegCCR_B	;condition code register
 
 ; now word and byte variables
-		 UWORD	TmpBrkSave	;storage for original contents
-					;of a temporary breakpoint
+		 UWORD	mon_TempBreakSave	;storage for original contents
+						;of a temporary breakpoint
 
-		 UWORD	size		;current instruction size
-
-		 UBYTE	flags		;flags, see below for bitdefs...
-		 UBYTE	defbase		;current default number base for input
-		 UBYTE	MonOptions	;option flags
-		 UBYTE	RelBaseReg	;base register, works with RelBaseAddr
+		 UBYTE	mon_Flags	;flags, see below for bitdefs...
+		 UBYTE	mon_DefNumBase	;current default number base for input
+		 UBYTE	mon_Options	;option flags
+		 UBYTE	mon_RelBaseReg	;base register, works with RelBaseAddr
 					;-1 if not in use
 		LABEL MonitorData_SIZE
 
 ;
 ; safety check
 ;
-		ifne	MonitorData_SIZE-$768
+		ifne	MonitorData_SIZE-$762
 		FAIL	Panic! MonitorData wrong size!
 		endc
 

@@ -19,10 +19,8 @@
 ;	putstring,PutLong,mgetw,MyCreatePort,MyDeletePort,MyCreateIO
 ;	MyDeleteIO,FindConUnit,SetConMode,sendpacket,GetName
 ;	put_signed_hexnum,put_hexnum,put_hexnum1,PutNum
+;	puthex8,puthex68,puthex68a
 ;
-		xdef	puthex_68
-		xdef	puthex1_68
-		xdef	phex1_8
 
 ;
 ; Convert char in D0 to lower case ***
@@ -79,9 +77,10 @@ yes		sec
 		beq.s	1$
 		cmp.b	#$A0,D0
 		bcs.s	0$
-		btst	#OPTB_EXTPRTCHR,MonOptions(a4)
+		btst	#OPTB_EXTPRTCHR,mon_Options(a4)
 		beq.s	1$
 		rts
+
 0$		cmp.b	#$20,D0
 		bge.s	2$		;note: signed comparison handles correctly codes >= $80
 1$		move.b	#'.',D0
@@ -211,10 +210,10 @@ nth1		tst.b	(a0)+
 		bra.s	CrepFail
 Crep1		move.l	D0,A0
 ;#
-;# no need to call FindTask here...get the pointer from MyTask-variable
+;# no need to call FindTask here...get the pointer from mon_Task-variable
 ;# changed in version 1.22  1990-01-06
 ;#
-		move.l	MyTask(a4),MP_SIGTASK(A0)
+		move.l	mon_Task(a4),MP_SIGTASK(A0)
 		move.b	D2,MP_SIGBIT(A0)
 		move.b	#NT_MSGPORT,LN_TYPE(A0)
 ; PA_SIGNAL is zero...
@@ -286,14 +285,14 @@ CreIO9		rts
 		move.l	d0,a0
 		move.l	fh_Type(a0),a0
 		moveq	#ACTION_DISK_INFO,d0
-		lea	OutputBuf(a4),a1	we use output buffer for InfoData
+		lea	mon_OutputBuf(a4),a1	we use output buffer for InfoData
 		move.l	a1,d1
 		lsr.l	#2,d1			infodataptr APTR->BPTR
-		call	sendpacket
+		call.s	sendpacket
 		tst.l	d0
 		beq	FindCU_End
 
-		move.l	OutputBuf+id_InUse(a4),d0	console IORequest ptr
+		move.l	mon_OutputBuf+id_InUse(a4),d0	console IORequest ptr
 		beq.s	FindCU_End
 		move.l	d0,a0
 		move.l	IO_UNIT(a0),d0
@@ -358,10 +357,10 @@ FindCU_End	rts
 		bmi.s	sp8			branch if allocsignal failed
 
 ;# FindTask()... was missing in original code....
-;# but here it is not needed, we can use MyTask-variable
+;# but here it is not needed, we can use mon_Task-variable
 ;# changed in version 1.30, 1990-08-22
 
-		move.l	MyTask(a4),sp_SIZEOF+MP_SIGTASK(a2)
+		move.l	mon_Task(a4),sp_SIZEOF+MP_SIGTASK(a2)
 		lea	sp_SIZEOF+MP_MSGLIST(a2),a0
 		NEWLIST	a0
 
@@ -455,20 +454,25 @@ noname		moveq	#0,D0
 ;  added checking of 60 or 80 column default font
 ;  now checks the window width from console unit
 ;
-puthex1_68
-		move.l	ConsoleUnit(a4),d1
+		pub	puthex68
+
+		move.l	mon_ConsoleUnit(a4),d1
 		beq.s	phex1_8
 		move.l	d1,a0
 		cmp.w	#65,cu_XMax(a0)
-		bcs.s	phex1_68
-		bra.s	phex1_8
-puthex_68	putchr	'$'
+		bcc.s	phex1_8
+
+		pub	puthex68a
+
 phex1_68	move.l	d0,d1
 		swap	d1
 		and.w	#$ff00,d1
 		bne.s	phex1_8
 		moveq	#6,d1
 		bra.s	put_hexnum1_routine
+
+		pub	puthex8
+
 phex1_8		moveq	#8,d1
 		bra.s	put_hexnum1_routine
 ;

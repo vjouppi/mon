@@ -6,8 +6,6 @@
 ;
 ; this module defines the following public routine:
 ;
-
-;
 ; load_symbols
 ;
 		nolist
@@ -58,11 +56,11 @@ HUNK_OVERLAY	equ	1013
 		beq	out_memory_error
 		move.l	d0,a5
 
-		move.l	NumHunks(a4),d0
+		move.l	mon_NumHunks(a4),d0
 		lsl.l	#2,d0
 		move.l	#MEMF_CLEAR,d1
 		lib	AllocMem
-		move.l	d0,HunkTypeTable(a4)
+		move.l	d0,mon_HunkTypeTable(a4)
 		beq	out_mem1
 		move.l	d0,a3
 
@@ -97,19 +95,20 @@ HUNK_OVERLAY	equ	1013
 
 		moveq	#0,d7		;hunk counter
 		moveq	#0,d4		;symbol counter
-		move.l	SegList(a4),d5
+		move.l	mon_SegList(a4),d5
 		lsl.l	#2,d5
 
 lsym_hunkloop	bsr	lsym_GetLong
+		move.l	d0,d1
 		and.l	#$3fffffff,d0
 		cmp.l	#HUNK_CODE,d0
 		bne.s	no_code
-		move.l	d0,(a3)+
+		move.l	d1,(a3)+
 		bra.s	skip_n
 
 no_code		cmp.l	#HUNK_DATA,d0
 		bne.s	no_data
-		move.l	d0,(a3)+
+		move.l	d1,(a3)+
 
 skip_n		bsr	lsym_GetLong
 		lsl.l	#2,d0
@@ -118,7 +117,7 @@ skip_n		bsr	lsym_GetLong
 
 no_data		cmp.l	#HUNK_BSS,d0
 		bne.s	no_bss
-		move.l	d0,(a3)+
+		move.l	d1,(a3)+
 
 		bsr	lsym_GetLong	;skip bss length
 		bra.s	lsym_hunkloop
@@ -177,7 +176,7 @@ symbol_loop	bsr	lsym_GetLong
 		addq.l	#4,d0
 		move.l	a5,a0
 		move.l	d7,d1
-		call	setvar
+		call	set_variable
 		tst.l	d0
 		beq	lsym_mem_err
 		addq.l	#1,d4

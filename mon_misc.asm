@@ -16,30 +16,22 @@
 ;
 ; This module defines the following public subroutines:
 ;
-;	GetString,CheckKeys,GetParams,CheckEnd
+;	GetString,CheckKeys,GetParams,CheckEnd,showrange
 ;
-
-		xdef	showrange
-
-		xdef	loctext
-		xdef	memlistfmt
-
-		xref	clear_all_variables
-
-		xref	puthex1_68
-		xref	phex1_8
-		xref	getdecnum
 
 		xdef	monitor_code_end
 
 ;
-showrange	;start addr in D5, length in D6
+;start addr in D5, length in D6
+;
+		pub	showrange
+
 		move.l	d5,d1
 		move.l	d6,d0
 		move.l	d1,d2
 		add.l	d0,d2
 		subq.l	#1,d2
-		lea	rangefmt(pc),a0
+		lea	range_fmt(pc),a0
 		call	JUMP,printf
 
 *** GET STRING FROM INPUT LINE TO ADDR IN A0, LENGTH IN D2 ***
@@ -94,7 +86,7 @@ gstr9		move.l	A1,D2
 ;#
 ;# is timeout zero really safe?...I have found no problems yet...
 ;#
-		move.l	WinFile(a4),D1
+		move.l	mon_WinFile(a4),D1
 		moveq	#0,D2		;timeout=0
 		lib	Dos,WaitForChar
 		tst.l	D0
@@ -136,23 +128,25 @@ brk_1		movem.l	(sp)+,D2/a6
 		tst.b	(A3)
 		beq.s	param9
 		call	GetExpr
-		move.l	D0,Addr(a4)
+		move.l	D0,mon_CurrentAddr(a4)
 		call	tolower
 		tst.b	(A3)
 		beq.s	param9
 		call	GetExpr
-		move.l	D0,EndAddr(a4)
+		move.l	D0,mon_EndAddr(a4)
 		moveq	#0,D7
 		rts
-param9		moveq	#20,D7
-		move.l	OutputFile(a4),d0
-		cmp.l	WinFile(a4),d0
+
+param9		clr.l	mon_EndAddr(a4)
+		moveq	#20,D7
+		move.l	mon_OutputFile(a4),d0
+		cmp.l	mon_WinFile(a4),d0
 		bne.s	09$
 ;
 ; get the number of text lines that will fit in the window
 ; from the console device unit structure
 ;
-		move.l	ConsoleUnit(a4),d0
+		move.l	mon_ConsoleUnit(a4),d0
 		beq.s	09$
 
 		move.l	d0,a0
@@ -174,13 +168,15 @@ param9		moveq	#20,D7
 
 		call	CheckKeys
 		bne.s	stop1
-		tst.l	D7
-		beq.s	cmpadrs
+		tst.l	mon_EndAddr(a4)
+		beq.s	no_addr_test
+		cmp.l	mon_EndAddr(a4),a5
+		bhi.s	stop1
+
+no_addr_test	tst.l	D7
+		beq.s	cont
 		subq.l	#1,D7
 		rts
-
-cmpadrs		cmp.l	EndAddr(a4),a5
-		bls.s	cont
 
 stop1		moveq	#0,D0
 		rts
@@ -190,12 +186,7 @@ cont		moveq	#-1,D0
 
 **** text data ****
 
-rangefmt	dc.b	'%ld bytes read from $%08lx to $%08lx',LF,0
-
-memlistfmt	dc.b	'$%08lx  $%08lx  %ld',LF,0
-
-loctext		dc.b	' startloc   endloc    length',LF,0
-
+range_fmt	dc.b	'%ld bytes read from $%08lx to $%08lx',LF,0
 break_txt	dc.b	'*** Break ***',LF,0
 
 		cnop	0,4

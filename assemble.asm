@@ -31,7 +31,7 @@
 		call	skipspaces
 		tst.b	(A3)
 		bne.s	Assem_Get_Address
-		move.l	Addr(a4),D0
+		move.l	mon_CurrentAddr(a4),D0
 		addq.l	#1,d0
 		and.b	#$fe,d0		;round to next even addr - /1.31/
 		bra.s	assem_02
@@ -41,15 +41,15 @@ Assem_Get_Address
 		btst	#0,D0
 		bne	odd_address_error	;assembling to odd address is illegal
 
-assem_02	move.l	D0,Addr(a4)
-		move.l	D0,EndAddr(a4)
+assem_02	move.l	D0,mon_CurrentAddr(a4)
+		move.l	D0,mon_EndAddr(a4)
 		call	skipspaces
 		tst.b	(A3)
 		bne.s	FindInstrName
 
-Assem_Prompt	move.l	Addr(a4),D0
-		move.l	D0,EndAddr(a4)
-		lea	assemfmt(pc),a0
+Assem_Prompt	move.l	mon_CurrentAddr(a4),D0
+		move.l	D0,mon_EndAddr(a4)
+		lea	assem_fmt(pc),a0
 		call	printf_window
 		moveq	#1,D0
 
@@ -58,10 +58,10 @@ Assem_GetInput	call	GetInput
 		bpl.s	Assemble_NoCtrlE	;branch if not Ctrl-E
 
 *** disassemble at current address and put result in input buffer ***
-		move.l	Addr(a4),a5
+		move.l	mon_CurrentAddr(a4),a5
 		startline
 		call	Disassemble
-		lea	InputBuf(a4),a1
+		lea	mon_InputBuf(a4),a1
 		moveq	#LF,D0
 1$		move.b	(A0)+,(A1)+	copy instruction to input buffer
 		cmp.b	(A0),D0 	until LF found
@@ -116,7 +116,7 @@ branch_1	lsl.w	#8,D1
 		cmp.b	#'s',d0
 		bne.s	br_err
 		call	GetExpr	;short branch
-		sub.l	Addr(a4),D0
+		sub.l	mon_CurrentAddr(a4),D0
 		subq.l	#2,D0
 		move.b	D0,D2
 		ext.w	D2
@@ -129,7 +129,7 @@ branch_1	lsl.w	#8,D1
 		bra	one_word_instr
 
 long_branch	call	GetExpr
-		sub.l	Addr(a4),D0
+		sub.l	mon_CurrentAddr(a4),D0
 		subq.l	#2,D0
 		move.w	D0,D2
 		ext.l	D2
@@ -158,7 +158,7 @@ Scc_2		subq.l	#1,A3
 		bcs.s	cc_err
 Scc_3		move.w	D1,D3
 		lsl.w	#8,D3
-		addq.l	#2,Addr(a4)
+		addq.l	#2,mon_CurrentAddr(a4)
 		bsr	Get_Dest_EA
 		or.w	D3,D0
 		or.w	#$50C0,D0
@@ -198,7 +198,7 @@ DBcc_3		move.w	D1,D3
 		or.w	#$50C8,D3
 		bsr	SkipComma
 		call	GetExpr	
-		sub.l	Addr(a4),D0
+		sub.l	mon_CurrentAddr(a4),D0
 		subq.l	#2,D0
 		move.l	D0,D1
 		ext.l	D0
@@ -214,8 +214,8 @@ try_dc		cmp.b	#'c',d0
 		bne.s	cc_err
 		bsr	GetSize	;*** DC.B, DC.W, DC.L ***
 		call	skipspaces
-		move.l	Addr(a4),A0
-		move.w	size(a4),D0
+		move.l	mon_CurrentAddr(a4),A0
+		move.w	d6,D0
 		beq.s	dc_byte
 		subq.w	#1,D0
 		beq.s	dc_word
@@ -238,21 +238,21 @@ dc_exit		move.l	A0,D0	;align address to word boundary
 		beq.s	dc_exit1
 		addq.l	#1,D0
 
-dc_exit1	move.l	D0,Addr(a4)
+dc_exit1	move.l	D0,mon_CurrentAddr(a4)
 		bra.s	dc_exit2
 
 Assem_End	call	skipspaces
 		tst.b	(a3)
 		bne	generic_error
 
-		btst	#OPTB_DUMBTERM,MonOptions(a4)
+		btst	#OPTB_DUMBTERM,mon_Options(a4)
 		bne.s	Assem_DisplayLine
 
 		lea	UpAndClearEol(pc),A0	;move cursor to previous line and clear the line
 		call	printstring_a0_window
 
 Assem_DisplayLine
-		move.l	EndAddr(a4),a5
+		move.l	mon_EndAddr(a4),a5
 		startline
 		call	Disassemble
 		call	printstring_window
@@ -303,7 +303,7 @@ shift_instr	or.w	#$e000,d3
 shift_1		cmp.b	#'.',(A3)
 		bne.s	shift_mem
 		bsr	GetSize
-		move.w	size(a4),D0
+		move.w	d6,D0
 		lsl.w	#6,D0
 		or.w	D0,D3
 		call	skipspaces
@@ -327,7 +327,7 @@ shift_2		lsl.w	#8,D0
 
 sh_err		bra	generic_error
 
-shift_mem	addq.l	#2,Addr(a4)
+shift_mem	addq.l	#2,mon_CurrentAddr(a4)
 		moveq	#0,D0
 		move.b	D3,D0
 		lsl.w	#6,D0
@@ -356,7 +356,7 @@ a_s_asm		move.b	(a3),d0
 		bset	#8,D3
 		bra	ext_as_asm
 
-no_as_ext	addq.l	#2,Addr(a4)
+no_as_ext	addq.l	#2,mon_CurrentAddr(a4)
 		move.b	(a3),d0
 		call	tolower
 		cmp.b	#'q',d0
@@ -374,13 +374,13 @@ no_as_ext	addq.l	#2,Addr(a4)
 		bset	#8,D0
 
 as_quick_1	or.w	#$5000,D0
-		move.w	size(a4),D1
+		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		move.w	D0,D3
 		bsr	SkipComma
 		bsr	GetEA
-		tst.w	size(a4)
+		tst.w	d6
 		bne.s	as_quick_z1
 		cmp.w	#1,D1
 		beq.s	as_err
@@ -410,7 +410,7 @@ as_imm_1	bsr	PutImm
 		cmp.w	#1,D1
 		beq.s	as_addr_imm_1
 		bsr	Do_EA_1
-		move.w	size(a4),D1
+		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		bset	#10,D0
@@ -421,7 +421,7 @@ as_imm_1	bsr	PutImm
 
 as_addr_imm_1	lsl.w	#8,D0
 		lsl.w	#1,D0
-		move.w	size(a4),D1
+		move.w	d6,D1
 		beq.s	as_err
 		subq.w	#1,D1
 		lsl.w	#8,D1
@@ -451,7 +451,7 @@ as_norm_2	move.b	(a3),d0
 		cmp.b	#'d',d0
 		beq.s	as_data_reg_source
 		bsr	GetEA
-		tst.w	size(a4)
+		tst.w	d6
 		bne.s	as_norm_3
 		cmp.w	#1,D1		;address register direct can't be used
 		beq	addrmode_error	;with byte size
@@ -471,7 +471,7 @@ as_norm_3	lsl.w	#3,D1
 		lsl.w	#8,D0
 		lsl.w	#1,D0
 		or.w	D3,D0
-		move.w	size(a4),D1
+		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		bra.s	zcom_2
@@ -483,7 +483,7 @@ try_as_addr	bsr	getareg
 		lsl.w	#1,D0
 		or.w	D3,D0
 		or.w	#$C0,D0
-		move.w	size(a4),D1
+		move.w	d6,D1
 		beq.s	as_err2
 		subq.w	#1,D1
 		lsl.w	#8,D1
@@ -519,7 +519,7 @@ as_datasource_1	cmp.w	#1,D1
 		bsr	Do_EA_1
 		or.w	D3,D0
 		bset	#8,D0
-as_ds_1		move.w	size(a4),D1
+as_ds_1		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		bra.s	zcom_2
@@ -534,7 +534,7 @@ as_special	;handle adda/suba
 		lsr.w	#1,D1
 		and.w	#7,D1
 		or.w	D1,D0
-		move.w	size(a4),D1
+		move.w	d6,D1
 		beq.s	cmp_err
 		subq.w	#1,D1
 		lsl.w	#8,D1
@@ -573,7 +573,7 @@ cmp_asm		move.b	(a3),d0
 ;#
 ;# cmpm size specifiers fixed 1989-08-28
 ;#
-		move.w	size(a4),d1
+		move.w	d6,d1
 		lsl.w	#6,d1
 		or.w	d1,d0
 		or.w	#$B108,D0
@@ -581,7 +581,7 @@ cmp_asm		move.b	(a3),d0
 
 cmp_err		bra	generic_error
 
-no_mem_cmp	addq.l	#2,Addr(a4)
+no_mem_cmp	addq.l	#2,mon_CurrentAddr(a4)
 		move.b	(a3),d0
 		call	tolower
 		cmp.b	#'i',d0
@@ -598,7 +598,7 @@ cmp_imm_1	bsr	PutImm
 		cmp.w	#1,D1
 		beq.s	cmp_addr_imm1
 		bsr	Do_EA_1
-		move.w	size(a4),D1
+		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	#$0C00,D0
@@ -606,7 +606,7 @@ cmp_imm_1	bsr	PutImm
 
 cmp_addr_imm1	lsl.w	#8,D0
 		lsl.w	#1,D0
-		move.w	size(a4),D1
+		move.w	d6,D1
 		beq.s	cmp_err
 		subq.w	#1,D1
 		lsl.w	#8,D1
@@ -632,7 +632,7 @@ no_cmp_addr	bsr	GetSize
 cmp_1		bsr	GetEA
 		cmp.w	#1,D1
 		bne.s	cmp_2
-		tst.w	size(a4)
+		tst.w	d6
 		beq.s	cmp_err2
 cmp_2		lsl.w	#3,D1
 		or.w	D1,D0
@@ -643,7 +643,7 @@ cmp_2		lsl.w	#3,D1
 		bne.s	cmp_addr
 		tst.l	D5
 		bne.s	cmp_err2
-		move.w	size(a4),D0
+		move.w	d6,D0
 		lsl.w	#6,D0
 		or.w	D3,D0
 		and.w	#7,D1
@@ -655,7 +655,7 @@ cmp_2		lsl.w	#3,D1
 
 cmp_err2	bra	generic_error
 
-cmp_addr	move.w	size(a4),D0
+cmp_addr	move.w	d6,D0
 		beq.s	cmp_err2
 		subq.w	#1,D0
 		lsl.w	#8,D0
@@ -673,7 +673,7 @@ and_asm		move.w	#$C000,D3
 
 or_asm		move.w	#$8000,D3
 
-a_o_asm		addq.l	#2,Addr(a4)
+a_o_asm		addq.l	#2,mon_CurrentAddr(a4)
 		move.b	(a3),d0
 		call	tolower
 		cmp.b	#'i',d0
@@ -692,7 +692,7 @@ a_o_0		bsr	GetSize
 a_o_imm		bsr	PutImm
 		bsr	SkipComma
 		bsr	Get_Dest_EA
-		move.w	size(a4),D1
+		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		cmp.w	#$C000,D3
@@ -704,7 +704,7 @@ a_o_2		bsr	GetSize
 		call	skipspaces
 		cmp.b	#'#',(A3)+
 		beq.s	a_o_imm
-		move.w	size(a4),D0
+		move.w	d6,D0
 		lsl.w	#6,D0
 		or.w	D0,D3
 		subq.l	#1,A3
@@ -765,7 +765,7 @@ abcd_asm	move.w	#$C100,D3
 
 sbcd_asm	move.w	#$8100,D3
 
-bcd_asm		clr.w	size(a4)
+bcd_asm		clr.w	d6
 ext_as_asm	call	skipspaces
 		move.b	(a3),d0
 		call	tolower
@@ -778,7 +778,7 @@ ext_as_asm	call	skipspaces
 bcd_1		lsl.w	#8,D1
 		lsl.w	#1,D1
 		or.w	D3,D1
-		move.w	size(a4),D0
+		move.w	d6,D0
 		lsl.w	#6,D0
 		or.w	D1,D0
 		bra	one_word_instr
@@ -803,7 +803,7 @@ bcd_mem		cmp.b	#'-',(A3)+
 err_bcd		bra	generic_error
 
 *** EOR ***
-eor_asm		addq.l	#2,Addr(a4)
+eor_asm		addq.l	#2,mon_CurrentAddr(a4)
 		moveq	#0,D5
 		move.b	(a3),d0
 		call	tolower
@@ -824,7 +824,7 @@ eor_1		bsr	GetSize
 		bsr	PutImm
 		bsr	SkipComma
 		bsr	Get_Dest_EA
-		move.w	size(a4),D1
+		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	#$0A00,D0
@@ -839,7 +839,7 @@ no_eor_imm	tst.l	D5
 		lsl.w	#8,D3
 		lsl.w	#1,D3
 		or.w	D3,D0
-		move.w	size(a4),D1
+		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	#$B100,D0
@@ -850,7 +850,7 @@ logical_status	or.w	#$3C,D3
 		call	skipspaces
 		cmp.b	#'#',(A3)+
 		bne	addrmode_error
-		move.w	#WSIZE,size(a4)
+		moveq	#WSIZE,d6
 		bsr	PutImm
 		bsr	SkipComma
 		move.b	(a3),d0
@@ -948,7 +948,7 @@ move_from_usp	;MOVE	usp,An
 		bra	one_word_instr
 
 move_status	;MOVE sr,EA
-		addq.l	#2,Addr(a4)
+		addq.l	#2,mon_CurrentAddr(a4)
 		addq.l	#1,A3
 		move.b	(a3)+,d0
 		call	tolower
@@ -960,8 +960,8 @@ move_status	;MOVE sr,EA
 		bra.s	zcom_5
 
 move_to_status_or_ccr	;MOVE EA,sr, MOVE EA,ccr
-		move.w	#WSIZE,size(a4)
-		addq.l	#2,Addr(a4)
+		moveq	#WSIZE,d6
+		addq.l	#2,mon_CurrentAddr(a4)
 		bsr	GetEA
 		lsl.w	#3,D1
 		or.w	D0,D1
@@ -988,10 +988,10 @@ zcom_5		bra	set_instr_word
 
 normal_move	moveq	#0,D5
 		subq.l	#1,a3
-normal_move_2	addq.l	#2,Addr(a4)
+normal_move_2	addq.l	#2,mon_CurrentAddr(a4)
 		bsr	GetSize
 		bsr	GetEA
-		tst.w	size(a4)
+		tst.w	d6
 		bne.s	nm_1
 		cmp.w	#1,D1
 		beq	addrmode_error
@@ -1012,7 +1012,7 @@ nm_1		lsl.w	#3,D1
 
 movea01		cmp.w	#1,D1
 		bne	addrmode_error	;MOVEA destination must be addr reg
-movea02		tst.w	size(a4)
+movea02		tst.w	d6
 		beq.s	move_err2	;MOVEA size can't be BYTE
 
 norm_move_2	lsl.w	#6,D1
@@ -1020,7 +1020,7 @@ norm_move_2	lsl.w	#6,D1
 		lsl.w	#1,D0
 		or.w	D1,D0
 		or.w	D3,D0
-		move.w	size(a4),D1
+		move.w	d6,D1
 		bne.s	not_byte_move
 		or.w	#$1000,D0
 		bra.s	zump1
@@ -1033,9 +1033,9 @@ not_byte_move	addq.w	#1,D1
 zump1		bra	set_instr_word
 
 *** MOVEP ***
-move_peripheral	addq.l	#2,Addr(a4)
+move_peripheral	addq.l	#2,mon_CurrentAddr(a4)
 		bsr	GetSize
-		tst.w	size(a4)
+		tst.w	d6
 		beq.s	move_err3
 		call	skipspaces
 		move.b	(a3),d0
@@ -1053,7 +1053,7 @@ move_peripheral	addq.l	#2,Addr(a4)
 		or.w	D3,D0
 		or.w	#$0188,D0
 
-move_per_1	move.w	size(a4),D1
+move_per_1	move.w	d6,D1
 		subq.w	#1,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
@@ -1076,9 +1076,9 @@ move_from_peripheral
 move_err3	bra	generic_error
 
 *** MOVEM ***
-movem_asm	addq.l	#4,Addr(a4)
+movem_asm	addq.l	#4,mon_CurrentAddr(a4)
 		bsr	GetSize
-		tst.w	size(a4)
+		tst.w	d6
 		beq.s	move_err3
 		call	skipspaces
 		move.b	(a3),d0
@@ -1115,11 +1115,11 @@ regs_to_mem	bsr	getreglist
 regs_to_mem_1	lsl.w	#3,D1
 		or.w	D1,D0
 		or.w	#$4880,D0
-do_movem	move.w	size(a4),D1
+do_movem	move.w	d6,D1
 		subq.w	#1,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
-		move.l	EndAddr(a4),A0
+		move.l	mon_EndAddr(a4),A0
 		move.w	D0,(A0)+
 		move.w	D3,(A0)
 		bra	Assem_End
@@ -1155,16 +1155,16 @@ bclr_asm	moveq	#2,D3
 
 bset_asm	moveq	#3,D3
 
-bit_ins_1	clr.w	size(a4)		for btst Dn,#imm
-		addq.l	#2,Addr(a4)
+bit_ins_1	clr.w	d6		for btst Dn,#imm
+		addq.l	#2,mon_CurrentAddr(a4)
 		lsl.w	#6,D3
 		call	skipspaces
 		cmp.b	#'#',(A3)+
 		bne.s	bit_reg_mode
 		call	GetExpr
-		move.l	Addr(a4),A0
+		move.l	mon_CurrentAddr(a4),A0
 		move.w	D0,(A0)+
-		move.l	A0,Addr(a4)
+		move.l	A0,mon_CurrentAddr(a4)
 		bset	#11,D3
 		bra.s	bit_get_ea
 ;#
@@ -1217,8 +1217,8 @@ mul_div		call	skipspaces
 		bne	generic_error
 		bset	#8,D3		;signed multiply/divide
 
-mul_div1	move.w	#WSIZE,size(a4)
-		addq.l	#2,Addr(a4)
+mul_div1	moveq	#WSIZE,d6
+		addq.l	#2,mon_CurrentAddr(a4)
 		bsr	GetEA
 		cmp.w	#1,D1
 		beq.s	addrmod_err2
@@ -1234,7 +1234,7 @@ mul_div1	move.w	#WSIZE,size(a4)
 		bra.s	set_instr_word
 
 *** TAS ***
-tas_asm		addq.l	#2,Addr(a4)
+tas_asm		addq.l	#2,mon_CurrentAddr(a4)
 		bsr	Get_Dest_EA
 		or.w	#$4AC0,D0
 		bra.s	set_instr_word
@@ -1250,7 +1250,7 @@ jsr_asm		move.w	#$4E80,D3
 *** PEA ***
 pea_asm		move.w	#$4840,D3
 
-pp_1		addq.l	#2,Addr(a4)
+pp_1		addq.l	#2,mon_CurrentAddr(a4)
 		bsr.s	get_jump_ea
 		or.w	D3,D0
 		bra.s	set_instr_word
@@ -1271,7 +1271,7 @@ get_jump_ea	bsr	GetEA
 		rts
 
 *** LEA ***
-lea_asm		addq.l	#2,Addr(a4)
+lea_asm		addq.l	#2,mon_CurrentAddr(a4)
 		bsr.s	get_jump_ea
 		move.w	d0,d2
 		bsr	SkipComma
@@ -1282,13 +1282,13 @@ lea_asm		addq.l	#2,Addr(a4)
 		or.w	d2,d0
 		or.w	#$41C0,D0
 
-set_instr_word	move.l	EndAddr(a4),A0
+set_instr_word	move.l	mon_EndAddr(a4),A0
 		move.w	D0,(A0)
 		bra	Assem_End
 
 *** EXT ***
 ext_asm		bsr	GetSize
-		move.w	size(a4),D2
+		move.w	d6,D2
 		beq	generic_error
 		addq.w	#1,D2
 		lsl.w	#6,D2
@@ -1304,23 +1304,23 @@ ext_asm		bsr	GetSize
 		bra	one_word_instr
 
 *** NBCD ***
-nbcd_asm	addq.l	#2,Addr(a4)
-		clr.w	size(a4)
+nbcd_asm	addq.l	#2,mon_CurrentAddr(a4)
+		clr.w	d6
 		move.w	#$4800,D3
 		bra.s	one_arg_2
 
 *** CLR ***
 clr_asm		move.w	#$4200,D3
 
-one_arg_com	addq.l	#2,Addr(a4)
+one_arg_com	addq.l	#2,mon_CurrentAddr(a4)
 		bsr	GetSize
 
 one_arg_2	bsr	Get_Dest_EA
-		move.w	size(a4),D1
+		move.w	d6,D1
 		lsl.w	#6,D1
 		or.w	D1,D0
 		or.w	D3,D0
-		move.l	EndAddr(a4),A0
+		move.l	mon_EndAddr(a4),A0
 		move.w	D0,(A0)
 		bra	Assem_End
 
@@ -1370,9 +1370,9 @@ rtr_asm		moveq	#$07,D0			;RTR
 
 instr_4e7x	add.w	#$4e70,d0
 
-one_word_instr	move.l	Addr(a4),A0
+one_word_instr	move.l	mon_CurrentAddr(a4),A0
 		move.w	D0,(A0)+
-		move.l	A0,Addr(a4)
+		move.l	A0,mon_CurrentAddr(a4)
 		bra	Assem_End
 
 *** ILLEGAL ***
@@ -1417,10 +1417,11 @@ stop_asm	call	skipspaces
 		call	GetExpr
 		move.w	D0,D1
 		move.w	#$4E72,D0
-two_words_instr	move.l	Addr(a4),A0
+
+two_words_instr	move.l	mon_CurrentAddr(a4),A0
 		move.w	D0,(A0)+
 		move.w	D1,(A0)+
-		move.l	A0,Addr(a4)
+		move.l	A0,mon_CurrentAddr(a4)
 		bra	Assem_End
 
 *** EXG ***
@@ -1577,8 +1578,8 @@ Do_EA_1		lsl.w	#3,D1
 		rts
 
 GetEA: ;get effective address, mode=D1,reg=D0
-* put displacements etc. in memory at address pointed by Addr(a4)
-* and increment Addr(a4)
+* put displacements etc. in memory at address pointed by mon_CurrentAddr(a4)
+* and increment mon_CurrentAddr(a4)
 		call	skipspaces
 		move.b	(a3),d0
 		call	tolower
@@ -1638,8 +1639,8 @@ no_predecrement	cmp.b	#'#',(a3)
 		addq.l	#1,A3
 
 PutImm		call	GetExpr
-		move.l	Addr(a4),A0
-		move.w	size(a4),D1
+		move.l	mon_CurrentAddr(a4),A0
+		move.w	d6,D1
 		bne.s	sz1
 		and.w	#$FF,D0
 		move.w	D0,(A0)+
@@ -1670,17 +1671,17 @@ no_immediate	call	GetExpr
 		beq.s	indirect_with_index
 		cmp.b	#')',-1(A3)
 		bne	generic_error
-		move.l	Addr(a4),A0
+		move.l	mon_CurrentAddr(a4),A0
 		move.w	D2,(A0)+
-		move.l	A0,Addr(a4)
+		move.l	A0,mon_CurrentAddr(a4)
 		moveq	#5,D1		; addr reg. indirect with displacement
 		rts
 
-abs_short_mode	move.l	Addr(a4),A0
+abs_short_mode	move.l	mon_CurrentAddr(a4),A0
 		move.w	D2,(A0)+
 		moveq	#0,D0		;absolute short
 
-s_addr_seven	move.l	a0,Addr(a4)
+s_addr_seven	move.l	a0,mon_CurrentAddr(a4)
 
 seven_up	moveq	#7,d1
 		rts
@@ -1689,7 +1690,7 @@ absolute_mode	move.w	D2,D1
 		ext.l	D1
 		cmp.l	D2,D1
 		beq.s	abs_short_mode
-		move.l	Addr(a4),A0
+		move.l	mon_CurrentAddr(a4),A0
 		move.l	D2,(A0)+
 		moveq	#1,D0		;absolute long
 		bra.s	s_addr_seven
@@ -1704,10 +1705,10 @@ no_displacement_or_index
 		bne	generic_error
 		cmp.b	#')',(A3)+
 		bne.s	pcrel_indx_1
-		sub.l	Addr(a4),D2
-		move.l	Addr(a4),A0
+		sub.l	mon_CurrentAddr(a4),D2
+		move.l	mon_CurrentAddr(a4),A0
 		move.w	D2,(A0)+
-		move.l	A0,Addr(a4)
+		move.l	A0,mon_CurrentAddr(a4)
 		move.w	d2,d0
 		ext.l	d0
 		cmp.l	d0,d2
@@ -1721,7 +1722,7 @@ no_displacement_or_index
 ;
 pcrel_indx_1	cmp.b	#',',-1(a3)
 		bne	generic_error
-pcrel_indx_2	sub.l	Addr(a4),D2
+pcrel_indx_2	sub.l	mon_CurrentAddr(a4),D2
 		move.b	d2,d0
 		ext.w	d0
 		ext.l	d0
@@ -1738,16 +1739,17 @@ GetSize		cmp.b	#'.',(A3)+
 		call	tolower
 		cmp.b	#'b',D0
 		bne.s	siz1
-		moveq	#BSIZE,d0
-		bra.s	siz3
+		moveq	#BSIZE,d6
+		rts
+
 siz1		cmp.b	#'w',D0
 		bne.s	siz2
-		moveq	#WSIZE,d0
-		bra.s	siz3
+		moveq	#WSIZE,d6
+		rts
+
 siz2		cmp.b	#'l',D0
 		bne	generic_error
-		moveq	#LSIZE,d0
-siz3		move.w	d0,size(a4)
+		moveq	#LSIZE,d6
 		rts
 
 GetIndex	;displacement value in d2
@@ -1773,9 +1775,9 @@ GetIndex	;displacement value in d2
 		bset	#11,D1
 index_2		cmp.b	#')',(A3)+
 		bne.s	index_error
-		move.l	Addr(a4),A0
+		move.l	mon_CurrentAddr(a4),A0
 		move.w	D1,(A0)+
-		move.l	A0,Addr(a4)
+		move.l	A0,mon_CurrentAddr(a4)
 rt001		rts
 
 ;
@@ -1814,7 +1816,7 @@ instrjumps	rw	as_asm,ls_asm,rox_asm,rot_asm		;0-3
 		rw	jsr_asm,jmp_asm,trap_asm
 		rw	illegal_asm
 
-assemfmt	dc.b	'%08lx: ',0
+assem_fmt	dc.b	'%08lx: ',0
 
 usp_str		dc.b	'u'
 sp_str		dc.b	'sp',0

@@ -1,6 +1,7 @@
 ;
 ; mem_cmd.asm
 ;
+
 		nolist
 		include "exec/types.i"
 		include "exec/memory.i"
@@ -12,29 +13,18 @@
 		include	"monitor.i"
 		include	"variables.i"
 
-		xref	find_var_value
 ;
 ; This module defines the following command routines:
 ;
 ;	showmemory,allocate_mem,alloc_abs,free_mem,memory_info,memtransfer
-;	memfill,memhunt,memcomp,memdisplay,fmt_memdisplay,modifymem
+;	memfill,memhunt,memcomp,memdisplay,fmt_memdisplay,modifymem,free_all_mem
 ;
 
 		xref	monitor_code_start
 		xref	monitor_code_end
 		xref	mainloop
 
-		xdef	FreeAllMem
-
 		xref	help
-
-		xref	puthex_68
-		xref	puthex1_68
-		xref	phex1_8
-
-		xref	loctext
-		xref	memlistfmt
-
 		xref	generic_error
 
 ;
@@ -42,15 +32,15 @@
 ;
 		cmd	showmemory
 
-		move.l	MemoryList(a4),D5
+		move.l	mon_MemoryList(a4),D5
 		bne.s	showm2
 not_at_all_allocated
-		lea	no_alloc(pc),A0
+		lea	nomem_alloc_txt(pc),A0
 		call	JUMP,printstring_a0_window	;error 'no memory allocated'
 
-showm2		lea	memlisttx(pc),A0
+showm2		lea	memlist_txt(pc),A0
 		call	printstring_a0
-		lea	loctext(pc),A0
+		lea	loc_txt(pc),A0
 		call	printstring_a0
 
 showmemloop	move.l	d5,a2
@@ -60,7 +50,7 @@ showmemloop	move.l	d5,a2
 		move.l	d0,d1
 		add.l	d2,d1
 		subq.l	#1,d1
-		lea	memlistfmt(pc),a0
+		lea	memlist_fmt(pc),a0
 		call	printf
 		call	CheckKeys
 		bne.s	01$
@@ -69,10 +59,13 @@ showmemloop	move.l	d5,a2
 01$		rts
 
 *** FREE ALL MEMORY ALLOCATED WITH THE ( AND & COMMANDS ***
-FreeAllMem	move.l	a6,-(sp)
-		move.l	MemoryList(a4),D5
+		pub	free_all_mem
+
+		move.l	a6,-(sp)
+		move.l	mon_MemoryList(a4),D5
 		beq.s	freeall9
 		getbase	Exec
+
 freeall_loop	move.l	D5,A1
 		move.l	4(A1),D0
 		addq.l	#8,D0
@@ -80,7 +73,8 @@ freeall_loop	move.l	D5,A1
 		lib	FreeMem
 		tst.l	D5
 		bne.s	freeall_loop
-		clr.l	MemoryList(a4)
+
+		clr.l	mon_MemoryList(a4)
 freeall9	move.l	(sp)+,a6
 		rts
 
@@ -108,7 +102,7 @@ alloc_mem_1	;add allocated memory to linked list of memory blocks
 ** A0 points to memory block, D5 is length
 		move.l	D5,4(A0)
 		moveq	#0,D0
-		move.l	MemoryList(a4),D1
+		move.l	mon_MemoryList(a4),D1
 
 alloc_find1	beq.s	alloc_find2	;keep the linked list in order, lowest address first
 		move.l	D1,A1
@@ -120,8 +114,8 @@ alloc_find1	beq.s	alloc_find2	;keep the linked list in order, lowest address fir
 
 alloc_find2	tst.l	D0
 		bne.s	alloc_do2
-		move.l	MemoryList(a4),(A0)	;add new memory node to start of list
-		move.l	A0,MemoryList(a4)
+		move.l	mon_MemoryList(a4),(A0)	;add new memory node to start of list
+		move.l	A0,mon_MemoryList(a4)
 		bra.s	alloc_display
 
 alloc_do2	move.l	D1,(A0)		;add new memory node to middle or end of list
@@ -130,15 +124,15 @@ alloc_do2	move.l	D1,(A0)		;add new memory node to middle or end of list
 
 alloc_display	move.l	a0,d0
 		addq.l	#8,d0
-		move.l	d0,Addr(a4)
+		move.l	d0,mon_CurrentAddr(a4)
 		move.l	d0,d1
 		add.l	4(a0),d1
 		subq.l	#1,d1
-		lea	allocfmt(pc),a0
+		lea	alloc_fmt(pc),a0
 		call	JUMP,printf
 
 alloc_failed		;error 'allocation failed'
-		lea	alloc_fail_msg(pc),A0
+		lea	allocfail_txt(pc),A0
 		call	JUMP,printstring_a0_window
 
 *** ALLOCATE ABSOLUTE ***
@@ -175,11 +169,11 @@ alloc_failed		;error 'allocation failed'
 		call	tolower
 		cmp.b	d1,d0
 		bne.s	free_norm
-		bra	FreeAllMem
+		bra	free_all_mem_routine
 
 free_norm	call	GetExpr
 		subq.l	#8,D0
-		move.l	MemoryList(a4),D1
+		move.l	mon_MemoryList(a4),D1
 		beq	not_at_all_allocated
 		moveq	#0,D2
 find_mem_to_free_loop
@@ -189,13 +183,13 @@ find_mem_to_free_loop
 		move.l	D1,D2
 		move.l	(A1),D1			;get next block pointer
 		bne.s	find_mem_to_free_loop
-		lea	noalloctx(pc),A0	;error 'not allocated'
+		lea	noalloc_txt(pc),A0	;error 'not allocated'
 		call	JUMP,printstring_a0_window
 
 found_do_free_mem	;remove memory block from linked list
 		tst.l	D2
 		bne.s	notfirst
-		move.l	(A1),MemoryList(a4)
+		move.l	(A1),mon_MemoryList(a4)
 		bra.s	do_free
 
 notfirst	move.l	D2,A0
@@ -216,7 +210,7 @@ do_free		move.l	4(A1),D0
 
 		lib	Exec,Forbid
 
-		move.l	MemList(a6),a5
+		move.l	MemList(a6),a5	;ExecBase->MemList
 
 01$		tst.l	(a5)
 		beq.s	09$
@@ -253,15 +247,16 @@ do_free		move.l	4(A1),D0
 
 		startline
 		move.l	d5,d0
-		bsr	puthex_68
+		move.b	#'$',(a3)+
+		call	puthex68
 		move.b	#':',(a3)+
 		move.b	#SPACE,(a3)+
 
 		move.l	a5,d0
 		bne.s	100$
-		lea	notmemtxt(pc),a1
+		lea	not_memlist_txt(pc),a1
 		call	putstring
-		bra.s	999$
+		bra.s	104$
 
 100$		btst	#MEMB_CHIP,MH_ATTRIBUTES+1(a5)
 		beq.s	101$
@@ -280,44 +275,32 @@ do_free		move.l	4(A1),D0
 		move.l	#'not ',d0
 		call	PutLong
 
-103$		lea	allotxt(pc),a1
+103$		lea	allocated_txt(pc),a1
 		call	putstring
 
-999$		clr.b	(a3)
+104$		clr.b	(a3)
 		call	printstring
 
 ;
 ; check if location is in a hunk and print hunk number if it is
 ;
-		move.l	SegList(a4),d0
-		moveq	#0,d4
-500$		lsl.l	#2,d0
-		beq.s	520$
-		move.l	d0,a2
-		lea	4(a2),a0
-		cmp.l	a0,d5
-		bcs.s	510$
-		move.l	-4(a2),d0
-		lea	-4(a2,d0.L),a1
-		cmp.l	a1,d5
-		bcc.s	510$
+		move.l	d5,a0
+		call	find_hunk_addr
+		tst.l	d0
+		beq.s	105$
 
-		move.l	d4,d0
-		move.l	d5,d1
-		sub.l	a0,d1
-		lea	inhunkfmt(pc),a0
+		exg	d0,d1
+		addq.l	#4,d1
+		sub.l	d5,d1
+		neg.l	d1
+		lea	inhunk_fmt(pc),a0
 		call	printf
-		bra.s	520$
 
-510$		move.l	(a2),d0
-		addq.l	#1,d4
-		bra.s	500$
-
-520$		tst.l	HunkTypeTable(a4)
+105$		tst.l	mon_HunkTypeTable(a4)
 		beq.s	ret_01
 
 		move.l	d5,d0
-		bsr	find_var_value
+		call	find_var_value
 		tst.l	d0
 		beq.s	ret_01
 
@@ -377,7 +360,7 @@ trf2		move.b	(A1),(A2)
 		move.l	D0,-(sp)
 		call	GetExpr
 		move.l	D0,A2
-		lea	InputBuf(a4),a0
+		lea	mon_InputBuf(a4),a0
 		call	GetString
 		move.l	(sp)+,A1
 		tst.l	D2
@@ -404,7 +387,7 @@ fill1		cmp.l	A2,A1
 		move.l	D0,-(sp)
 		call	GetExpr
 		move.l	D0,A2
-		lea	InputBuf(a4),a0
+		lea	mon_InputBuf(a4),a0
 		call	GetString
 		move.l	(sp)+,A1
 		tst.l	D2	;string length
@@ -496,7 +479,7 @@ compf1		call	CheckKeys
 ; in the c and h commands. return result in d6.
 ;
 get_n_per_line	moveq	#80,d6
-		move.l	ConsoleUnit(a4),d0
+		move.l	mon_ConsoleUnit(a4),d0
 		beq.s	01$
 		move.l	d0,a0
 		move.w	cu_XMax(a0),d6
@@ -514,16 +497,16 @@ get_n_per_line	moveq	#80,d6
 
 display_memory	call	GetParams
 		moveq	#0,d6
-		move.l	ConsoleUnit(a4),d0
+		move.l	mon_ConsoleUnit(a4),d0
 		beq.s	00$
 		move.l	d0,a0
 		cmp.w	#65,cu_XMax(a0)
 		scs	d6
-00$		move.l	Addr(a4),a5
+00$		move.l	mon_CurrentAddr(a4),a5
 
 disploop	startline
 		move.l	a5,D0
-		bsr	puthex1_68
+		call	puthex68
 		putchr	<':'>
 		putchr	SPACE
 		moveq	#16/4-1,D2
@@ -531,7 +514,7 @@ disploop	startline
 01$		call	mgetw
 		swap	d0
 		call	mgetw
-		bsr	phex1_8
+		call	puthex8
 		putchr	SPACE
 		dbf	D2,01$
 
@@ -555,7 +538,7 @@ disploop	startline
 		call	CheckEnd
 		bne.s	disploop
 
-		move.l	a5,Addr(a4)
+		move.l	a5,mon_CurrentAddr(a4)
 		bra	mainloop
 ;
 ; subroutines for 'mf' command
@@ -622,28 +605,28 @@ p_addr		startline
 ;
 		cmd	fmt_memdisplay
 
-		clr.l	EndAddr(a4)
+		clr.l	mon_EndAddr(a4)
 		call	skipspaces
 		cmp.b	#'"',(a3)
 		beq.s	get_fmtstring
 
 		call	GetExpr
-		move.l	d0,Addr(a4)
+		move.l	d0,mon_CurrentAddr(a4)
 
 		call	skipspaces
 		cmp.b	#'"',(a3)
 		beq.s	get_fmtstring
 
 		call	GetExpr
-		move.l	d0,EndAddr(a4)	;!!!!!!
+		move.l	d0,mon_EndAddr(a4)
 
 get_fmtstring	call	GetName
-		move.l	d0,instrad(a4)
+		move.l	d0,d7
 
-		move.l	Addr(a4),a5
+		move.l	mon_CurrentAddr(a4),a5
 
 fmt_memdisp_next
-		move.l	instrad(a4),a2
+		move.l	d7,a2
 
 fmt_memdisp_loop
 		move.l	a2,d2
@@ -682,7 +665,7 @@ fmt_memdisp_loop
 p_esc		move.b	(a2)+,d0
 		beq.s	p_end
 		cmp.b	#'n',d0
-		bne.s	p_str		;!!
+		bne.s	p_str
 		subq.l	#2,a2
 		bsr.s	p_putstr
 		addq.l	#2,a2
@@ -693,16 +676,15 @@ p_str		bsr.s	p_putstr
 
 p_end_test	tst.b	-1(a2)
 		bne.s	fmt_memdisp_loop
-	;!!!!
 
-p_end		move.l	a5,Addr(a4)
+p_end		move.l	a5,mon_CurrentAddr(a4)
 		bsr.s	p_putstr
 		emit	LF
 		call	CheckKeys
 		bne.s	p_main
 		cmp.w	#0,a5
 		beq.s	p_main
-		cmp.l	EndAddr(a4),a5
+		cmp.l	mon_EndAddr(a4),a5
 		bls	fmt_memdisp_next
 
 p_main		bra	mainloop
@@ -713,7 +695,7 @@ p_percent	emit	'%'
 p_putstr	move.l	a2,d3
 		sub.l	d2,d3
 		beq.s	1$
-		move.l	OutputFile(a4),d1
+		move.l	mon_OutputFile(a4),d1
 		lib	Dos,Write
 1$		rts
 
@@ -741,17 +723,20 @@ p_chars		dc.b	'bwla%',0
 ;
 comp_hunt_fmt	dc.b	'%08lx ',0
 
-alloc_fail_msg	dc.b	'Allocation failed',LF,0
-noalloctx	dc.b	'Not allocated that',LF,0
+allocfail_txt	dc.b	'Allocation failed',LF,0
+noalloc_txt	dc.b	'Not allocated that',LF,0
 
-no_alloc	dc.b	'No memory '
-allotxt		dc.b	'allocated',LF,0
-memlisttx	dc.b	'Allocated memory:',LF,0
+nomem_alloc_txt	dc.b	'No memory '
+allocated_txt	dc.b	'allocated',LF,0
+memlist_txt	dc.b	'Allocated memory:',LF,0
 
-notmemtxt	dc.b	'Not in MemList',LF,0
-inhunkfmt	dc.b	'(in hunk %ld, offset $%lx)',LF,0
+memlist_fmt	dc.b	'$%08lx  $%08lx  %ld',LF,0
+loc_txt		dc.b	' startloc   endloc    length',LF,0
+
+not_memlist_txt	dc.b	'Not in MemList',LF,0
+inhunk_fmt	dc.b	'(in hunk %ld, offset $%lx)',LF,0
 minfo_var_fmt	dc.b	' = %1.50s',LF,0
 
-allocfmt	dc.b	'Allocated from $%08lx to $%08lx',LF,0
+alloc_fmt	dc.b	'Allocated from $%08lx to $%08lx',LF,0
 
 		end

@@ -17,8 +17,6 @@
 ;
 
 
-		xref	showrange
-
 		xref	generic_error
 		xref	odd_address_error
 		xref	out_memory_error
@@ -44,8 +42,9 @@
 disk_rw		call	GetExpr
 		btst	#0,D0
 		bne	odd_address_error
-		move.l	D0,Addr(a4)
+		move.l	D0,mon_CurrentAddr(a4)
 		beq	generic_error
+
 		call	GetExpr
 		move.l	D0,D3		;Unit number (drive)
 		call	GetExpr
@@ -53,6 +52,7 @@ disk_rw		call	GetExpr
 		call	GetExpr
 		move.l	D0,D5		;length
 		beq	generic_error		;error: zero length
+
 		move.l	#DISKBLOCKSIZE,d0
 		move.l	#MEMF_CLEAR!MEMF_CHIP,d1
 		lib	Exec,AllocMem
@@ -70,7 +70,7 @@ disk_rw		call	GetExpr
 		move.l	D0,A2
 
 		move.l	D3,D0
-		lea	DevNameBuf(a4),A0
+		lea	mon_DevNameBuf(a4),A0
 		move.l	A2,A1
 		moveq	#0,D1
 		lib	OpenDevice
@@ -99,22 +99,22 @@ disk_rd		move.w	#CMD_READ,IO_COMMAND(A2)	;read from disk
 		bne	disk_io_err
 		move.l	#DISKBLOCKSIZE,d0
 		move.l	a5,a0
-		move.l	Addr(a4),a1
+		move.l	mon_CurrentAddr(a4),a1
 		lib	CopyMem
 		move.l	#DISKBLOCKSIZE,d0
 		add.l	d0,IO_OFFSET(a2)
-		add.l	d0,Addr(a4)
+		add.l	d0,mon_CurrentAddr(a4)
 		sub.l	d0,d4
 		bgt.s	disk_rd
 		move.l	d5,d6
-		move.l	Addr(a4),d5
+		move.l	mon_CurrentAddr(a4),d5
 		sub.l	d6,d5
-		bsr	showrange
+		call	showrange
 		bra.s	disk_io_5
 ;
 ; write to disk
 ;
-disk_wr		move.l	Addr(a4),a0
+disk_wr		move.l	mon_CurrentAddr(a4),a0
 		move.l	a5,a1
 		move.l	#DISKBLOCKSIZE,d0
 		lib	CopyMem
@@ -125,7 +125,7 @@ disk_wr		move.l	Addr(a4),a0
 		bne.s	disk_io_err
 		move.l	#DISKBLOCKSIZE,d0
 		add.l	d0,IO_OFFSET(a2)
-		add.l	d0,Addr(a4)
+		add.l	d0,mon_CurrentAddr(a4)
 		sub.l	d0,d4
 		bgt.s	disk_wr
 		move.w	#CMD_UPDATE,IO_COMMAND(A2)	;make sure that the buffer is written
@@ -144,13 +144,13 @@ disk_io_err	;Print TrackDisk error number
 00$		cmp.b	#TDERR_DiskChanged,d0
 		bne.s	01$
 
-		lea	nodisktxt(pc),a0
+		lea	no_disk_txt(pc),a0
 		bra.s	02$
 
 01$		cmp.b	#TDERR_WriteProt,d0
 		bne.s	03$
 
-		lea	wrprotxt(pc),a0
+		lea	writeprot_txt(pc),a0
 
 02$		call	printstring_a0_window
 		bra.s	99$
@@ -172,7 +172,7 @@ disk_io_6	move.l	A2,A1
 opendev_fail	lea	opendev_fail_fmt(pc),a0
 		move.l	d0,d2
 		move.l	d3,d1
-		lea	DevNameBuf(a4),a1
+		lea	mon_DevNameBuf(a4),a1
 		move.l	a1,d0
 		call	printf_window
 
@@ -202,14 +202,14 @@ d_mloop_1	rts
 		beq	generic_error
 
 		move.l	d0,a0
-		lea	DevNameBuf(a4),a1
+		lea	mon_DevNameBuf(a4),a1
 		moveq	#DNBUFSIZE-2,d1
 01$		move.b	(a0)+,(a1)+
 		dbeq	d1,01$
 		clr.b	(a0)
 		bra.s	d_mloop_1
 
-showdev		lea	DevNameBuf(a4),a0
+showdev		lea	mon_DevNameBuf(a4),a0
 		call	printstring_a0
 		emit	LF
 		bra.s	d_mloop_1
@@ -302,12 +302,13 @@ boot_2		move.l	(a2),D7
 ShowSum ;old sum in D6, new sum in D7
 		move.l	d6,d0
 		move.l	d7,d1
-		lea	sumfmt(pc),a0
+		lea	checksum_fmt(pc),a0
 		call	JUMP,printf
 
-sumfmt		dc.b	'Old: $%08lx New: $%08lx',LF,0
-nodisktxt	dc.b	'No disk in drive',0
-wrprotxt	dc.b	'Disk write protected',0
+
+checksum_fmt	dc.b	'Old: $%08lx New: $%08lx',LF,0
+no_disk_txt	dc.b	'No disk in drive',0
+writeprot_txt	dc.b	'Disk write protected',0
 opendev_fail_fmt
 		dc.b	'Can''t open %s unit %ld, error #%ld',LF,0
 td_errfmt	dc.b	'Disk error %ld',0
