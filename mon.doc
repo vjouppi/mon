@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.57 instructions
+                 Amiga Monitor v1.58 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -31,8 +31,8 @@
   options:
    -w <window width>
    -h <window height>
-   -o <options>				(see 'Options Flags')
-   -s <initial-script-filename>		(see 'Scripts')
+   -o <options>				(see `Options Flags')
+   -s <initial-script-filename>		(see `Scripts')
 
   An optional filename can also be given in the command line.  The monitor
   will try to load the named executable file immediately after starting.
@@ -40,8 +40,8 @@
   on the command line after the file name, that will be used as the command
   line for the program loaded to the monitor (a0/d0 registers, see @-command)
 
-  If a '+' character is used before the filename, the monitor tries to load
-  symbol information from the file (see also 'l'-command).
+  If a `+' character is used before the filename, the monitor tries to load
+  symbol information from the file (see also `l'-command).
 
   Using the monitor from a remote terminal
   ----------------------------------------
@@ -51,20 +51,20 @@
   serial settings using the preferences program. Then mount AUX:
   if necessary, and start a new CLI/Shell with the command NewShell AUX:
   (or NewCLI AUX:). You get the normal CLI/Shell prompt to the terminal.
-  Now simply start the monitor by typing 'mon' <cr> to the terminal
-  (do not 'run' the monitor from the terminal; if you do it, the
+  Now simply start the monitor by typing `mon' <cr> to the terminal
+  (do not `run' the monitor from the terminal; if you do it, the
   monitor opens a window on the Amiga display). If the terminal is not
-  vt100/ansi compatible, you may need to use the 'Dumb Terminal' option
+  vt100/ansi compatible, you may need to use the `Dumb Terminal' option
   flag (flag #3) to disable some features of the monitor (such as
   command line editing and history, but you can still delete the last
   character with backspace/delete). Easies way to do that is to start
-  the monitor with the command 'mon -o4'.
+  the monitor with the command `mon -o4'.
 
 
   Option flags
   ------------
 
-  Commands 'opt +n' and 'opt -n' where 'n' is a number between 1 and 4
+  Commands `opt +n' and `opt -n' where `n' is a number between 1 and 4
   can be used to set and reset monitor option flags. Currently four
   flags are implemented:
 
@@ -74,12 +74,12 @@
 
    - flag #2
       Causes characters $a0-$ff to be considered printable in
-      'm' command memory dump (and '?' command ascii display)
+      `m' command memory dump (and `?' command ascii display)
       (Note that this was changed in 1.42, previously they were
       printable by default).
 
    - flag #3
-      This is the 'Dumb terminal' mode flag. When this is set on,
+      This is the `Dumb terminal' mode flag. When this is set on,
       the command line history and editing features of the monitor
       are disabled, and the monitor does not use any vt100/ansi-
       escape sequences.
@@ -89,9 +89,9 @@
       output window/file before actually executing the commands.
       This is mainly useful with scripts.
 
-  Command 'opt' without parameters lists the current flag settins.
-  This includes a hexadecimal 'flag value' that can be used on
-  the command line with the '-o' option to set initial flags when the
+  Command `opt' without parameters lists the current flag settins.
+  This includes a hexadecimal `flag value' that can be used on
+  the command line with the `-o' option to set initial flags when the
   monitor is started (That flag value is simply a bit map of the option
   flags, option #1 is bit #0).
 
@@ -108,7 +108,7 @@
   press Ctrl-E to edit the assembler instruction currently stored in that
   address.
 
-  These features are not available if the 'Dumb terminal' mode is
+  These features are not available if the `Dumb terminal' mode is
   selected. In that case the only editing function is deleting the
   last character with backspace or delete key.
 
@@ -127,22 +127,22 @@
   command (the argument of the ba-command is always decimal).
 
   the prefixes used to identify number bases are:
-   '$'   hexadecimal
-   '@'   octal
-   '%'   binary
-   '_'   decimal
+   `$'   hexadecimal
+   `@'   octal
+   `%'   binary
+   `_'   decimal
 
-  Numbers can also be entered as ASCII strings, for example:
+  Numbers can also be entered as ASCII strings in single quotes, for example:
    'FORM'  -->  hex 464f524d
 
-  Note that '+' was the decimal prefix in older versions. Now it is '_'.
+  Note that `+' was the decimal prefix in older versions. Now it is `_'.
 
   Expressions
   -----------
 
   The monitor accepts expressions in most places where you need a number.
 
-  The calculator ('?') command allows you to directly display
+  The calculator (`?') command allows you to directly display
   values of expressions.
 
 
@@ -168,9 +168,9 @@
 
   parenthesis can be used to group the operations in the expressions.
 
-    '*'           represents the 'current address'.
+    `*'           represents the `current address'.
 
-    [reg_name]    represents the value of register 'reg_name'.
+    [reg_name]    represents the value of register `reg_name'.
 
   All calculations are done in 32-bit integer arithmetic. No overflow
   checking is done.
@@ -231,14 +231,14 @@
   In addition to numbers and functions, variables can be used in expressions
   if they have been previously defined. Variables are defined with the
   set-command.  All variable values are 32-bit integers. Variable names can
-  contain alphanumeric characters and underscores ('_'), but they cannot
+  contain alphanumeric characters and underscores (`_'), but they cannot
   begin with a number. Variable names are case sensitive in this version.
 
   (There are some problems using variables with the assembler.
-  Especially variables with names starting with 'a','d' or 's' may
+  Especially variables with names starting with `a',`d' or `s' may
   not be accepted in the assembler because it tries to interpret them
   as register names. You can get around this by using expressions
-  like '0+variable')
+  like `0+variable')
 
   Byte strings
   ------------
@@ -281,9 +281,9 @@
   Stack usage
   -----------
 
-  The monitor now allocates 2K of stack for its own use and the rest
-  of the stack can be used by the program being debugged. If you
-  need a larger stack, you can use the CLI 'stack' command before you
+  The monitor allocates 2K of stack for its own use and the rest of
+  the stack can be used by the program being debugged. If you need
+  a larger stack, you can use the CLI `stack' command before you
   start the monitor.
 
 
@@ -291,10 +291,10 @@
   --------------------
 
   When the monitor requires a file or directory name or the device name
-  for the 'dev'-command, the name must be in quotes if it contains spaces.
-  This has been changed from the previous versions. Also, some escape
-  processign is now done to the filename strings and the arguments of
-  the echo-command. See the entry for echo-command for details.
+  for the `dev'-command, the name must be in double quotes if it contains
+  spaces. This has been changed from the previous versions. Also, some
+  escape processing is now done to the filename strings and the arguments
+  of the echo-command. See the entry for echo-command for details.
 
 
   The following commands are available in the monitor
@@ -308,10 +308,10 @@ i -- Info
 
 o -- Redirect output
  usage:
-  o name -- redirects monitor output to file or device 'name'
+  o name -- redirects monitor output to file or device `name'
   o      -- returns to normal, output comes to the monitor window
- For example, to send the output to printer use 'o PRT:'.
- If the file specified in the 'o'-command already exists, the monitor
+ For example, to send the output to printer use `o PRT:'.
+ If the file specified in the `o'-command already exists, the monitor
  output will be appended to the end of the file.
 
 ? [expr]  --  Calculator
@@ -321,11 +321,11 @@ o -- Redirect output
 
 set [var[=expr]] -- Set/show variables
   The set-command without parameters displays the values of all currently
-  defined variables. The form 'set var=expr' sets the value of 'var' to
-  the value of the expression. 'set var' removes the definition of 'var'.
+  defined variables. The form `set var=expr' sets the value of `var' to
+  the value of the expression. `set var' removes the definition of `var'.
 
 cv -- Clear all variables
-  Asks if you really want to do it, answer 'y' to clear them.
+  Asks if you really want to do it, answer `y' to clear them.
 
 ba [num]  --  Set/show current number base
   ba without parameters displays the current number base. ba [num] sets
@@ -334,7 +334,7 @@ ba [num]  --  Set/show current number base
   (hexadecimal).
 
 mi [addr] -- Display information about memory locations
-  The mi-command tells you if the address 'addr' is in the system memory
+  The mi-command tells you if the address `addr' is in the system memory
   list, is it allocated or not and is it inside any of the hunks
   of the currently loaded segment.
 
@@ -363,12 +363,12 @@ mf -- Formatted memory display
     %dw -- decimal word
     %dl -- decimal longword
     %a  -- current address (in hex)
-    %c  -- ASCII character (printable ones only, others show as '.')
+    %c  -- ASCII character (printable ones only, others show as `.')
     %s  -- string (longword pointer to a NUL-terminated string)
     %x  -- BCPL string (longword pointer to a string with length byte)
-           (non-printable characters in strings are printed as '.'
+           (non-printable characters in strings are printed as `.'
             Strings longer than 100 characters are truncated)
-  The escape sequences described in the 'echo'-command entry
+  The escape sequences described in the `echo'-command entry
   can also be used in the format string.
 
   Note1: words and longs that are displayed must be at even addresses. If the
@@ -382,7 +382,7 @@ mf -- Formatted memory display
  Usage:
   : <addr> <string>
   Puts the <string> in memory at <addr>
-  This can also be done with the command 'a <addr> dc.b <string>'
+  This can also be done with the command `a <addr> dc.b <string>'
   (but then <addr> must be even)
 
 f -- Fill memory with a byte or a string of bytes
@@ -424,7 +424,7 @@ a -- Assemble
   the monitor is waiting an assembler instruction.
 
    The assembler understands all the normal 68000 instructions and also
-  the 'pseudo-instructions' dc.b, dc.w and dc.l, which can be used to
+  the `pseudo-instructions' dc.b, dc.w and dc.l, which can be used to
   directly put data in memory.
 
  Some notes about using the assembler:
@@ -436,8 +436,8 @@ a -- Assemble
    abcd/sbcd/nbcd and shifts with memory operands.
 
    Instructions that can have different sizes must have the size specifier,
-   there is no 'default size' (normal assemblers use a default size of word.
-   the omission of default size is intentional, because it is so easy to
+   there is no `default size' (normal assemblers use a default size of word.
+   The omission of default size is intentional, because it is so easy to
    forget the size specifier when you really don't mean the size to be word).
 
    Branch instructions with no size specifier or the .l-specifier assemble
@@ -455,7 +455,7 @@ a -- Assemble
 
    The above conversion rules do not apply to andi/ori/eori with status
    register or condition code register. In these cases you must enter the
-   instruction as andi/ori/eori (don't leave the 'i' out). Also, you
+   instruction as andi/ori/eori (don't leave the `i' out). Also, you
    can't enter any size specifier in this case.
 
   (In fact I want to make the assembler more flexible than it currently is,
@@ -491,9 +491,9 @@ b -- Set breakpoints
   the execution of a program stops and control returns to the monitor
   immediately when the breakpoint is encountered. If the breakpoint has
   a count that is greater than one, then control returns to the monitor
-  when the breakpoint has been 'hit' as many times as the count is.
+  when the breakpoint has been `hit' as many times as the count is.
 
-  Breakpoint counts do not work with the 'q' (quicktrace) command.
+  Breakpoint counts do not work with the `q' (quicktrace) command.
 
 
 br -- Remove breakpoints
@@ -566,7 +566,7 @@ programs that use the internal BCPL library from the monitor.
   be put in a special memory area and the register a0 will contain pointer
   to the string and d0 will contain length of the string (with a linefeed
   appended to end of it). If you want an empty command line, enter the
-  @-command without parameters and press return on the 'Cmdline>'-prompt.
+  @-command without parameters and press return on the `Cmdline>'-prompt.
   The purpose of this command is to specify a command line for the program
   that you are running from the monitor. If you start the monitor with a
   filename, anything after the filename is automatically used as the
@@ -587,23 +587,23 @@ l -- Load segment
   the starting & ending addresses of all the hunks in the file, use the
   sl-command.
 
-  Command 'l + <name>' loads symbol table and hunk type information in
+  Command `l + <name>' loads symbol table and hunk type information in
   addition to the actual file hunks. Those symbols are like the variables
-  defined by 'set' command, but they also have a hunk number associated with
-  them (it shows in square brackets in the 'set' listing). Also, the symbols
-  are automatically removed when the file is unloaded with the 'u'-command.
+  defined by `set' command, but they also have a hunk number associated with
+  them (it shows in square brackets in the `set' listing). Also, the symbols
+  are automatically removed when the file is unloaded with the `u'-command.
 
   Overlays are not supported.
 
 u -- Unload segment
  Usage:
   u  -- unload the currently loaded executable file.
-        symbol information loaded by 'l +' is removed by this command.
+        symbol information loaded by `l +' is removed by this command.
 
 sl -- Segment list
  Usage:
   sl -- displays the starting & ending addresses and length of each hunk
-  of the currently loaded file. If the 'l +' command has been used to
+  of the currently loaded file. If the `l +' command has been used to
   load the file, also the type of each hunk is displayed (including chip/fast
   memory types and data/bss byte counts of split data/bss hunks).
 
@@ -654,7 +654,7 @@ dev -- set/show current disk device
   dev  --  show current disk device
   dev devname -- set current disk device
 
- devname is an exec device name, given without quotes and with the '.device'-
+ devname is an exec device name, given without quotes and with the `.device'-
  suffix. for example, if you have a 2090 hd controller, you can
  set it as the default disk device with the command: dev hddisk.device
  Note that the disk read/write commands work in the exec device level and
@@ -662,7 +662,7 @@ dev -- set/show current disk device
  to edit hard disk sectors! Note also that actual disk IO buffers used by
  the monitor are always in chip memory.
 
- The current disk device is used by the '<' and '>'-commands.  Previous
+ The current disk device is used by the `<' and `>'-commands.  Previous
  versions of the monitor had them hardwired to use trackdisk.device.
 
 <  -- Read disk sectors
@@ -739,8 +739,8 @@ dir [<name>]   -- Displays the directory
 \ -- Command/ New Shell
   Usage:
    \ shell_command  -- executes one shell command
-   \                -- starts new shell with 'NewShell' or 'NewCLI'
-  This uses the AmigaDOS Execute() call on 1.3, so it requires the 'Run'-
+   \                -- starts new shell with `NewShell' or `NewCLI'
+  This uses the AmigaDOS Execute() call on 1.3, so it requires the `Run'-
   command to be in the C:-directory in AmigaDOS versions before 1.3.2
   (on AmigaDOS 2.0 it uses the new System() call)
 
@@ -775,14 +775,14 @@ echo -- display text and/or numbers
     echo string | [$][expr] [string | [$][expr] ...]
 
   Writes the string(s) given in the command to the monitor output window/file.
-  strings can be quoted with double quotes. Also, the '\'-character is used
+  strings can be quoted with double quotes. Also, the `\'-character is used
   as an escape character. The following escape sequences are available:
 
    \n -> newline/linefeed
    \r -> carriage return
    \t -> tabulator
    \e -> the ASCII Escape character (0x1b, 27 decimal)
-   \\ -> '\'
+   \\ -> `\'
    \xnn where nn are hex digits -> ascii code nn
 
   These escape sequences can also be used whenever file names are given
@@ -798,7 +798,7 @@ exec -- execute a script file
   Usage:
     exec filename
 
-  Executes the given script file. for more information, see 'Scripts' below.
+  Executes the given script file. for more information, see `Scripts' below.
 
 poke, pokew, pokel  --  write to memory
 
@@ -822,7 +822,7 @@ Scripts
   The Amiga monitor versions 1.52 and above has a built-in script language.
   All normal monitor commands can be executed from scripts, and the are
   additional commands for controlling script execution.
-  Scripts are started with the 'exec' command that can also be used inside
+  Scripts are started with the `exec' command that can also be used inside
   scripts, so scripts can be nested (and memory availability is the only
   limit of the nesting depth).
 
@@ -846,7 +846,7 @@ goto label  --  go to a specified label in a script.
    goto foobar
    ... other script commands
 
-.foobar:	echo "This is the label 'foobar'"
+.foobar:	echo "This is the label `foobar'"
 
 if <expr> <command> -- conditional execution
         Executes the single <command> only when expression <expr> is non-zero.
@@ -863,6 +863,10 @@ if counter <= _10 goto loop
 
 Version history:
 ----------------
+1.58 ->
+ - changed window position/size logic. now monitor window should
+   open to the visible part of a bigger-than-display screen.
+
 1.57 ->
  - memory display displays only the requested memory block
    (the last line is not always full)
@@ -874,10 +878,10 @@ Version history:
 
 1.55 ->
  - uses TC_TrapData instead of TC_UserData again...
- - now the '(' command cannot allocate negative amounts of memory...
- - now the assembler understands '.b' as short branch specifier and
-   '.w' as long branch specifier.
- - now frees memory properly in 'u' command.
+ - now the `(' command cannot allocate negative amounts of memory...
+ - now the assembler understands `.b' as short branch specifier and
+   `.w' as long branch specifier.
+ - now frees memory properly in `u' command.
 
 1.54 ->
  - added poke[w,l] commands
@@ -910,7 +914,7 @@ Version history:
 1.47 ->
  - symbol support
  - variables now case sensitive
- - hunk type display in 'sl'-command
+ - hunk type display in `sl'-command
 
 1.46 ->
  - added breakpoint counts.
@@ -925,13 +929,13 @@ Version history:
  - now gives error message if cannot allocate audio channels in digisound
    play command.
  - display can be stopped/started with ctrl-s/ctrl-q
- - spaces can be used in 'set register' command before the equal sign.
+ - spaces can be used in `set register' command before the equal sign.
 
 1.42 ->
  - better option handling
  - understands 2.0 shell window close gadget
  - redirection to file now appends if possible
- - modulo operator now '%'
+ - modulo operator now `%'
 
 1.41 ->
  - fixed a bug that prevented some assembler instructions working.
@@ -941,12 +945,12 @@ Version history:
    (in 1.37..1.39 it ignored first letter of dir name...)
 
 1.39 ->
- - interrupting 'c' or 'h' commands no longer causes error conditions.
+ - interrupting `c' or `h' commands no longer causes error conditions.
  - added option flag 2 to select whether characters $a0-$ff are printable
-   in 'm' command memory dump.
+   in `m' command memory dump.
 
 1.38 ->
- - return from 'j' or 'g' commands with rts now works (was a major bug in 1.37)
+ - return from `j' or `g' commands with rts now works (was a major bug in 1.37)
  - input routine no longer acts strangely if shift-cursor-down
    or ESC-cursor/function/help is pressed.
  - command line automatically set if file name given on the monitor command
@@ -956,17 +960,17 @@ Version history:
 1.37 -> lots of new features...
  - major source code reorganization
  - extended checksum commands
- - calculator 'ascii' output
+ - calculator `ascii' output
  - memoryinfo displays hunk offsets
  - breakpoint numbers
- - added 'port()' to expression parser
+ - added `port()' to expression parser
 
 1.34 ->
- - added 'narrow disassembly' option.
+ - added `narrow disassembly' option.
  - digisound player now defaults to play the sample once.
 
 1.32 ->
- - now opens own window only if started with 'run' or window width and
+ - now opens own window only if started with `run' or window width and
    height are given on the command line. can be used from serial terminal
    with AUX: shell.
 
@@ -988,7 +992,7 @@ Version history:
 1.27 ->
  - disk block/bootblock checksum functions and jump/go/trace etc. now
    check properly for odd addresses.
- - 'odd address'-error message
+ - `odd address'-error message
  - skip instruction-command
  - Exit() now returns control back to the monitor.
 
@@ -1002,7 +1006,7 @@ Version history:
 1.25 ->
  - (internal change) now uses TC_Userdata instead of TC_TrapData because
    TC_TrapData is marked as private in some prerelease 1.4/2.0 includes.
- - '\'-command now first tries to start a shell, then a CLI.
+ - `\'-command now first tries to start a shell, then a CLI.
  - disk read/write commands can be used with hard disks etc.
  - fixed condition code register setting with go and jump commands.
 
@@ -1023,7 +1027,7 @@ Version history:
  - variables are now case-insensitive.
 
 1.20 ->
- - added the '[register]'-syntax in the expression parser
+ - added the `[register]'-syntax in the expression parser
 
 1.19 ->
  - disassembler now uses new routines. this makes the monitor
@@ -1037,7 +1041,7 @@ Version history:
 1.15 ->
  - some minor bug fixes in assembler
    (move sp,usp or exg Rx,sp did not work)
- - 'memory info'-command
+ - `memory info'-command
  - underscores are allowed in variable names
  - variable list is kept in alphabetical order
 
@@ -1066,8 +1070,8 @@ Version history:
     + cmpm works with all sizes
     + most(if not all...) of the bugs that caused the assembler to
       assemble invalid instructions have been fixed.
- - 'sp' can be used instead of 'a7' in the assembler and the disassmbler
-   displays a7 as 'sp'.
+ - `sp' can be used instead of `a7' in the assembler and the disassmbler
+   displays a7 as `sp'.
  - The assembler now unserstands blo/bhs, slo/shs and dblo/sbhs
    and assembles them as bcs/bcc, scs/scc and dbcs/dbcc
  - The disassembler displays address-register relative offsets and short
@@ -1088,13 +1092,13 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.57 Copyright © 1987-1993 by Timo Rossi. The monitor
+  Amiga Monitor v1.58 Copyright © 1987-1993 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
-'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lha-archive 'mon157.lha'.
+`patchtrace'-program should be included in the distribution. Preferred
+way of distribution is the lha-archive `mon158.lha'.
 
-  Special Permission is given to Fred Fish to distribute this program on
-his 'Fish disks'.
+  Permission is given to Fred Fish to distribute this program
+on his `Fish disks'.
 
 Send suggestions, bug reports etc. to:
 

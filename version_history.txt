@@ -37,6 +37,7 @@
 * v1.55 ->	     1992-07-04    *
 * v1.56 ->	     1993-02-06	   *
 * v1.57 ->	     1993-03-16+   *
+* v1.58 ->	     1993-04-04    *
 ************************************
 
 ;
@@ -499,4 +500,8 @@
 ;
 ; 1993-03-16(?) --> 1.57(b)
 ;		- memory display can stop in middle of a line.
+;
+; 1993-04-04 --> 1.58
+;		- window position/size logic changed. now should open window
+;		  to the visible part of bigger-than-display screen.
 ;

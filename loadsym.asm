@@ -11,26 +11,14 @@
 		nolist
 		include "exec/types.i"
 		include "exec/memory.i"
-		include "libraries/dos.i"
+		include "dos/dos.i"
+		include	"dos/doshunks.i"
 		include	"offsets.i"
 		list
 
 		include	"monitor.i"
 
 		xref	out_memory_error
-
-;
-; hunk types
-;
-HUNK_CODE	equ	1001
-HUNK_DATA	equ	1002
-HUNK_BSS	equ	1003
-HUNK_RELOC32	equ	1004
-HUNK_SYMBOL	equ	1008
-HUNK_DEBUG	equ	1009
-HUNK_END	equ	1010
-HUNK_HEADER	equ	1011
-HUNK_OVERLAY	equ	1013
 
 ;
 ; data structure used by load_symbols-routine

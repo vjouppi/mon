@@ -9,7 +9,7 @@
 		include "exec/tasks.i"
 		include "libraries/dosextens.i"
 		include "workbench/startup.i"
-		include "graphics/gfxbase.i"
+		include	"intuition/intuition.i"
 		include "offsets.i"
 		list
 
@@ -192,48 +192,103 @@ cmdline_done
 ;
 		move.b	#16,mon_DefNumBase(a4)
 
-		moveq	#0,d0
-		moveq	#0,d1
-		move.w	d4,d1
-		bmi.s	win_1
-		moveq	#0,d2
-		move.w	d5,d2
-		bpl.s	open_win
+;
+; open a new window if a window size has been specified or
+; the standard input is not interactive (mon has been started with run)
+;
 
-win_1		lib	Dos,Input
+;
+; Window dimension/position logic:
+;
+; Open intuition/GetScreenData() from WB screen/Close intuition
+; if something fails, the LeftEdge/TopEdge/Width/Height fields remain zero
+;
+; If window height/width were specified on the command line, use these
+; and position to window to -LeftEdge,-TopEdge
+;
+; Else if the window height is less than 256, open a window
+; with the screen width/height, and if the height is more than
+; 256, use $eeee/$10000 * height as window height and position the
+; window a few pixels down. if the height is more than 400,
+; use $cccc/$10000 * height...
+;
+; Note that GetScreenData() returns the width/height of the
+; visible region of the screen.
+;
+		moveq	#0,d2
+		move.w	d4,d2
+		moveq	#0,d3
+		move.w	d5,d3
+		bpl.b	open_win
+		tst.w	d2
+		bpl.b	open_win
+
+		lib	Dos,Input
 		move.l	d0,mon_WinFile(a4)
-		beq.s	open_win1
+		beq.s	open_win
 		move.l	d0,d1
 		lib	IsInteractive
 		tst.l	d0
-		beq.s	open_win1
+		beq.b	open_win
 		move.l	mon_WinFile(a4),d0
 		bra	win_open
 
-nogfx_win	moveq	#0,d0
-		move.l	#200,d2
-		bra.s	open_win2
-
-open_win1	lea	gfx_name(pc),a1
+open_win	lea	intuition_name(pc),a1
 		moveq	#ONE_POINT_TWO,d0
 		lib	Exec,OpenLibrary
 		tst.l	d0
-		beq.s	nogfx_win
-		move.l	d0,a1
-		moveq	#0,d2
-		move.w	gb_NormalDisplayRows(a1),d2
-		lib	CloseLibrary
+		beq.b	n_int
+		move.l	d0,a6
 
-		moveq	#0,d0
-		cmp.w	#200,d2
-		bls.s	open_win2
+		lea	mon_InputBuf(a4),a0
+		moveq	#sc_Height+2,d0
+		moveq	#WBENCHSCREEN,d1
+		clra	a1
+		lib	GetScreenData
+		tst.l	d0
+		beq.b	n_sc
 
-		moveq	#8,d0
-		sub.w	#18,d2	
+		neg.w	mon_InputBuf+sc_LeftEdge(a4)
+		bpl.s	1$
+		clr.w	mon_InputBuf+sc_LeftEdge(a4)
 
-open_win2	move.w	#640,d1
+1$		neg.w	mon_InputBuf+sc_TopEdge(a4)
+		bpl.s	2$
+		clr.w	mon_InputBuf+sc_TopEdge(a4)
 
-open_win	lea	window_fmt(pc),a0
+2$
+n_sc		move.l	a6,a1
+		lib	Exec,CloseLibrary
+n_int
+		tst.w	d2
+		bpl.b	1$
+		move.w	mon_InputBuf+sc_Width(a4),d2
+		bne.b	1$
+		move.w	#640,d2
+
+1$		tst.w	d3
+		bpl.b	2$
+		move.w	mon_InputBuf+sc_Height(a4),d3
+		bne.b	2$
+		move.w	#200,d3
+2$
+		cmp.w	#256,d3
+		bcs.b	4$
+		move.w	#$eeee,d0
+		cmp.w	#400,d3
+		bcs.b	3$
+		move.w	#$cccc,d0
+
+3$		mulu	d0,d3
+		clr.w	d3
+		swap	d3
+		add.w	#8,mon_InputBuf+sc_TopEdge(a4)
+
+4$		moveq	#0,d0
+		move.w	mon_InputBuf+sc_LeftEdge(a4),d0
+		moveq	#0,d1
+		move.w	mon_InputBuf+sc_TopEdge(a4),d1
+		lea	window_fmt(pc),a0
 		call	fmtstring
 
 		bset	#MONB_OWNWINDOW,mon_Flags(a4)
@@ -345,7 +400,7 @@ check_initial_script
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
 mainloop	move.l	mon_StackPtr(a4),sp	;restore stack pointer
 		move.l	mon_ScriptList(a4),d2
-		beq.s	do_cmdline
+		beq.b	do_cmdline
 
 		moveq	#0,d0
 		moveq	#0,d1
@@ -813,7 +868,7 @@ info_text	dc.b LF
 		dc.b	' Read the ''mon.doc''-file for more information.',LF,0
 
 dos_name	dc.b	'dos.library',0
-gfx_name	dc.b	'graphics.library',0
+intuition_name	dc.b	'intuition.library',0
 trackdisk_name	dc.b	'trackdisk.device',0
 
 version_string	dc.b	0,'$VER: '
@@ -823,12 +878,12 @@ version_msg	dc.b	'Amiga Monitor v'
 		DATE
 		dc.b	')',LF,0
 
-window_fmt	dc.b	'RAW:0/%ld/%ld/%ld/Amiga Monitor v'
+window_fmt	dc.b	'RAW:%ld/%ld/%ld/%ld/Amiga Monitor v'
 		VERSION
 		dc.b	0
 
 welcome_txt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
-		dc.b	TAB,'   Copyright 1987-1992 by Timo Rossi, version '
+		dc.b	TAB,'   Copyright 1987-1993 by Timo Rossi, version '
 		VERSION
 		ifne	BETA
 		dc.b	LF,LF,TAB
