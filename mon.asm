@@ -18,7 +18,8 @@
 * v1.24 -> last mod. 1990-01-13    *
 * v1.26 -> last mod. 1990-05-25    *
 * v1.27 -> last mod. 1990-06-26    *
-*                                  *
+* v1.28 -> last mod. 1990-07-13	   *
+* v1.29 -> last mod. 1990-07-15	   *
 ************************************
 
 ;DEBUG	set	1
@@ -345,6 +346,12 @@
 ;		- if a program calls Exit() when it is being run from the
 ;		  monitor, control returns back to the monitor.
 ;
+;   1990-07-13 --> v1.28
+;		- modified patchtrace to work with relocated
+;		  vector base register
+;   1990-07-15	- monitor now opens its screen 5 pixels from screen topedge
+;		  (but still opens full height window on ntsc machine)
+;
 
 		include	'exec/types.i'
 		include	'include.i'
@@ -354,7 +361,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.27'
+		dc.b	'1.28'
 		endm
 
 *** macro to display a single character ***
@@ -681,14 +688,19 @@ cmdline_done
 		beq	exit8
 
 		lea	OutputBuffer(a5),a0
-		movem.w	sc_Width(a0),d0-d1	this sign-extends to long
+		movem.w	sc_Width(a0),d1-d2	this sign-extends to long
+		moveq	#0,d0
+
+		cmp.w	#640,d1
+		bcs.s	199$
+		move.w	#640,d1
 ;#
 ;# this causes the monitor to open a full-height window on a NTSC display
 ;#
-		cmp.w	#200,d1
+199$		cmp.w	#200,d2
 		bls.s	200$
-		sub.w	#16,d1
-
+		sub.w	#16,d2
+		addq.w	#5,d0
 ;
 ; use user-specified window dimensions if they exist
 ;
@@ -6292,7 +6304,7 @@ ret99		rts
 ; output routines
 ;
 
-printf	bsr.s	fmtstring
+printf		bsr.s	fmtstring
 ; fall to printstring
 printstring	lea	OutputBuffer(a5),a0
 ; fall to printstring_a0
@@ -7729,7 +7741,7 @@ tdname		dc.b	'trackdisk.device',0
 audioname	dc.b	'audio.device',0
 allocmap	dc.b	1,8,2,4
 
-windowfmt	dc.b	'RAW:0/0/%ld/%ld/Amiga Monitor v'
+windowfmt	dc.b	'RAW:0/%ld/%ld/%ld/Amiga Monitor v'
 		VERSION
 		dc.b	0
 

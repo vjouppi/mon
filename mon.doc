@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.27 instructions
+                 Amiga Monitor v1.28 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -532,6 +532,9 @@ x -- Exit
 
 Version history:
 ----------------
+1.28 ->
+ - modified patchtrace to work also when vector base is relocated.
+ - small changes in initial window placement and size
 1.27 ->
  - disk block/bootblock checksum functions and jump/go/trace etc. now
    check properly for odd addresses.
@@ -623,7 +626,7 @@ Version history:
 
 
 
-Amiga Monitor v1.27 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.28 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
 way of distribution is the zoo-file 'mon126.zoo'.
