@@ -10,6 +10,7 @@
 		include "libraries/dosextens.i"
 		include "workbench/startup.i"
 		include	"intuition/intuition.i"
+		include	"devices/conunit.i"
 		include "offsets.i"
 		list
 
@@ -540,19 +541,46 @@ do_cls		call	JUMP,printstring_a0_window
 ;
 		cmd	help
 
-help		bsr.s	cls
-		lea	help_text(pc),A0
-hinfo		call	JUMP,printstring_a0
+help		lea	help_text(pc),A2
 
+pager_display	moveq	#0,d7
+		move.l	mon_ConsoleUnit(a4),d0
+		beq.b	1$
+		move.l	d0,a0
+		move.w	cu_YMax(a0),d7
+		subq.w	#2,d7
+		bcc.b	1$
+		moveq	#0,d7
+1$		move.w	d7,d6
 
-;
-;*** INFO ***
-;
-		cmd	info
+pager_loop	lea	mclr_txt(pc),a0
+		call	printstring_a0
 
-		bsr.s	cls
-		lea	info_text(pc),A0
-		bra.s	hinfo
+		move.l	a2,d2
+2$		tst.b	(a2)
+		beq.b	pager_end
+		cmp.b	#LF,(a2)+
+		bne.b	2$
+		move.l	mon_OutputFile(a4),d1
+		move.l	a2,d3
+		sub.l	d2,d3
+		lib	Dos,Write
+		tst.b	(a2)
+		beq.b	pager_end
+		call	CheckKeys
+		bne	pager_end
+		tst.w	d7
+		beq.b	pager_loop
+		subq.w	#1,d6
+		bne.b	pager_loop
+		lea	more_prompt(pc),a0
+		call	printstring_a0
+		move.w	d7,d6
+		call	GetKey
+		cmp.w	#CtrlC,d0
+		bne.b	pager_loop
+
+pager_end	rts
 
 ;
 ;show version & date
@@ -760,7 +788,7 @@ command_names
 		dc.b	'x',0		;exit monitor
 		dc.b	'opt',0		;set/reset options
 		dc.b	'o',0		;redirect
-		dc.b	'i',0		;display info text
+		dc.b	'i',0		;ASCII-only memory dump
 		dc.b	'ver',0		;show version & date
 		dc.b	'vt',0		;list tasks
 		dc.b	'vl',0		;list libraries
@@ -768,6 +796,7 @@ command_names
 		dc.b	'vr',0		;list resources
 		dc.b	'vp',0		;list ports
 		dc.b	'vs',0		;list semaphores
+		dc.b	'vi',0		;list interrupts
 		dc.b	've',0		;list expansion devices
 
 		dc.b	0		;end of command table
@@ -835,7 +864,7 @@ command_table	command	list_commands
 		command	exit_monitor
 		command	options
 		command	redirect
-		command	info
+		command	ascii_dump
 		command	version
 		command list_tasks
 		command list_libraries
@@ -843,74 +872,82 @@ command_table	command	list_commands
 		command list_resources
 		command list_ports
 		command list_semaphores
+		command	list_interrupts
 		command	list_expansion
 
 **** HELP TEXT ****
 help_text	dc.b	TAB,'-- Amiga Monitor v'
 		VERSION
-		dc.b	' help (??=list cmds, i=info, x=exit) --',LF
-		dc.b	'o [name]',TAB,':redirect output'
-		dc.b	'| vt,vl,vd,vr,vp,vs :show tasks/libs/devs/etc',LF
-		dc.b	'dir [name]',TAB,': directory',TAB
-		dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
-		dc.b	'cd [name]',TAB,': current dir',TAB
-		dc.b	'| ] addr length name',TAB,': save absolute',LF
-		dc.b	'l [+] name',TAB,': load exefile',TAB
-		dc.b	'| < addr unit block cnt',TAB,': read disk blocks',LF
-		dc.b	'sl',TAB,TAB,': hunk list',TAB
-		dc.b	'| > addr unit block cnt',TAB,': write disk blocks',LF
-		dc.b	'u',TAB,TAB,': unload exefile'
-		dc.b	'| dev [devicename]',TAB,': set disk device',LF
-		dc.b	'r [reg=num]',TAB,': set/show regs',TAB
-		dc.b	'| = addr [len offs]',TAB,': disk block checksum',LF
-		dc.b	'a addr',TAB,TAB,': assemble',TAB
-		dc.b	'| # addr [len offs]',TAB,': bootblock checksum',LF
-		dc.b	'd addr1 addr2',TAB,': disassemble',TAB
-		dc.b	'| ! addr len per [cnt]',TAB,': play digisound',LF
-		dc.b	'm addr1 addr2',TAB,': display memory'
-		dc.b	'| g [addr]',TAB,TAB,': execute (go)',LF
-		dc.b	': addr bytes',TAB,': modify memory',TAB
-		dc.b	'| j [addr]',TAB,TAB,': jump to subroutine',LF
-		dc.b	'b addr [cnt]',TAB,': set breakpoint'
-		dc.b	'| w [addr]',TAB,TAB,': single step (walk)',LF
-		dc.b	'bl',TAB,TAB,': list brkpoints'
-		dc.b	'| e [addr]',TAB,TAB,': execute one instr.',LF
-		dc.b	'br addr/#n/all',TAB,':remove brkpoint'
-		dc.b	'| q [addr]',TAB,TAB,': quicktrace',LF
-		dc.b	'f adr1 adr2 bytes: fill memory',TAB
-		dc.b	'| ( length',TAB,TAB,': allocate memory',LF
-		dc.b	'@ [line]',TAB,': enter cmd line'
-		dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF
-		dc.b	'ba [decnum]',TAB,': set/show base',TAB
-		dc.b	'| ) addr/all',TAB,TAB,': free memory',LF
-		dc.b	'? [expr]',TAB,': calculator',TAB
-		dc.b	'| sm',TAB,TAB,TAB,': show allocated mem',LF
-		dc.b	'mi addr',TAB,TAB,': memory info',TAB
-		dc.b	'| c addr1 addr2 dest',TAB,': compare memory',LF
-		dc.b	'h adr1 adr2 bytes: hunt memory',TAB
-		dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
-		dc.b	'cv',TAB,TAB,': clear vars',TAB
-		dc.b	'| set [var=expr] [hunk]',TAB,': set/show variables',LF,0
+		dc.b	'--',LF
 
-**** INFO TEXT ****
-info_text	dc.b LF
-		dc.b	TAB,TAB,'Monitor info (version '
-		VERSION
-		dc.b	')',LF
-		dc.b	TAB,TAB,'---------------------------',LF
-		dc.b	TAB,'   Copyright 1987-1993 by Timo Rossi',LF,LF
-		dc.b	'   This is a machine code monitor/debugger for the Amiga.',LF
-		dc.b	' Pressing the HELP-key displays a list of commands.',LF,LF
-		dc.b	' Note1: Some of the assembler instructions require the',LF
-		dc.b	' size specifier (.B, .W or .L), but it can''t be used by some others.',LF,LF
-		dc.b	' Note2: the default number base is hex, use ''_'' as prefix',LF
-		dc.b	' for decimal or change the base with the ba-command.',LF
-		dc.b	' You can use expressions in most places where',LF
-		dc.b	' numbers are needed. This version also supports symbols',LF
-		dc.b	' and has a built-in script language.',LF,LF
-		dc.b	' I hope you find this program useful, but if you find any bugs',LF
-		dc.b	' in this program, please let me know.',LF,LF
-		dc.b	' Read the ''mon.doc''-file for more information.',LF,0
+;
+; not in this list:
+;	quit, goto, if, echo (script commands)
+;
+		dc.b	'??',TAB,TAB,TAB,TAB,'short list of commands',LF
+		dc.b	'ver',TAB,TAB,TAB,TAB,'show version',LF
+		dc.b	'help',TAB,TAB,TAB,TAB,'this help',LF
+		dc.b	'x',TAB,TAB,TAB,TAB,'exit the monitor',LF
+		dc.b	'? expr',TAB,TAB,TAB,TAB,'calculator',LF
+		dc.b	'exec <filename>',TAB,TAB,TAB,'execute a script',LF
+		dc.b	'poke/pokew/pokel <addr> <value>',TAB,'write to memory',LF
+		dc.b	'@ [cmdline]',TAB,TAB,TAB,'enter command line',LF
+		dc.b	'ba [base]',TAB,TAB,TAB,'set/show default number base',LF
+		dc.b	'\ [command]',TAB,TAB,TAB,'shell command/newshell',LF
+		dc.b	'cls',TAB,TAB,TAB,TAB,'clear window',LF
+		dc.b	'dir [directory]',TAB,TAB,TAB,'display a directory',LF
+		dc.b	'del <filename>',TAB,TAB,TAB,'delete a file',LF
+		dc.b	'cd <directory',TAB,TAB,TAB,'change current dir',LF
+		dc.b	'o [filename]',TAB,TAB,TAB,'redirect output',LF
+		dc.b	'i [addr1] [addr2]',TAB,TAB,'ASCII memory dump',LF
+		dc.b	'm [addr1] [addr2],'TAB,TAB,'Hex/ASCII memory dump',LF
+		dc.b	'mf [addr1] [addr2] "fmtstring"',TAB,'formatted memory dump',LF
+		dc.b	'f <addr1> <addr2> <data>',TAB,'fill memory',LF
+		dc.b	't <addr1> <addr2> <dest>',TAB,'transfer memory',LF
+		dc.b	'c <addr1> <addr2> <dest>',TAB,'compare memory',LF
+		dc.b	'h <addr1> <addr2> <string>',TAB,'search for a string',LF
+		dc.b	': <addr> <data>',TAB,TAB,TAB,'write bytes to memory',LF
+		dc.b	'opt [+/-<num>]',TAB,TAB,TAB,'set/show option flags',LF
+		dc.b	'rb [addr] [reg]',TAB,TAB,TAB,'set/show relative base reg',LF
+		dc.b	'! <addr> <len> <period> [count]',TAB,'play digisound',LF
+		dc.b	'# <addr> [len] [offs]',TAB,TAB,'correct bootblock checksum',LF
+		dc.b	'= <addr> [len] [offs]',TAB,TAB,'correct disk block checksum',LF
+		dc.b	'< <addr> <unit> <start> <n>',TAB,'read disk sectors',LF
+		dc.b	'> <addr> <unit> <start> <n>',TAB,'write disk sectors',LF
+		dc.b	'dev [devname]',TAB,TAB,TAB,'set/show disk device',LF
+		dc.b	'[ <addr> <filename>',TAB,TAB,'read a file',LF
+		dc.b	'] <addr> <len> <filename>',TAB,'write a file',LF
+		dc.b	'& <addr> <len>',TAB,TAB,TAB,'allocate absolute memory',LF
+		dc.b	'( <len> [c]',TAB,TAB,TAB,'allocate a memory block',LF
+		dc.b	') <addr>',TAB,TAB,TAB,'free a memory block',LF
+		dc.b	'sm',TAB,TAB,TAB,TAB,'show allocated memory',LF
+		dc.b	'l [+] <filename>',TAB,TAB,'load an executable file',LF
+		dc.b	'u',TAB,TAB,TAB,TAB,'unload executable file',LF
+		dc.b	'sl',TAB,TAB,TAB,TAB,'segment list',LF
+		dc.b	'r [reg=number]',TAB,TAB,TAB,'show/set registers',LF
+		dc.b	'sr',TAB,TAB,TAB,TAB,'reset stack pointer',LF
+		dc.b	'g <addr>',TAB,TAB,TAB,'execute code',LF
+		dc.b	'j <addr>',TAB,TAB,TAB,'execute subroutine',LF
+		dc.b	'w <addr>',TAB,TAB,TAB,'trace code',LF
+		dc.b	'e <addr>',TAB,TAB,TAB,'extended trace',LF
+		dc.b	'q <addr>',TAB,TAB,TAB,'quicktrace',LF
+		dc.b	'z <addr>',TAB,TAB,TAB,'skip an instruction',LF
+		dc.b	'b <addr>',TAB,TAB,TAB,'set a breakpoint',LF
+		dc.b	'br <addr>/#n/all',TAB,TAB,'remove a breakpoint',LF
+		dc.b	'bl',TAB,TAB,TAB,TAB,'list breakpoints',LF
+		dc.b	'set [var][=value]',TAB,TAB,'set/clear/show variables',LF
+		dc.b	'cv',TAB,TAB,TAB,TAB,'clear all variables',LF
+		dc.b	'd [addr] [endaddr]',TAB,TAB,'disassemble',LF
+		dc.b	'a [addr] [code]',TAB,TAB,TAB,'assemble',LF
+		dc.b	'vt',TAB,TAB,TAB,TAB,'show tasks',LF
+		dc.b	'vl',TAB,TAB,TAB,TAB,'show libraries',LF
+		dc.b	'vd',TAB,TAB,TAB,TAB,'show devices',LF
+		dc.b	'vr',TAB,TAB,TAB,TAB,'show resources',LF
+		dc.b	'vp',TAB,TAB,TAB,TAB,'show public message ports',LF
+		dc.b	'vs',TAB,TAB,TAB,TAB,'show public semaphores',LF
+		dc.b	'vi',TAB,TAB,TAB,TAB,'show interrupts',LF
+		dc.b	've',TAB,TAB,TAB,TAB,'show autoconfig devices',LF
+		dc.b	0
 
 dos_name	dc.b	'dos.library',0
 intuition_name	dc.b	'intuition.library',0
@@ -929,7 +966,7 @@ window_fmt	dc.b	'RAW:%ld/%ld/%ld/%ld/Amiga Monitor v'
 		dc.b	0
 
 welcome_txt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
-		dc.b	TAB,'   Copyright 1987-1993 by Timo Rossi, version '
+		dc.b	TAB,'   Copyright 1987-1994 by Timo Rossi, version '
 		VERSION
 		ifne	BETA
 		dc.b	LF,LF,TAB
@@ -962,5 +999,8 @@ out_range_txt	dc.b	'out of range',0		; 2
 		dc.b	'breakpoint already set',0	; 8
 		dc.b	'no such breakpoint',0		; 9
 break_txt	dc.b	'***Break',0			;10
+
+more_prompt	dc.b	'<More>',0
+mclr_txt	dc.b	CR,'      ',CR,0
 
 		end

@@ -41,6 +41,7 @@
 * v1.59 ->	     1993-05-05..  *
 * v1.60 ->	     1993-06-06..  *
 * v1.61 ->	     1993-06-26..  *
+* v1.65 ->           1994-02-14..  *
 ************************************
 
 ;
@@ -539,4 +540,29 @@
 ; 1993-09-27 --> 1.64
 ;		- fixed a bug in flush_stdout (was testing version as long,
 ;		  failed on 1.3)
+;
+
+;
+; 1994-01-24 --> 1.65
+;
+; 		- abs. load ('[') and disk block read ('<') now set
+;		  the current address to the read start address
+;
+; 1994-02-05 -->
+;		- disassembly shows hunk number&offset if inside a hunk.
+;
+; 1994-02-14 -->
+;		- added 'odd address --> error' check to & (alloc-abs) command.
+;		- added memory block numbers to 'sm'-command (and )#<num>)
+;
+; 1994-03-10 -->
+;		- added 'i'-command
+;		- a couple of changes in command line history (doesn't
+;		  put the same command two times in row to the history,
+;		  and doesn't put one-character commands to the history
+;		  at all)
+;
+; 1993-03-20
+;		- fixed GetInput
+;		 (previous 1.65 beta changes caused it to trash A3)
 ;

@@ -109,6 +109,7 @@ disk_rd		move.w	#CMD_READ,IO_COMMAND(A2)	;read from disk
 		move.l	d5,d6
 		move.l	mon_CurrentAddr(a4),d5
 		sub.l	d6,d5
+		move.l	d5,mon_CurrentAddr(a4)
 		call	showrange
 		bra.s	disk_io_5
 ;

@@ -28,6 +28,7 @@
 ;	find_hunk_addr,loadseg1,unload_seg
 ;
 		xref	generic_error
+		xref	out_range_error
 		xref	out_memory_error
 
 
@@ -379,7 +380,26 @@ seglist_endline	endline
 
 		call	GetExpr
 		move.l	D0,a5
-		call	GetExpr
+		call	skipspaces
+		cmp.b	#':',(a3)
+		beq.b	abs_save_get_len1
+		cmp.b	#'.',(a3)
+		bne.b	abs_save_get_len2
+
+w_periods	cmp.b	#'.',(a3)+
+		beq.b	w_periods
+		subq.l	#1,a3
+		call	GetExpr		;get end addr
+		sub.l	a5,d0
+		bcs	out_range_error
+		addq.l	#1,d0
+		bra.b	abs_save_set_len
+
+abs_save_get_len1
+		addq.l	#1,a3
+abs_save_get_len2
+		call	GetExpr		;get length
+abs_save_set_len
 		move.l	D0,D6
 
 		call	GetName
@@ -426,6 +446,7 @@ abs_save_1	move.l	D7,D1
 		move.l	a5,D5
 		move.l	D0,D6
 		call	showrange
+		move.l	a5,mon_CurrentAddr(a4)
 
 abs_load_1	move.l	D7,D1
 		jlib	Close	;close the file

@@ -619,6 +619,12 @@ r_brk		bsr	get_first_arg
 		beq	expression_error
 		bra	no_more_args
 
+r_mem		bsr	get_first_arg
+		call	find_mem_blk_num
+		tst.l	d0
+		beq	expression_error
+		bra	no_more_args
+
 r_board		bsr.b	get_first_arg
 		move.l	d0,-(sp)
 		bsr.b	get_arg
@@ -761,6 +767,7 @@ tokfuncs	rw	r_hunk
 		rw	r_task
 		rw	r_port
 		rw	r_brk
+		rw	r_mem
 		rw	r_board
 
 tokentable	dc.b	'hunk',0
@@ -778,6 +785,7 @@ tokentable	dc.b	'hunk',0
 		dc.b	'task',0
 		dc.b	'port',0
 		dc.b	'brk',0
+		dc.b	'mem',0
 		dc.b	'board',0
 		dc.b	0
 

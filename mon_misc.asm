@@ -42,7 +42,7 @@
 		pub	GetString
 
 		move.l	A0,A1
-gstr1		call	tolower
+gstr1		call	skipspaces
 		move.b	(A3)+,D0
 		beq.s	gstr9		;branch if end of input line
 		cmp.b	#'''',D0	;if single quote, then string follows
@@ -50,7 +50,7 @@ gstr1		call	tolower
 		subq.l	#1,A3
 		call	GetExpr		;else get number
 		move.b	D0,(A1)+
-gstr1a		call	tolower
+gstr1a		call	skipspaces
 		cmp.b	#COMMA,(a3)+
 		bne.s	gstr9			;if comma not found, then end
 		bra.s	gstr1
@@ -126,21 +126,42 @@ brk_1		movem.l	(sp)+,D2/a6
 * get Addr and EndAddr & number of lines to display in D7
 * if D7 is zero then display from Addr to EndAddr
 * if D7 is non-zero EndAddr is ignored
+;
+; Now allows the following forms:
+;
+; <empty>
+; startaddr
+; startaddr endaddr
+; startaddr..endaddr
+; startaddr:length
+;
 		pub	GetParams
 
-		call	tolower
+		call	skipspaces
 		tst.b	(A3)
 		beq.s	param9
 		call	GetExpr
 		move.l	D0,mon_CurrentAddr(a4)
-		call	tolower
+		call	skipspaces
 		tst.b	(A3)
 		beq.s	param9
+		cmp.b	#':',(a3)
+		bne.b	getparms_eaddr_check
+		addq.l	#1,a3
+		call	GetExpr		;length
+		add.l	mon_CurrentAddr(a4),d0
+		subq.l	#1,d0
+		bra.b	set_eaddr
+
+getparms_eaddr_check
+		cmp.b	#'.',(a3)+
+		beq.b	getparms_eaddr_check
+		subq.l	#1,a3
 		call	GetExpr
 		tst.l	d0
-		bne.s	1$
+		bne.s	set_eaddr
 		moveq	#1,d0	;EndAddr zero means that none is used...
-1$		move.l	D0,mon_EndAddr(a4)
+set_eaddr	move.l	D0,mon_EndAddr(a4)
 		moveq	#0,D7
 
 CheckEndAddr	move.l	mon_CurrentAddr(a4),a0

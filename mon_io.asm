@@ -351,8 +351,21 @@ input_end	clr.b	0(a2,D7.L)
 		move.l	a2,A3
 		call	skipspaces
 		tst.b	(A3)
-		beq.s	inp99
+		beq.b	inp99
+		tst.b	1(a3)	;one character command?
+		beq.b	inp99	;don't put it in history
 
+		lea	mon_History+((NLINES-1)*LEN)(a4),a0
+		move.l	a2,a3
+		move.l	a3,a1
+strcmp_loop	cmp.b	(a0)+,(a1)+
+		bne.b	put_line_to_history
+		tst.b	-1(a0)
+		bne.b	strcmp_loop
+		bra.b	inp99		;don't put to history if identical
+					;to last line in history
+
+put_line_to_history
 		lea	mon_History(a4),A0
 		move.w	#(NLINES-1)*LEN/4-1,D0
 099$		move.l	LEN(A0),(A0)+

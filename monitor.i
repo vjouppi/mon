@@ -73,7 +73,7 @@ SPACE	equ	32
 COMMA	equ	','
 
 LEN		equ	128	;length of input & output buffers
-NLINES		equ	10	;number of lines of command line history
+NLINES		equ	20	;number of lines of command line history
 
 DNBUFSIZE	equ	50	;length of disk device name buffer
 
@@ -182,7 +182,7 @@ mon_RegSP	equ	mon_AddrRegs+7*4
 ; Hmm.. I think that I put this check here for a good reason, but I can't
 ; remember what is was... probably a bug in assembler or something...
 ;
-		ifne	MonitorData_SIZE-$7b6
+		ifne	MonitorData_SIZE-$cb6
 		fail	Panic! MonitorData wrong size!
 		endc
 

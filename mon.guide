@@ -1,7 +1,5 @@
-[Note: This document was automatically generated from the AmigaGuide-version,
-and then hand-edited in some places]
-
-
+@database mon.guide
+@node main
                  Amiga Monitor v1.65 instructions
                  ================================
 
@@ -14,10 +12,17 @@ and then hand-edited in some places]
   useful features, such as expressions and variables. This version
   is quite close to an actual symbolic debugger as it can read symbol
   table information from executable files and display them in disassembly
-  listings. It also has a built-in script language.
+  listings. It also has a built-in @{"script language" link Scripts}.
 
-Starting the monitor
---------------------
+  Topics:
+
+  @{"Starting the monitor" link Starting}
+  @{"List of useful things" link Useful}
+  @{"List of monitor commands" link CommandList}
+  @{"Copyright & author info" link Copyright}
+@endnode
+
+@node Starting "Starting the monitor"
 
   The monitor can be started both from CLI and from workbench. If you
   want to start the monitor from workbench, you must first make an icon
@@ -35,26 +40,28 @@ Starting the monitor
   Operating system version 2.04 or later is required for reliable operation
   with the 68040 CPU.
 
+
   Command Line Arguments:
 
   options:
    -w <window width>
    -h <window height>
-   -o <options>				(see Options Flags)
-   -s <initial-script-filename>		(see Scripts)
+   -o <options>				(see @{"Options Flags" link OptionFlags})
+   -s <initial-script-filename>		(see @{"Scripts" link Scripts})
 
   An optional filename can also be given in the command line.  The monitor
   will try to load the named executable file immediately after starting.
   The filename must be in quotes if it contains spaces. If there is anything
   on the command line after the file name, that will be used as the command
-  line for the program loaded to the monitor (a0/d0 registers, see @-command)
+  line for the program loaded to the monitor (a0/d0 registers, see {"@-command" link EnterCmdLine})
 
   If a `+' character is used before the filename, the monitor tries to load
-  symbol information from the file (see also `l'-command).
+  symbol information from the file (see also @{"`l'-command" link LoadSeg}).
 
-  See also Using the monitor from a serial terminal.
+  See also @{"Using the monitor from a serial terminal" link FromTerminal}.
+@endnode
 
-Using the monitor from a serial terminal
+@node FromTerminal "Using the monitor from a serial terminal"
 
   The monitor can be used from a terminal connected to the Amiga serial
   port. If you want to do this, first set the correct baud rate and other
@@ -65,12 +72,30 @@ Using the monitor from a serial terminal
   (do not `run' the monitor from the terminal; if you do it, the
   monitor opens a window on the Amiga display). If the terminal is not
   vt100/ansi compatible, you may need to use the `Dumb Terminal'
-  option flag (flag #3) to disable some features of the monitor 
+  @{"option flag" link OptionFlags} (flag #3) to disable some features of the monitor 
   (such as command line editing and history, but you can still delete
   the last character with backspace/delete). Easies way to do that is
   to start the monitor with the command `mon -o4'.
+@endnode
 
-Option flags
+@node Useful "List of useful things"
+
+  Some useful things to know:
+
+  @{"Option Flags" link OptionFlags}
+  @{"Line editing/Command history" link LineEditing}
+  @{"Stopping/restarting output" link StoppingOutput}
+  @{"Numbers" link Numbers}
+  @{"Expressions" link Expressions}
+  @{"Byte strings" link ByteStrings}
+  @{"Address ranges" link AddressRanges}
+  @{"Tracing trap instructions" link TracingTraps}
+  @{"Stack usage" link StackUsage}
+  @{"File/directory names" link FileNames}
+  @{"Version history" link VersionHistory}
+@endnode
+
+@node OptionFlags "Option flags"
 
   Commands `opt +n' and `opt -n' where `n' is a number between 1 and 4
   can be used to set and reset monitor option flags. Currently five
@@ -82,14 +107,14 @@ Option flags
 
    - flag #2
       Causes characters $a0-$ff to be considered printable in
-      `m' and `i' memory dump commands (and `?' command ascii display).
+      @{"`m'" link MemDisplay} and @{"`i'" link AsciiDump} memory dump commands (and `?' command ascii display).
 
    - flag #3
       This is the `Dumb terminal' mode flag. When this is set on,
       the command line history and editing features of the monitor
       are disabled, and the monitor does not use any vt100/ansi-
       escape sequences. This may be useful when using the monitor
-      from a serial terminal.
+      from a @{"serial terminal" link FromTerminal}.
 
    - flag #4
       When this flag is set, the monitor echoes each command to its
@@ -103,15 +128,16 @@ Option flags
       can be disabled with this option flag. This is useful when
       debugging programs that allocate their own stacks and change
       the stack pointer there. The stack pointer can be reset manually
-      with the sr-command.
+      with the @{"sr-command" link Execute 45}.
 
   Command `opt' without parameters lists the current flag settins.
   This includes a hexadecimal `flag value' that can be used on
   the command line with the `-o' option to set initial flags when the
   monitor is started (That flag value is simply a bit map of the option
   flags, option #1 is bit #0).
+@endnode
 
-Input line editing and command line history
+@node LineEditing "Input line editing and command line history"
 
   You can edit the input lines by using the left/right cursor keys to move
   left and right, backspace to delete the character before the cursor and
@@ -123,18 +149,20 @@ Input line editing and command line history
   address.
 
   These features are not available if the `Dumb terminal' mode is
-  selected (see Option flags).  In that case the only editing function
+  selected (see @{"Option flags" link OptionFlags}).  In that case the only editing function
   is deleting the last character with backspace or delete key.
+@endnode
 
-Stopping the output
+@node StoppingOutput "Stopping the output"
 
   In most cases the output of the monitor can be suspended by pressing SPACE
   or control-S and continued by pressing control-S or SPACE again.
   To permanently stop the output, press Ctrl-C.
+@endnode
 
-Numbers
+@node Numbers "Numbers"
 
-  Default number base is hexadecimal but it can be changed with the ba-
+  Default number base is hexadecimal but it can be changed with the @{"ba" link NumberBase}-
   command (the argument of the ba-command is always decimal).
 
   the prefixes used to identify number bases are:
@@ -146,14 +174,17 @@ Numbers
   Numbers can also be entered as ASCII strings in single quotes, for example:
    'FORM'  -->  hex 464f524d
 
-  See also Expressions.
+  See also @{"Expressions" link Expressions}.
 
-Expressions
+@endnode
+
+@node Expressions "Expressions"
 
   The monitor accepts expressions in most places where you need a number.
 
-  The calculator (`?') command allows you to directly display
+  The @{"calculator" link Calculator} (`?') command allows you to directly display
   values of expressions.
+
 
   The following operators are available:
 
@@ -184,9 +215,11 @@ Expressions
   All calculations are done in 32-bit integer arithmetic. No overflow
   checking is done.
 
-  See also Functions and Variables and Numbers.
+  See also @{"Functions" link Functions} and @{"Variables" link Variables} and @{"Numbers" link Numbers}.
 
-Functions
+@endnode
+
+@node Functions "Functions"
 
   The expression parser currently accepts the following built-in functions:
 
@@ -241,12 +274,14 @@ Functions
 
   Function names are not case sensitive.
 
-Variables
+@endnode
+
+@node Variables "Variables"
 
   In addition to numbers and functions, variables can be used in
   expressions if they have been previously defined (Symbols in symbol
   hunks of an executable file are automatically defined as monitor
-  variables when a file is loaded with the '+' option (see `l' command).
+  variables when a file is loaded with the '+' option @{"(see `l' command)" link LoadSeg}.
   Variables are defined with the set-command.  All variable values are
   32-bit integers. Variable names can contain alphanumeric characters and
   underscores (`_'), but they cannot begin with a number. Variable names are
@@ -257,8 +292,9 @@ Variables
   not be accepted in the assembler because it tries to interpret them
   as register names. You can get around this by using expressions
   like `0+variable')
+@endnode
 
-Byte strings
+@node ByteStrings "Byte strings"
 
   Strings are used in the fill command, the hunt command, the modify memory
   command and the assembler directive dc.b .
@@ -274,20 +310,24 @@ Byte strings
     ''''  -- this means one single quote
     'both',$0A,'text',10,'and','numbers'
 
-Address Range syntax
+@endnode
+
+@node AddressRanges "Address Range syntax"
 
   The following forms can be used to specify an address range:
 
   <Address>..<EndAddress>
   <Address>:<Length>
 
-  Address ranges can be used with the following commands: disassemble,
-  memory dump, ascii dump and memory save.
+  Address ranges can be used with the following commands: @{"disassemble" link Disassemble},
+  @{"memory dump" link MemDisplay}, @{"ascii dump" link AsciiDump} and @{"memory save" link RWAbs}.
 
   Address Ranges are new in monitor version 1.65. The commands that use
   them also have older compatible syntax forms.
 
-Note about tracing Trap-instructions
+@endnode
+
+@node TracingTraps "Note about tracing Trap-instructions"
 
   There is a problem with the walk (trace) command and several instructions
   that cause processor exceptions. These instructions are chk, trap #n,
@@ -306,123 +346,125 @@ Note about tracing Trap-instructions
   to crash by tracing these instructions, the patchtrace-program
   may be useful.)
 
-Stack usage
+@endnode
+
+@node StackUsage "Stack usage"
 
   The monitor allocates 2K of stack for its own use and the rest of
   the stack can be used by the program being debugged. If you need
   a larger stack, you can use the CLI `stack' command before you
   start the monitor.
 
-File/directory names
+@endnode
+
+@node FileNames "File/directory names"
 
   When the monitor requires a file or directory name or the device name
   for the `dev'-command, the name must be in double quotes if it contains
   spaces. Also, some escape processing is done to the filename strings
-  and the arguments of the echo-command. See the entry for echo-command
+  and the arguments of the echo-command. See the entry for @{"echo-command" link Echo}
   for details.
+@endnode
 
-Short list of all monitor commands
-----------------------------------
+@node CommandList "List of all monitor commands"
 
   ??     -- Show a short list of commands.
   ver    -- Show monitor version
   help   -- (also h or the HELP key) Show a help screen.
   x      -- Exit the monitor.
 
-  ?      -- Calculator.
+  @{"?      -- Calculator" link Calculator}.
 
-  exec    -- Execute scripts.
-  quit    -- Quit a script.
-  goto    -- Jump to another position in a script.
-  if      -- Conditional execution in a script.
+  @{"exec    -- Execute scripts" link Exec}.
+  @{"quit    -- Quit a script" link ScriptControlCommands}.
+  @{"goto    -- Jump to another position in a script" link ScriptControlCommands}.
+  @{"if      -- Conditional execution in a script" link ScriptControlCommands}.
 
-  echo    -- Display text/numbers.
+  @{"echo    -- Display text/numbers" link Echo}.
 
-  pokel   -- Write a longword to memory.
-  pokew   -- Write a word to memory.
-  poke    -- Write a byte to memory.
+  @{"pokel   -- Write a longword to memory" link Poke}.
+  @{"pokew   -- Write a word to memory" link Poke}.
+  @{"poke    -- Write a byte to memory" link Poke}.
 
-  ba      -- Set/Show number base.
+  @{"ba      -- Set/Show number base" link NumberBase}.
 
-  \          --  Shell command/New shell.
+  \          -- @{" Shell command/New shell" link Shell}.
   cls        -- Clear display.
-  dir [name] -- Display disk directory.
-  del <name> -- Delete a file.
+  dir [@{"name" link FileNames}] -- Display disk directory.
+  del @{"<name>" link FileNames} -- Delete a file.
   cd  <dir>  -- Change current directory.
 
-  o      -- Redirect output.
+  @{"o      -- Redirect output" link Redirect}.
 
-  i      -- Display memory in ASCII.
-  m      -- Display memory in hex/ASCII.
-  mf     -- Formatted memory display.
-  mi     -- Information about a memory location.
-  f      -- Fill memory.
-  t      -- Transfer memory.
-  c      -- Compare memory.
-  h      -- Hunt (search) memory.
-  :      -- Write to memory.
+  @{"i      -- Display memory in ASCII" link AsciiDump}.
+  @{"m      -- Display memory in hex/ASCII" link MemDisplay}.
+  @{"mf     -- Formatted memory display" link FormattedM}.
+  @{"mi     -- Information about a memory location" link MemInfo}.
+  @{"f      -- Fill memory" link Fill}.
+  @{"t      -- Transfer memory" link Transfer}.
+  @{"c      -- Compare memory" link CompMem}.
+  @{"h      -- Hunt (search) memory" link Hunt}.
+  @{":      -- Write to memory" link ModifyMem}.
 
-  opt    -- Set/Show option flags.
+  @{"opt    -- Set/Show option flags" link OptionFlags}.
 
-  rb     -- Set/Show addr. reg. relative base.
+  @{"rb     -- Set/Show addr. reg. relative base" link RelBase}.
 
-  !      -- Play digisound.
+  @{"!      -- Play digisound" link Digisound}.
 
-  #      -- Correct bootblock checksum.
-  =      -- Correct disk block checksum.
+  @{"#      -- Correct bootblock checksum" link Checksums}.
+  @{"=      -- Correct disk block checksum" link Checksums}.
 
-  <      -- Read disk sectors.
-  >      -- Write disk sectors.
-  dev    -- Set disk device name.
+  @{"<      -- Read disk sectors" link DiskRW}.
+  @{">      -- Write disk sectors" link DiskRW}.
+  @{"dev    -- Set disk device name" link DiskRW}.
 
-  [      -- Read from file to memory .
-  ]      -- Write from memory to file.
+  @{"[      -- Read from file to memory " link RWAbs}.
+  @{"]      -- Write from memory to file" link RWAbs}.
 
-  &      -- Allocate memory at absolute address.
-  (      -- Allocate memory.
-  )      -- Free memory.
-  sm     -- Show allocated memory.
+  @{"&      -- Allocate memory at absolute address" link MemoryAlloc}.
+  @{"(      -- Allocate memory" link MemoryAlloc}.
+  @{")      -- Free memory" link MemoryAlloc}.
+  @{"sm     -- Show allocated memory" link MemoryAlloc}.
 
-  l      -- Load AmigaDOS executable.
-  u      -- Unload executable.
-  sl     -- Display segment list.
+  @{"l      -- Load AmigaDOS executable" link LoadSeg}.
+  @{"u      -- Unload executable" link LoadSeg}.
+  @{"sl     -- Display segment list" link LoadSeg}.
 
-  @       -- Enter a command line.
+  @{"@       -- Enter a command line" link EnterCmdLine}.
 
-  r      -- Set/Show registers.
+  @{"r      -- Set/Show registers" link Registers}.
 
-  sr     -- Reset stack.
-  g      -- Go/Execute code.
-  j      -- Jump to subroutine.
-  w      -- Walk/Trace.
-  e      -- Extended trace.
-  q      -- Quicktrace.
-  z      -- Skip instruction.
+  @{"sr     -- Reset stack" link Execute}.
+  @{"g      -- Go/Execute code" link Execute}.
+  @{"j      -- Jump to subroutine" link Execute}.
+  @{"w      -- Walk/Trace" link Execute}.
+  @{"e      -- Extended trace" link Execute}.
+  @{"q      -- Quicktrace" link Execute}.
+  @{"z      -- Skip instruction" link Execute}.
 
-  b      -- Set breakpoint.
-  br     -- Remove breakpoint.
-  bl     -- List breakpoints.
+  @{"b      -- Set breakpoint" link Breakpoints}.
+  @{"br     -- Remove breakpoint" link Breakpoints}.
+  @{"bl     -- List breakpoints" link Breakpoints}.
 
-  set    -- Set/Show variables.
-  cv     -- Clear all variables.
+  @{"set    -- Set/Show variables" link Set}.
+  @{"cv     -- Clear all variables" link Set}.
 
-  d      -- Disassemble.
-  a      -- Assemble.
+  @{"d      -- Disassemble" link Disassemble}.
+  @{"a      -- Assemble" link Assemble}.
 
-  vt     -- Show tasks.
-  vl     -- Show libraries.
-  vd     -- Show devices.
-  vr     -- Show resources.
-  vp     -- Show public message ports.
-  vs     -- Show public semaphores.
-  vi     -- Show interrupts.
-  ve     -- Show Autoconfig devices.
+  @{"vt     -- Show tasks" link ListThings}.
+  @{"vl     -- Show libraries" link ListThings}.
+  @{"vd     -- Show devices" link ListThings}.
+  @{"vr     -- Show resources" link ListThings}.
+  @{"vp     -- Show public message ports" link ListThings}.
+  @{"vs     -- Show public semaphores" link ListThings}.
+  @{"vi     -- Show interrupts" link ListThings}.
+  @{"ve     -- Show Autoconfig devices" link ListThings}.
 
+@endnode
 
-Longer descriptions of commands
--------------------------------
-
- NumberBase
+@node NumberBase
 
 ba [num]  --  Set/show current number base
 
@@ -430,8 +472,9 @@ ba [num]  --  Set/show current number base
   the base to <num> which is always decimal. this is the default base
   used in number input if no base prefix is specified. initially it is 16
   (hexadecimal).
+@endnode
 
-Formatted Memory Display
+@node FormattedM "Formatted Memory Display"
 
 mf -- Formatted memory display
 
@@ -456,7 +499,7 @@ mf -- Formatted memory display
            (non-printable characters in strings are printed as `.'
             Strings longer than 100 characters are truncated)
 
-  The escape sequences described in the echo-command entry
+  The escape sequences described in the @{"echo" link Echo}-command entry
   can also be used in the format string.
 
   Note1: words and longs that are displayed must be at even addresses. If
@@ -473,50 +516,56 @@ mf -- Formatted memory display
   This displays the contents of the node structure in the library
   structure of foobar.library.
 
- AsciiDump
+@endnode
+
+@node AsciiDump
 
 i -- Display memory in ASCII
  Usage:
   i                   -- display a screenful from current address
   i <addr>            -- display a screenful from <addr>
   i <addr> <end-addr> -- display from <addr> to <end-addr>
-  i <addr>..<end-addr> or m <addr>:<length> (see address ranges)
+  i <addr>..<end-addr> or m <addr>:<length> (see @{"address ranges" link AddressRanges})
 
  If the ASCII dump was started inside a hunk of currently loaded
  executable, it automatically stops at the end of that hunk.
+@endnode
 
- MemDisplay
+@node MemDisplay
 
 m -- Display memory in hex and ASCII
  Usage:
   m                   -- display a screenful from current address
   m <addr>            -- display a screenful from <addr>
   m <addr> <end-addr> -- display from <addr> to <end-addr>
-  m <addr>..<end-addr> or m <addr>:<length> (see address ranges)
+  m <addr>..<end-addr> or m <addr>:<length> (see @{"address ranges" link AddressRanges})
 
  If the memory display was started inside a hunk of currently loaded
  executable, it automatically stops at the end of that hunk.
+@endnode
 
- MemInfo
+@node MemInfo
 
 mi <addr> -- Display information about memory locations
 
   The mi-command tells you if the address `addr' is in the system memory
   list, is it allocated or not and is it inside any of the hunks
   of the currently loaded segment.
+@endnode
 
- ModifyMem
+@node ModifyMem
 
 : -- Modify memory
 
  Usage:
   : <addr> <string>
 
-  Puts the <string> in memory at <addr>
+  Puts the @{"<string>" link ByteStrings} in memory at <addr>
   This can also be done with the command `a <addr> dc.b <string>'
   (but then <addr> must be even)
+@endnode
 
- Transfer
+@node Transfer
 
 t -- Transfer (move) memory
 
@@ -526,8 +575,9 @@ t -- Transfer (move) memory
  The command works correctly even if the source and destination memory
  blocks overlap. (if destination is at a higher address than source,
   the block is moved backwards, starting at the end)
+@endnode
 
- Fill
+@node Fill
 f -- Fill memory with a byte or a string of bytes
  Usage:
   f <start-addr> <end-addr> <byte>   ;fills with <byte>
@@ -535,8 +585,9 @@ f -- Fill memory with a byte or a string of bytes
 
  Example:
   f $60000 $601FF $4E,$71 fills from $60000 to $601FF with NOP-instruction
+@endnode
 
- Hunt
+@node Hunt
 
 h -- Hunt (find) string in memory
 
@@ -544,9 +595,10 @@ h -- Hunt (find) string in memory
   h <start-addr> <end-addr> <string>
 
   Displays all addresses in the range <start-addr>..<end-addr>
-  where the <string> is found.
+  where the @{"<string>" link ByteStrings} is found.
+@endnode
 
- CompMem
+@node CompMem
 
 c -- Compare memory
 
@@ -556,16 +608,18 @@ c -- Compare memory
   Displays all addresses in the range <start-addr>..<end-addr>
   where is corresponding byte in the destination block is different from
   the source.
+@endnode
 
- Calculator
+@node Calculator
 
 ? [expr]  --  Calculator
 
-  Displays the value of the expression in hex, decimal, octal, binary
+  Displays the value of the @{"expression" link Expressions} in hex, decimal, octal, binary
   and ASCII characters.  If the number is negative, displays it as signed
   and unsigned.
+@endnode
 
- Redirect
+@node Redirect
 
 o -- Redirect output
 
@@ -576,8 +630,9 @@ o -- Redirect output
  For example, to send the output to printer use `o PRT:'.
  If the file specified in the `o'-command already exists, the monitor
  output will be appended to the end of the file.
+@endnode
 
- Set
+@node Set
 
 set [var[=expr]] -- Set/show variables
 
@@ -588,8 +643,9 @@ set [var[=expr]] -- Set/show variables
 cv -- Clear all variables
 
   Asks if you really want to do it, answer `y' to clear them.
+@endnode
 
- Assemble
+@node Assemble
 
 a -- Assemble
 
@@ -607,9 +663,10 @@ a -- Assemble
    The assembler understands all the normal 68000 instructions and also
   the `pseudo-instructions' dc.b, dc.w and dc.l, which can be used to
   directly put data in memory.
-   See also Some notes about the assembler.
+   See also @{"Some notes about the assembler" link AssemblerNotes}.
+@endnode
 
-Some notes about using the assembler
+@node AssemblerNotes "Some notes about using the assembler"
 
    When entering assembler instructions which have an implicit size, no
    size specifier is allowed in the monitor assembler. These instructions
@@ -642,8 +699,9 @@ Some notes about using the assembler
 
   (In fact I want to make the assembler more flexible than it currently is,
   but that is not an easy task...maybe in some future version...)
+@endnode
 
- Disassemble
+@node Disassemble
 
 d -- Disassemble
 
@@ -651,7 +709,7 @@ d -- Disassemble
   d                   -- disassemble a screenful from current address
   d <addr>            -- disassemble a screenful from <addr>
   d <addr> <end-addr> -- disassemble from <addr> to <end-addr>
-  d <addr>..<end-addr> or m <addr>:<length> (see address ranges)
+  d <addr>..<end-addr> or m <addr>:<length> (see @{"address ranges" link AddressRanges})
 
  The disassembles supports only 68000 opcodes (with one exeception, 68020+
  32-bit long branches are supported).
@@ -671,8 +729,9 @@ H0+$000 07A8D220 2648                   movea.l a0,a3
 
  If the disassembly was started inside a hunk of currently loaded executable,
  it automatically stops at the end of that hunk.
+@endnode
 
-Show/Change registers
+@node Registers "Show/Change registers"
 
 r -- Show or change registers
 
@@ -684,8 +743,9 @@ r -- Show or change registers
    examples:
     r D0=0
     r A5 $60000
+@endnode
 
-Set/Remove/List Breakpoints
+@node Breakpoints "Set/Remove/List Breakpoints"
 
 b -- Set breakpoints
 
@@ -705,6 +765,7 @@ b -- Set breakpoints
 
   Breakpoint counts do not work with the `q' (quicktrace) command.
 
+
 br -- Remove breakpoints
 
  usage:
@@ -721,10 +782,11 @@ The g, j, w, q and e-commands use the current program counter value
 (displayed with the r-command) if you don't give them an address.
 The stack pointer is reset and a return address to the monitor is
 put in the stack if the stack pointer is out of range. This automatic
-stack pointer reset can be disabled with option flag #5. The stack
+stack pointer reset can be disabled with @{"option flag" link OptionFlags} #5. The stack
 pointer can be manually reset with the 'rs'-command.
+@endnode
 
-Go/Jump/Walk/ExtTrace/QuickTrace/Skip
+@node Execute "Go/Jump/Walk/ExtTrace/QuickTrace/Skip"
 g [addr] -- Go (execute machine code)
 
 j [addr] -- Jump to subroutine
@@ -781,10 +843,11 @@ sr -- reset stack pointer.
 
 Note: there is no easy way to run BCPL programs (CLI commands) or other
 programs that use the internal BCPL library from the monitor.
+@endnode
 
-Enter command line
+@node EnterCmdLine "Enter command line"
 
-@ -- Enter command line
+\@ -- Enter command line
 
  Usage:
   @ [command line].
@@ -803,13 +866,14 @@ Enter command line
   input filehandle buffer. Monitor versions 1.60+ set the command line
   so that it works with ReadArgs(). Older versions of the monitor didn't
   support ReadArgs().
+@endnode
 
-Load/Unload AmigaDOS executable
+@node LoadSeg "Load/Unload AmigaDOS executable"
 
 l -- Load AmigaDOS executable
 
  Usage:
-  l [+] <name> -- loads the executable file <name> in memory and displays
+  l [+] @{"<name>" link FileNames} -- loads the executable file @{"<name>" link FileNames} in memory and displays
     the starting address of the first hunk, also sets PC to this address.
    only one executable file be loaded at the same time. Before loading a
   new file you must unload the old file with the u-command.  To display
@@ -822,7 +886,7 @@ l -- Load AmigaDOS executable
   them (it shows in square brackets in the `set' listing). Also, the symbols
   are automatically removed when the file is unloaded with the `u'-command.
 
-  The command line (see @-command) is initialized as empty when this
+  The command line (see @{"@-command" link EnterCmdLine}) is initialized as empty when this
   command is executed.
 
   Overlays are not supported.
@@ -839,8 +903,9 @@ sl -- Segment list
   of the currently loaded file. If the `l +' command has been used to
   load the file, also the type of each hunk is displayed (including chip/fast
   memory types and data/bss byte counts of split data/bss hunks).
+@endnode
 
-Set base address of address register relative symbols
+@node RelBase "Set base address of address register relative symbols"
 rb -- set base address for address register relative symbols
 
  Usage:
@@ -855,8 +920,9 @@ rb -- set base address for address register relative symbols
   When the base address setting is active, the disassembler will check all
   xx(a4) (or other addr reg, if selected) addressing modes and if
   baseaddr + offset equals a symbol, the symbol is displayed.
+@endnode
 
-Allocate/Free memory
+@node MemoryAlloc "Allocate/Free memory"
 ( -- Allocate memory
 
  Usage:
@@ -866,7 +932,7 @@ Allocate/Free memory
   Displays the start & end addresses of the allocated memory block.
   Sets current address ('*') to the address of the allocated memory
   block. This can be used to assign the block address to a variable
-  (see Expressions and the set-command).
+  (see @{"Expressions" link Expressions} and the @{"set-command" Link Set}).
 
 & -- Allocate absolute memory location
 
@@ -884,20 +950,22 @@ sm -- Show allocated memory
 
  Usage:
   sm -- display all memory blocks allocated with the (- and &-commands
+@endnode
 
-Read/Write files
+@node RWAbs "Read/Write files"
 [  -- Read file to memory
 
  Usage:
-  [ <addr> <name> -- reads the file <name> to memory starting at <addr>
+  [ <addr> @{"<name>" link FileNames} -- reads the file <name> to memory starting at <addr>
 
 ]  -- Write memory to file
 
  Usage:
-  ] <addr> <length> <name> -- creates a file named <name> and writes <length>
+  ] <addr> <length> @{"<name>" link FileNames} -- creates a file named <name> and writes <length>
  bytes of memory starting at <addr> to the file.
+@endnode
 
-Read/Write disk sectors
+@node DiskRW "Read/Write disk sectors"
 <  -- Read disk sectors
 
  Usage:
@@ -938,8 +1006,9 @@ dev -- set/show current disk device
  the monitor are always in chip memory.
 
  The current disk device is used by the disk read/write commands (`<' and `>').
+@endnode
 
-Correct disk block/bootblock checksums
+@node Checksums "Correct disk block/bootblock checksums"
 
 =  -- Corrects an OFS disk block checksum
 
@@ -956,6 +1025,7 @@ Correct disk block/bootblock checksums
 
  Checksum for hard disk RigidDiskBlocks can be calculated with:
  = <addr> $100 $08
+
 
 #  -- Corrects bootblock checksum
 
@@ -976,7 +1046,9 @@ Correct disk block/bootblock checksums
  and for 2.0+ kickstart images (512K) with:
  # <addr> $80000 $7ffe8
 
-Play digitized sound
+@endnode
+
+@node Digisound "Play digitized sound"
 
 !  -- Play digisound
 
@@ -986,21 +1058,23 @@ Play digitized sound
  Plays sound <length> bytes starting at <addr> and using sampling period
  <period>. the sound repeats <count> times or until you stop it by
  pressing Ctrl-C. <addr> must be in CHIP memory!.
+@endnode
 
- Shell
+@node Shell
 
 \ -- Command/ New Shell
   Usage:
    \ shell_command  -- executes one shell command.
 		       the command should be in quotes if
-		       it contains spaces (see note about file names).
+		       it contains spaces (see note about @{"file names" link FileNames}).
    \                -- starts new shell with `NewShell' or `NewCLI'
 
   This uses the AmigaDOS Execute() call on 1.3, so it requires the `Run'-
   command to be in the C:-directory in AmigaDOS versions before 1.3.2
   (on AmigaDOS 2.0 it uses the new System() call)
+@endnode
 
-Show tasks/libraries/devices/etc.
+@node ListThings "Show tasks/libraries/devices/etc."
 
 vt -- show tasks
 
@@ -1046,8 +1120,9 @@ ve -- show autoconfig device list
   product numbers, size of board in KBytes and cd_Flags/er_Flags values
   are shown. The ConfigDev and board addresses and the flags are in
   hexadecimal, the other numbers are in decimal.
+@endnode
 
-Echo -- display text and/or numbers
+@node Echo "Echo -- display text and/or numbers"
 
 echo -- display text and/or numbers
   Usage:
@@ -1073,15 +1148,17 @@ echo -- display text and/or numbers
   $[expr] -- displays expression in hexadecimal
 
   The echo-command is most useful in script files.
+@endnode
 
- Exec
+@node Exec
 exec -- execute a script file
   Usage:
     exec filename
 
-  Executes the given script file. for more information, see Scripts.
+  Executes the given script file. for more information, see @{"Scripts" link Scripts}.
+@endnode
 
-poke/pokew/pokel -- write to memory
+@node Poke "poke/pokew/pokel -- write to memory"
 
 poke, pokew, pokel  --  write to memory
 
@@ -1093,30 +1170,33 @@ poke, pokew, pokel  --  write to memory
   a memory location. Poke writes a byte (8-bit), pokew writes a word (16-bit)
   and pokel writes a longword (32-bit). Note that there is no comma between
   the address and value parameters.
+@endnode
 
- Exit
+@node Exit
 
 x -- Exit
   Cleanup and exit the monitor. This frees all the memory allocated
   with ( and & commands and closes redirection file, if open.
 
+@endnode
 
-Scripts
--------
+@node Scripts "Scripts"
 
   The Amiga monitor versions 1.52 and above have a built-in script language.
   All normal monitor commands can be executed from scripts, and the are
   additional commands for controlling script execution.
-  Scripts are started with the exec command that can also be used inside
+  Scripts are started with the @{"exec" link Exec} command that can also be used inside
   scripts, so scripts can be nested (and memory availability is the only
   limit of the nesting depth).
 
   All lines in a script file beginning with a semicolon (;) are treated as
   comments and ignored by the monitor.
 
+  See also @{"Script control commands" link ScriptControlCommands}.
 
-Script Control Commands
------------------------
+@endnode
+
+@node ScriptControlCommands "Script Control Commands"
 
 quit -- quit executing a script and return to the previous script or
         keyboard input.
@@ -1147,8 +1227,9 @@ echo "counter is" [counter]
 set counter=counter+1
 if counter <= _10 goto loop
 
-Version history
----------------
+@endnode
+
+@node VersionHistory "Version history:"
 
 1.65 ->
   - loading symbols is a little faster (but not much, memory
@@ -1425,10 +1506,11 @@ Version history
 1.06 and older...
  - prehistoric versions...
 
-Copyright, distribution and Author info
----------------------------------------
+@endnode
 
-  Amiga Monitor v1.65 is Copyright  1987-1994 by Timo Rossi. The monitor
+@node Copyright "Copyright, distribution and Author info"
+
+  Amiga Monitor v1.65 is Copyright © 1987-1994 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 `patchtrace'-program should be included in the distribution. Distribution
 on freeware CD-ROMs such as the Fred Fish CDROM series and the AmiNet CD-ROM
@@ -1438,6 +1520,7 @@ Send suggestions, bug reports etc. to:
 
   Timo Rossi
   Mattilankatu 40 A 4                E-mail:
-  40600 Jyvskyl                 trossi@jyu.fi
+  40600 Jyväskylä                 trossi@jyu.fi
   FINLAND
 
+@endnode

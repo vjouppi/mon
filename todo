@@ -1,0 +1,9 @@
+Command line history:
+
+- more history lines?
+- don't put the same command two times in a row into the history.
+- don't put single-character commands to the buffer at all (done)
+
+Internal help:
+
+- reorganize/add more commands (but don't use too much memory for that).

@@ -105,7 +105,18 @@ dis9		move.l	a5,mon_CurrentAddr(a4)
 
 		movem.l	d2-d7/a2/a6,-(sp)
 
-		move.l	a5,d0
+		move.l	a5,a0
+		call	find_hunk_addr
+		tst.l	d0
+		beq.b	dis_noh
+		exg	d0,d1
+		sub.l	a5,d1
+		neg.l	d1
+		subq.l	#4,d1
+		lea	dis_hu_fmt(pc),a0
+		call	printf
+
+dis_noh		move.l	a5,d0
 		call	puthex68
 
 		moveq	#SPACE,d0
@@ -1409,5 +1420,7 @@ instr_names	dc.b	'as',0
 		dc.b	'jmp',0
 		dc.b	'trap',0
 		dc.b	'illegal',0,0
+
+dis_hu_fmt	dc.b	'H%ld+$%03lx ',0
 
 		end

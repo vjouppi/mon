@@ -10,6 +10,7 @@
 		include "libraries/dosextens.i"
 		include	"libraries/configregs.i"
 		include	"libraries/configvars.i"
+		include	"hardware/intbits.i"
 		include "offsets.i"
 		list
 
@@ -38,6 +39,18 @@
 		 UBYTE	btd_Pri
 		 STRUCT	btd_Name,32
 		LABEL	btd_SIZE
+
+;
+; structure for storing interrupt data
+;
+		STRUCTURE BufIntData,0
+		  ULONG  bid_NodeAddr
+		  ULONG	 bid_CodeAddr
+		  ULONG	 bid_DataAddr
+		  UBYTE  bid_Type
+		  UBYTE  bid_Pri
+		  STRUCT bid_Name,32
+		LABEL bid_SIZE
 
 START_BUF_SIZE	equ	2048
 
@@ -422,6 +435,201 @@ list_exp_loop	moveq	#-1,d0
 		call	printf
 		bra	list_exp_loop
 
+;
+; list interrupts
+;
+il_need_more_mem
+		lib	Permit
+		move.l	a2,a1
+		move.l	d6,d0
+		lib	FreeMem
+		add.l	d6,d6
+		bra.b	il_alloc
+
+		cmd	list_interrupts
+
+		lea	int_hdr_txt(pc),a0
+		call	printstring_a0
+		move.l	#START_BUF_SIZE,d6
+
+il_alloc	move.l	d6,d0
+		move.l	#MEMF_PUBLIC,d1
+		lib	Exec,AllocMem
+		tst.l	d0
+		beq	out_memory_error
+		move.l	d0,a2
+		move.l	d0,a3
+
+		lib	Forbid
+
+		move.l	IVTBE+IV_NODE(a6),a0
+		moveq	#INTB_TBE,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+
+		move.l	IVDSKBLK+IV_NODE(a6),a0
+		moveq	#INTB_DSKBLK,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+
+		move.l	IVPORTS+IV_DATA(a6),a0
+		move.b	#INTB_PORTS+$80,d2
+		bsr	server_chain
+		beq	il_need_more_mem
+
+		move.l	IVCOPER+IV_DATA(a6),a0
+		move.b	#INTB_COPER+$80,d2
+		bsr	server_chain
+		beq	il_need_more_mem
+
+		move.l	IVVERTB+IV_DATA(a6),a0
+		move.b	#INTB_VERTB+$80,d2
+		bsr	server_chain
+		beq	il_need_more_mem
+
+		move.l	IVBLIT+IV_NODE(a6),a0
+		moveq	#INTB_BLIT,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+
+		move.l	IVAUD0+IV_NODE(a6),a0
+		moveq	#INTB_AUD0,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+		move.l	IVAUD1+IV_NODE(a6),a0
+		moveq	#INTB_AUD1,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+		move.l	IVAUD2+IV_NODE(a6),a0
+		moveq	#INTB_AUD2,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+		move.l	IVAUD3+IV_NODE(a6),a0
+		moveq	#INTB_AUD3,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+
+		move.l	IVRBF+IV_NODE(a6),a0
+		moveq	#INTB_RBF,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+
+		move.l	IVDSKSYNC+IV_NODE(a6),a0
+		moveq	#INTB_DSKSYNC,d2
+		bsr	int_entry
+		beq	il_need_more_mem
+
+		move.l	IVEXTER+IV_DATA(a6),a0
+		move.b	#INTB_EXTER+$80,d2
+		bsr	server_chain
+		beq	il_need_more_mem
+
+		clr.l	(a3)
+		lib	Permit
+
+		move.l	a2,a3
+
+int_listing_loop
+		move.l	(a3),d0
+		beq	int_listing_end
+		move.l	bid_CodeAddr(a3),d1
+		move.l	bid_DataAddr(a3),d2
+		move.b	bid_Pri(a3),d3
+		ext.w	d3
+		ext.l	d3
+		lea	int_list_fmt1(pc),a0
+		call	printf
+
+		moveq	#'H',d1
+		moveq	#0,d0
+		move.b	bid_Type(a3),d0
+		bpl.b	0$
+		moveq	#'S',d1
+0$		and.b	#$7f,d0
+		lea	int_types(pc),a0
+		call	getnth
+		move.l	a0,d0
+		exg	d0,d1
+
+		lea	bid_Name(a3),a0
+		move.l	a0,d2
+		lea	int_list_fmt2(pc),a0
+		call	printf
+
+		call	CheckKeys
+		bne	int_listing_end
+
+		lea	bid_Name(a3),a3
+1$		tst.b	(a3)+
+		bne.b	1$
+		move.l	a3,d0
+		btst	#0,d0
+		beq.s	2$
+		addq.l	#1,a3
+2$		bra.b	int_listing_loop
+
+int_listing_end	move.l	a2,a1
+		move.l	d6,d0
+		lib	FreeMem
+		rts
+
+server_chain	move.l	(a0),a0
+
+server_loop	move.l	(a0),d0
+		beq.b	rt1
+		bsr.b	int_entry
+		beq	rt0
+		move.l	d0,a0
+		bra.b	server_loop
+
+int_entry	move.l	a0,d1
+		beq.b	rt1
+
+		lea	-(bid_SIZE+2)(a2,d6.l),a1
+		cmp.l	a1,a3
+		bcc.b	rt0		
+
+		move.l	a0,(a3)+
+		move.l	IS_CODE(a0),(a3)+
+		move.l	IS_DATA(a0),(a3)+
+		move.b	d2,(a3)+	;int. type
+		move.b	LN_PRI(a0),(a3)+
+		move.l	LN_NAME(a0),d1
+		beq.b	2$
+		move.l	d1,a1
+		moveq	#30,d1
+1$		move.b	(a1)+,(a3)+
+		dbeq	d1,1$
+		beq.b	3$
+2$		clr.b	(a3)+
+3$		move.l	a3,d1
+		btst	#0,d1
+		beq.b	rt1
+		clr.b	(a3)+	;word align
+rt1		moveq	#1,d1	;clear the zero flag
+		rts
+
+rt0		moveq	#0,d1	;set the zero flag
+		rts
+
+int_types	dc.b	'SerialOut',0	;0
+		dc.b	'DiskBlock',0	;1
+		dc.b	'Soft',0	;2
+		dc.b	'CiaA/Ext2',0	;4
+		dc.b	'Copper',0	;5
+		dc.b	'VBlank',0	;6
+		dc.b	'Blitter',0	;7
+		dc.b	'Audio0',0	;8
+		dc.b	'Audio1',0	;9
+		dc.b	'Audio2',0	;10
+		dc.b	'Audio3',0	;11
+		dc.b	'SerialIn',0	;12
+		dc.b	'DiskSync',0	;13
+		dc.b	'CiaB/Ext6',0	;14
+
+int_hdr_txt	dc.b	'  Node      Code      Data    Pri       Type      Name',LF,0
+int_list_fmt1	dc.b	'%08lx  %08lx  %08lx %4ld',0
+int_list_fmt2	dc.b	'   %lc %-10s  %s',LF,0
 ;
 ;
 task_hdr_txt	dc.b	'  Node   Type State Pri  Name',LF,0

@@ -23,7 +23,7 @@
 ;
 		cmd	setshow_base
 
-		call	tolower
+		call	skipspaces
 		tst.b	(a3)
 		beq.s	showbase
 		call	GetDecNum

@@ -11,10 +11,10 @@
 .SUFFIXES: .asm .o
 
 ASM = a68k
-AOPTS = -iasminc: -q500 -f -d
+AOPTS = -iasminc: -q500 -f
 
 LNK = blink
-LNKOPTS = nodebug
+LNKOPTS = #nodebug
 
 all:	mon patchtrace
 

@@ -2,6 +2,9 @@
 ; loadsym.asm
 ;
 
+;
+; 27.9.1993 -- adding some buffering...
+;
 
 ;
 ; this module defines the following public routine:
@@ -20,11 +23,17 @@
 
 		xref	out_memory_error
 
+RBUFSIZE	equ	4096
+
 ;
 ; data structure used by load_symbols-routine
 ;
 		STRUCTURE LSymData,0
+		 WORD	lsym_RBufOffs
+		 WORD	lsym_RBufMax
+		 STRUCT	lsym_ReadBuf,RBUFSIZE
 		 STRUCT	lsym_Buffer,256+4
+		 LONG	lsym_SLen
 		LABEL LSymData_SIZE
 
 ;
@@ -42,6 +51,7 @@
 		tst.l	d0
 		beq	out_memory_error
 		move.l	d0,a5
+		move.w	#RBUFSIZE,lsym_RBufOffs(a5)
 
 		move.l	mon_NumHunks(a4),d0
 		lsl.l	#(2+1),d0		;allocate 2*4*NumHunks bytes
@@ -153,19 +163,25 @@ symbol_loop	bsr	lsym_GetLong
 		bcc	lsym_fmt_err
 		addq.l	#1,d0
 		lsl.l	#2,d0
+		move.l	d0,lsym_SLen(a5)
+		exg	a2,d7
+		moveq	#0,d7
 
-		move.l	d6,d1
-		move.l	a5,d2
-		move.l	d0,d3
-		lib	Dos,Read
-		cmp.l	d0,d3
-		bne	lsym_read_err
-		move.l	-4(a5,d3.l),d0
-		clr.b	-4(a5,d3.l)
+sym_read_loop	bsr.w	lsym_GetLong
+		lea	lsym_Buffer(a5),a0
+		move.l	d0,0(a0,d7.l)
+		addq.l	#4,d7
+		cmp.l	lsym_SLen(a5),d7
+		bcs.b	sym_read_loop
+
+		exg	a2,d7
+
+		move.l	-4(a0,a2.l),d0
+		clr.b	-4(a0,a2.l)
 
 		add.l	d5,d0
 		addq.l	#4,d0
-		move.l	a5,a0
+		lea	lsym_Buffer(a5),a0
 		move.l	d7,d1
 		call	set_variable
 		tst.l	d0
@@ -194,19 +210,15 @@ out_mem1	move.l	a5,a1
 
 lsym_Skip	move.l	d6,d1
 		move.l	d0,d2
+		moveq	#0,d0
+		move.w	lsym_RBufMax(a5),d0
+		sub.w	lsym_RBufOffs(a5),d0
+		sub.l	d0,d2
 		moveq	#OFFSET_CURRENT,d3
 		lib	Dos,Seek
 		tst.l	d0
 		bmi.s	lsym_read_err1
-		rts
-
-lsym_GetLong	move.l	d6,d1
-		move.l	a5,d2
-		moveq	#4,d3
-		lib	Dos,Read
-		cmp.l	d0,d3
-		bne.s	lsym_read_err1
-		move.l	(a5),d0
+		move.w	#RBUFSIZE,lsym_RBufOffs(a5)
 		rts
 
 lsym_read_err1	addq.l	#4,sp
@@ -223,6 +235,25 @@ overlay_err	lea	overlay_err_txt(pc),a0
 lsym_open_err	lea	open_errtxt(pc),a0
 		call	printstring_a0_window
 		bra.s	lsym_ex98
+
+
+lsym_GetLong	move.w	lsym_RBufOffs(a5),d0
+		cmp.w	lsym_RBufMax(a5),d0
+		bcc.b	rd_more
+		move.l	lsym_ReadBuf(a5,d0.w),d0
+		addq.w	#4,lsym_RBufOffs(a5)
+		rts
+rd_more		move.l	d6,d1
+		move.l	a5,d2
+		addq.l	#lsym_ReadBuf,d2
+		move.l	#RBUFSIZE,d3
+		lib	Dos,Read
+		moveq	#4,d1
+		cmp.l	d1,d0
+		blt.b	lsym_read_err1
+		move.w	d0,lsym_RBufMax(a5)
+		clr.w	lsym_RBufOffs(a5)
+		bra.b	lsym_GetLong
 
 read_errtxt
 open_errtxt	dc.b	'Problems reading symbols',LF,0

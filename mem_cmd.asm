@@ -27,6 +27,10 @@
 
 		xref	help
 		xref	generic_error
+		xref	odd_address_error
+
+		forward	find_mem_blk_num
+
 
 ;
 ;*** MEMORY LIST ***
@@ -43,14 +47,17 @@ showm2		lea	memlist_txt(pc),A0
 		call	printstring_a0
 		lea	loc_txt(pc),A0
 		call	printstring_a0
+		moveq	#-1,d4
 
-showmemloop	move.l	d5,a2
-		move.l	a2,d0
-		addq.l	#8,d0
-		move.l	4(a2),d2
-		move.l	d0,d1
-		add.l	d2,d1
-		subq.l	#1,d1
+showmemloop	addq.l	#1,d4
+		move.l	d4,d0
+		move.l	d5,a2
+		move.l	a2,d1
+		addq.l	#8,d1
+		move.l	4(a2),d3
+		move.l	d1,d2
+		add.l	d3,d2
+		subq.l	#1,d2
 		lea	memlist_fmt(pc),a0
 		call	printf
 		call	CheckKeys
@@ -142,6 +149,8 @@ alloc_failed		;error 'allocation failed'
 		cmd	alloc_abs
 
 		call	GetExpr
+		btst	#0,d0
+		bne	odd_address_error
 		subq.l	#8,D0	;remember to subtract 8 from the starting address
 		move.l	D0,D7	;(next block pointer & length)
 		call	GetExpr
@@ -160,6 +169,9 @@ alloc_failed		;error 'allocation failed'
 
 		call	skipspaces
 		move.b	(a3),d0
+		cmp.b	#'#',d0
+		beq.b	free_bl_num
+
 		call	tolower
 		cmp.b	#'a',d0		;check 'all'
 		bne.b	free_norm
@@ -175,7 +187,8 @@ alloc_failed		;error 'allocation failed'
 		call	JUMP,free_all_mem
 
 free_norm	call	GetExpr
-		subq.l	#8,D0
+
+do_free_mem	subq.l	#8,D0
 		move.l	mon_MemoryList(a4),D1
 		beq	not_at_all_allocated
 		moveq	#0,D2
@@ -186,7 +199,8 @@ find_mem_to_free_loop
 		move.l	D1,D2
 		move.l	(A1),D1			;get next block pointer
 		bne.b	find_mem_to_free_loop
-		lea	noalloc_txt(pc),A0	;error 'not allocated'
+
+not_alloc	lea	noalloc_txt(pc),A0	;error 'not allocated'
 		call	JUMP,printstring_a0_window
 
 found_do_free_mem	;remove memory block from linked list
@@ -201,6 +215,39 @@ notfirst	move.l	D2,A0
 do_free		move.l	4(A1),D0
 		addq.l	#8,D0
 		jlib	Exec,FreeMem
+
+free_bl_num	addq.l	#1,a3
+		call	GetExpr
+		call	find_mem_blk_num
+		tst.l	d0
+		beq.b	not_alloc
+		bra.b	do_free_mem
+
+;
+; find a memory block by number.
+;
+; parameters: d0 - memory block number (0..number-of-blocks - 1)
+; return: d0 -- address of memory block (address of link field + 8)
+;
+		pub	find_mem_blk_num
+
+		move.l	mon_MemoryList(a4),d1
+1$		beq.b	8$
+		tst.l	d0
+		beq.b	9$
+
+		move.l	d1,a0
+		subq.l	#1,d0
+		move.l	(a0),d1
+		bra.b	1$
+
+8$		moveq	#0,d0
+		rts
+
+9$		move.l	d1,d0
+		addq.l	#8,d0
+		rts
+
 ;
 ; *** memory info
 ;
@@ -491,6 +538,38 @@ get_n_per_line	moveq	#80,d6
 		bne.b	09$
 		moveq	#1,d6
 09$		rts
+
+;
+; Memory dump in ASCII. Added in version 1.65 (1994-03-10)
+;
+		cmd	ascii_dump
+		call	GetParams
+		move.l	mon_CurrentAddr(a4),a5
+
+asc_dump_loop	startline
+		move.l	a5,d0
+		move.l	a5,D0
+		call	puthex68
+		putchr	<':'>
+		putchr	SPACE
+		moveq	#64-1,d2
+
+dump_asc_loop	move.b	(a5)+,D0	;printable codes are $20-$7F and $A0-$FF
+		call	to_printable
+		move.b	D0,(A3)+
+		tst.l	mon_EndAddr(a4)
+		beq.b	dump_asc_cont
+		cmpa.l	mon_EndAddr(a4),a5
+		bhi.b	dump_asc_end
+dump_asc_cont	dbf	D2,dump_asc_loop
+
+dump_asc_end	endline
+		call	printstring
+		call	CheckEnd
+		bne	asc_dump_loop
+
+		move.l	a5,mon_CurrentAddr(a4)
+		rts
 
 **** DISPLAY MEMORY ****
 ;#
@@ -809,8 +888,8 @@ nomem_alloc_txt	dc.b	'No memory '
 allocated_txt	dc.b	'allocated',LF,0
 memlist_txt	dc.b	'Allocated memory:',LF,0
 
-memlist_fmt	dc.b	'$%08lx  $%08lx  %ld',LF,0
-loc_txt		dc.b	' startloc   endloc    length',LF,0
+memlist_fmt	dc.b	'%3ld  $%08lx  $%08lx  %ld',LF,0
+loc_txt		dc.b	'  #   startloc   endloc    length',LF,0
 
 not_memlist_txt	dc.b	'Not in MemList',LF,0
 inhunk_fmt	dc.b	'(in hunk %ld, offset $%lx)',LF,0
