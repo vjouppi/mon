@@ -4,7 +4,7 @@
 
 ;
 ; include file for Amiga Monitor
-; version 1.47 -- 1991-11-22
+; version 1.55 -- 1992-03-10
 ; Copyright © 1991 by Timo Rossi
 ;
 		ifnd	EXEC_TYPES_I
@@ -94,7 +94,7 @@ ILLEGAL_INSTR	equ	$4AFC	;illegal instruction (used by breakpoints)
 		 APTR	mon_OrigRetAddr		;monitor process pr_ReturnAddr
 						;when monitor was started
 		 APTR	mon_OrigTrapCode	;original task trap code ptr
-		 APTR	mon_OrigUserData	;original task user data ptr
+		 APTR	mon_OrigTrapData	;original task user data ptr
 		 LONG	mon_OrigCD		;original current dir (BPTR)
 						;(-1 if no change)
 		 LONG	mon_OrigConTask		;original pr_ConsoleTask

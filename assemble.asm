@@ -118,9 +118,14 @@ branch_1	lsl.w	#8,D1
 		call	tolower
 		cmp.b	#'l',d0
 		beq.s	long_branch
+		cmp.b	#'w',d0
+		beq.s	long_branch
+		cmp.b	#'b',d0
+		beq.s	short_branch
 		cmp.b	#'s',d0
 		bne.s	br_err
-		call	GetExpr	;short branch
+
+short_branch	call	GetExpr	;short branch
 		sub.l	mon_CurrentAddr(a4),D0
 		subq.l	#2,D0
 		move.b	D0,D2

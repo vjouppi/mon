@@ -207,7 +207,6 @@ nosegerr	;error 'no segment loaded'
 
 		pub	unload_seg
 
-		clr.l	mon_NumHunks(a4)
 		st	mon_RelBaseReg(a4)
 		move.l	mon_SegList(a4),d1
 		beq.s	ret_01
@@ -223,8 +222,9 @@ nosegerr	;error 'no segment loaded'
 		lib	Exec,FreeMem
 		clr.l	mon_HunkTypeTable(a4)
 
-clr_hunkvars	call	JUMP,clear_hunk_vars
+clr_hunkvars	call	clear_hunk_vars
 
+unload_01	clr.l	mon_NumHunks(a4)
 ret_01		rts
 
 **** SEGMENT LIST ****

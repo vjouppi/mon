@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.54 instructions
+                 Amiga Monitor v1.55 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -850,6 +850,13 @@ if counter <= _10 goto loop
 
 Version history:
 ----------------
+1.55 ->
+ - uses TC_TrapData instead of TC_UserData again...
+ - now the '(' command cannot allocate negative amounts of memory...
+ - now the assembler understands '.b' as short branch specifier and
+   '.w' as long branch specifier.
+ - now frees memory properly in 'u' command.
+
 1.54 ->
  - added poke[w,l] commands
 
@@ -1059,10 +1066,10 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.54 Copyright © 1987-1991 by Timo Rossi. The monitor
+  Amiga Monitor v1.55 Copyright © 1987-1992 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lharc-archive 'mon154.lzh'.
+way of distribution is the lharc-archive 'mon155.lzh'.
 
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.
@@ -1070,7 +1077,7 @@ his 'Fish disks'.
 Send suggestions, bug reports etc. to:
 
   Timo Rossi
-  Kellankoski			E-mail:
-  44300 Konnevesi		trossi@jyu.fi
-  FINLAND
+  Kellankoski      or  Mattilankatu 40 A 4            E-mail:
+  44300 Konnevesi      40600 Jyväskylä             trossi@jyu.fi
+  FINLAND              FINLAND
 

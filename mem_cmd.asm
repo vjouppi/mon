@@ -83,6 +83,7 @@ freeall9	move.l	(sp)+,a6
 
 		call	GetExpr
 		move.l	D0,D5
+		bmi.s	alloc_failed
 		call	skipspaces
 		moveq	#0,d1
 		move.b	(a3),d0

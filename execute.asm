@@ -424,7 +424,7 @@ returncode	movem.l	d0-d2/a0-a1/a4/a6,-(sp)
 		clra	a1
 		lib	FindTask
 		move.l	d0,a1
-		move.l	TC_Userdata(a1),a4
+		move.l	TC_TRAPDATA(a1),a4
 		move.b	d2,mon_RegCCR_B(a4)
 		movem.l	(sp)+,d0-d2/a0-a1
 		movem.l	d0-d7/a0-a3,mon_DataRegs(a4)
@@ -448,7 +448,7 @@ trapreturn	;Note! We are in supervisor mode!
 		movem.l	d0/a0/a4/a6,-(sp)
 		getbase	AbsExec,a6
 		move.l	ThisTask(a6),a4
-		move.l	TC_Userdata(a4),a4
+		move.l	TC_TRAPDATA(a4),a4
 
 		cmp.l	#9,4*4(sp)			trace?
 		bne.s	noskipbrk

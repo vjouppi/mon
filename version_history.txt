@@ -33,6 +33,8 @@
 * v1.47 ->	     1991-11-21    *
 * v1.49 ->	     1991-11-29    *
 * v1.50 ->           1991-12-01    *
+* ...				   *
+* v1.55 ->	     1992-07-04    *
 ************************************
 
 ;
@@ -229,7 +231,7 @@
 ;   1989-12-21 --> v1.19
 ;		- disassembler now prints the dollar signs that were missing
 ;		  in previous version in immediate word/byte operands
-lm;		  and trap numbers.
+;		  and trap numbers.
 ;
 ;   1989-12-31 --> v1.20
 ;		- '[register]'-syntax added to the expression parser
@@ -469,6 +471,15 @@ lm;		  and trap numbers.
 ;		- echo commmand now has [expr] syntax for number output
 ;
 ;
-; 1991-12-??(23) --> 1.54b
+; 1991-12-??(23)/1992-01-05 --> 1.54
 ;		- poke, pokew, pokel
 ;
+; 1992-03-10 -- > 1.55b
+;		- Now uses TC_TRAPDATA instead of TC_UserData.
+; 1992-03-31 -- - Now can't allocate negative amounts of memory...
+; 1992-06-17 --	- Now understands 's' and 'b' as short branch
+;		  specifiers and 'w' and 'l' for long branches.
+; 1992-07-04 -- - Now properly frees hunk type table in 'u' command.
+;		  Now 640x200 default window size in NTSC machine works.
+;
+

@@ -226,7 +226,7 @@ open_win1	lea	gfx_name(pc),a1
 
 		moveq	#0,d0
 		cmp.w	#200,d2
-		bcs.s	open_win2
+		bls.s	open_win2
 
 		moveq	#8,d0
 		sub.w	#18,d2	
@@ -283,10 +283,10 @@ win_open	move.l	D0,mon_OutputFile(a4) 	;default output is monitor window
 		lea	trapreturn(pc),A1
 		move.l	mon_Task(a4),A0
 		move.l	TC_TRAPCODE(A0),mon_OrigTrapCode(a4)	;save old TrapCode
-		move.l	TC_Userdata(a0),mon_OrigUserData(a4)	; & UserData
+		move.l	TC_TRAPDATA(a0),mon_OrigTrapData(a4)	; & TrapData
 
 set_tc		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
-		move.l	a4,TC_Userdata(a0)
+		move.l	a4,TC_TRAPDATA(a0)
 
 ; save pr_ReturnAddr pointer
 		move.l	pr_ReturnAddr(a0),mon_OrigRetAddr(a4)
@@ -529,11 +529,11 @@ cleanexit	move.l	mon_StackPtr(a4),sp
 01$		btst	#MONB_TASKSET,mon_Flags(a4)
 		beq.s	02$
 ;
-; restore task TrapCode/UserData & pr_ReturnAddr fields
+; restore task TrapCode/TrapData & pr_ReturnAddr fields
 ;
 		move.l	mon_Task(a4),A0
 		move.l	mon_OrigTrapCode(a4),TC_TRAPCODE(A0)	;restore old TrapCode
-		move.l	mon_OrigUserData(a4),TC_Userdata(a0)	;and UserData
+		move.l	mon_OrigTrapData(a4),TC_TRAPDATA(a0)	;and TrapData
 		move.l	mon_OrigRetAddr(a4),pr_ReturnAddr(a0)	;and ReturnAddr
 
 02$		call	free_all_mem		free all memory allocated by commands & and (
@@ -790,7 +790,7 @@ info_text	dc.b LF
 		VERSION
 		dc.b	')',LF
 		dc.b	TAB,TAB,'---------------------------',LF
-		dc.b	TAB,'   Copyright 1987-1991 by Timo Rossi',LF,LF
+		dc.b	TAB,'   Copyright 1987-1992 by Timo Rossi',LF,LF
 		dc.b	'   This is a machine code monitor/debugger for the Amiga.',LF
 		dc.b	' Pressing the HELP-key displays a list of commands.',LF,LF
 		dc.b	' Note1: Some of the assembler instructions require the',LF
@@ -820,7 +820,7 @@ window_fmt	dc.b	'RAW:0/%ld/%ld/%ld/Amiga Monitor v'
 		dc.b	0
 
 welcome_txt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
-		dc.b	TAB,'   Copyright 1987-1991 by Timo Rossi, version '
+		dc.b	TAB,'   Copyright 1987-1992 by Timo Rossi, version '
 		VERSION
 		ifne	BETA
 		dc.b	LF,LF,TAB
