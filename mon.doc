@@ -1,11 +1,16 @@
 
-                 Amiga Monitor 1.06 instructions
-                 -------------------------------
+                 Amiga Monitor 1.08 instructions
+                 ===============================
 
-  The monitor can be started both from CLI and from workbench. If you want to
-  start the monitor from workbench, you must first make an icon for it.
+  The monitor can be started both from CLI and from workbench. If you want
+  to start the monitor from workbench, you must first make an icon for it.
+  (starting the monitor from workbench is not recommended, because the
+  programs that are run under the control of the monitor may require the
+  CLI environment or else they may wait for workbench startup message
+  forever...)
 
  Input line editing and command line history:
+ --------------------------------------------
   You can edit the input lines by using the left/right cursor keys to move
   left and right, backspace to delete the character before the cursor and
   del to delete the character under the cursor. You can use the up/down
@@ -16,11 +21,13 @@
   address.
 
  Stopping the output:
+ --------------------
   In most cases the output of the monitor can be suspended by pressing SPACE
   and continued by pressing SPACE again. To permanently stop the output,
   press Ctrl-C.
 
  Numbers:
+ --------
   Hexadecimal numbers can include the '$'-prefix but it is not necessary
   when the numbers are positive (or unsigned).
   Negative hex numbers must include the '$'-prefix, for example -$12A3.
@@ -32,6 +39,7 @@
   otherwise they could be interpreted as register names.
 
  Strings:
+ --------
   Strings are used in the fill command, the hunt command, the modify memory
   command and the assembler directive dc.b .
   Strings are series of bytes, represented by numbers or ASCII-characters
@@ -44,7 +52,72 @@
     ''''  -- this means one single quote
     'both',0A,'text',+10,'and','numbers'
 
+
+New features and bug fixes in version 1.08:
+-------------------------------------------
+ - The disassembler and assembler handle exg Dn,An correctly
+   (previously the data and address register numbers were reversed)
+
+ - The disassembler no more displays any invalid codes as valid
+   instructions (On the 68000 processor, of course. The monitor does
+   currently not support 68010/68020 extra instructions).
+
+ - The pc-relative indexed addressing mode now works with the assembler.
+
+ - Some little bugs were fixed in the assembler.
+    + And/or-instructions work with a pc-relative source operand. 
+    + cmpm works with all sizes
+    + most(if not all...) of the bugs that caused the assembler to
+      assembler invalid instructions have been fixed.
+
+ - 'sp' can be used instead of 'a7' in the assembler and the disassmbler
+   displays a7 as 'sp'.
+
+ - The assembler now unserstands blo/bhs, slo/shs and dblo/sbhs
+   and assembles them as bcs/bcc, scs/scc and dbcs/dbcc
+
+ - The disassembler displays address-register relative offsets and short
+   absolute addresses as signed numbers.
+
+ - The monitor works now better with 60-column mode.
+
+ - Disk read/write commands can be used with non-chip memory
+
+ - Play digisound command has an optional parameter to specify
+   how many times the sample is played.
+
+ - A new command has been added to specify a command line for programs
+   executed under the control of the monitor.
+
+ - Breakpoints work even if you jump into the code at to breakpoint.
+   The breakpoint does not activate until the instruction at the break
+   position is executed, so you don't get immediately interrupted.
+   (internally the monitor uses the trace-exception to skip the breakpoint
+   at the first time...)
+
+ - the monitor works ok with 68010/68020 processors. previous versions
+   left sometimes extra data in supervisor stack. this was fixed in
+   version 1.08.
+
+
+Special Note:
+-------------
+ There is a problem with the walk (trace) command and several instructions
+ that cause processor exceptions. These instructions are chk, trap #n,
+ trapv and divu/divs (with divisions by zero). If you try to trace these
+ instructions, a trace-exception occurs in supervisor-mode, out of the
+ monitors control and you get a guru meditation alert with number 00000009.
+ This problem was with the earlier monitor versions as well. In the new
+ version it can also also occur if you jump to the code at a breakpoint
+ address, as the monitor internally traces over the breakpoint.
+
+ Included with the monitor is a program called patchtrace that changes
+ directly the processor hardware trace-exception vector to point a new
+ routine that removes the trap-trace problem.
+
+
  The following commands are available in the monitor:
+ ----------------------------------------------------
 
 ? or the HELP key on the keyboard
  displays a help screen.
@@ -82,7 +155,7 @@ t -- transfer (move) memory
   t <start-addr> <end-addr> <destination-addr>
  the command works correctly even if the source and destination memory
  blocks overlap. (if destination is at a higher address than source,
-  the block is moved backwards, staring at the end)
+  the block is moved backwards, starting at the end)
 
 h -- hunt (find) string in memory
  usage:
@@ -110,14 +183,38 @@ a -- assemble
    The assembler understands all the normal 68000 instructions and also
   the 'pseudo-instructions' dc.b, dc.w and dc.l, which can be used to
   directly put data in memory.
-   Note: in most assembler instructions you must specify the instruction
-  size (byte, word, long -- .b .w or .l). The assembler does not use the
-  word length as a default, as most other assemblers do. This is intentional,
-  because it is easy to forget to include the size specifier when you don't
-  really want the instruction size to be word. The instructions that refer to
-  the status register SR, condition code register CCR or user stack pointer
-  USP don't need the size specifier (and it can't be there...). Also the
-  stack pointer must always be references by A7, 'SP' can't be used.
+
+ Some notes about using the assembler:
+ -------------------------------------
+   When entering assembler instructions which have an implicit size, no
+   size specifier is allowed in the monitor assembler. These instructions
+   are for example btst, bchg, bclr, btst, lea, move to/from sr/ccr/usp,
+   andi/ori/eori #data,sr/ccr Scc (set according to condition),
+   abcd/sbcd/nbcd and shifts with memory operands.
+
+   Instructions that can have different sizes must have the size specifier,
+   there is no 'default size' (normal assemblers use a default size of word.
+   the omission of default size is intentional, because it is so easy to
+   forget the size specifier when you really don't mean the size to be word).
+
+   Branch instructions with no size specifier or the .l-specifier assemble
+   to normal (16-bit offset) branches, if given the .s-size specifier they
+   assemble to the short form (8-bit offset). The dbxx-(decrement and branch)
+   -instructions allows no size specifier.
+
+   The assembler converts add/sub/and/or/eor with immediate data source
+   automatically to adda/addi/subi/andi/eori. It does not convert move or
+   add/sub to the quick form nor does it convert branches automatically to
+   the short form. You must specify those yourself (so you must use the
+   moveq/addq/subq- instructions or specify the size .s to branches
+   as noted above). Also cmp-memory instruction must be entered as cmpm,
+   the assembler does not convert cmp (an)+,(an)+ to cmpm.
+
+   The above conversion rules do not apply to andi/ori/eori with status
+   register or condition code register. In these cases you must enter the
+   instruction as andi/ori/eori (don't leave the 'i' out). Also, you
+   can't enter any size specifier in this case.
+
 
 d -- disassemble
  usage:
@@ -151,11 +248,27 @@ bl -- list breakpoints
  usage:
   bl -- display a list of all breakpoints
 
-g -- go (execute machine code)
+g [addr] -- go (execute machine code)
 
-j -- jump to subroutine
+j [addr] -- jump to subroutine
 
-w -- walk (single step trace)
+w [addr] -- walk (single step trace)
+
+ the g, j and w-commands use the current program counter value
+ (displayed with the r-command) if you don't give them an address.
+
+note: there is no easy way to run BCPL programs (CLI commands) or other
+programs that use the internal BCPL library from the monitor.
+
+@ -- enter command line
+ usage:
+  @ [command line]. If you don't specify a command line (enter only @<cr>)
+  then the monitor will prompt for command line. the command line will
+  be put in a special memory area and the register a0 will contain pointer
+  to the string and d0 will contain length of the string (with a linefeed
+  appended to end of it).
+  The purpose of this command is to specify a command line for the program
+  that you are running from the monitor.
 
 l -- load segment
  usage:
@@ -212,15 +325,21 @@ sm -- show allocated memory
  usage:
   < <addr> <drive> <start-sector> <number-of-sectors>
  Reads <number-of-sectors> sectors from the disk in unit <drive> to memory
- starting at <addr>. <addr> must be in CHIP memory!. <drive> is a number
- between 0..3, corresponding the DOS devices DF0: -- DF3:
+ starting at <addr>. <drive> is a number between 0..3,
+ corresponding the DOS devices DF0: -- DF3:
+
+ In this version the read destination address
+ does not need to be in chip memory.
 
 >  -- write disk sectors
  usage:
   > <addr> <drive> <start-sector> <number-of-sectors>
  Writes <number-of-sectors> sectors to the disk in unit <drive> from memory
- starting at <addr>. <addr> must be in CHIP memory!. <drive> is a number
- between 0..3, corresponding the DOS devices DF0: -- DF3:
+ starting at <addr>. <drive> is a number between 0..3,
+ corresponding the DOS devices DF0: -- DF3:
+
+ In this version the write source address
+ does not need to be in chip memory.
 
 =  -- corrects a disk block checksum
  usage:
@@ -237,10 +356,10 @@ sm -- show allocated memory
 
 !  -- play digisound
  usage:
-  ! <addr> <length> <period>
+  ! <addr> <length> <period> [<count>]
  Plays sound <length> bytes starting at <addr> and using sampling period
- <period>. the sound repeats until you stop it by pressing Ctrl-C. <addr>
- must be in CHIP memory!.
+ <period>. the sound repeats <count> times or until you stop it by
+ pressing Ctrl-C. <addr> must be in CHIP memory!.
 
 cls -- clears the monitor window
 
@@ -259,3 +378,12 @@ dir [<name>]   -- displays the directory
 x -- exit
  frees all memory allocated by the monitor, closes redirection file (if open)
  and exits the monitor.
+
+
+version 1.08 of the monitor (and this document) --> 1989-08-29
+
+ Timo Rossi
+ Kellankoski			internet e-mail:
+ 44300 Konnevesi		trossi@tukki.jyu.fi
+ FINLAND
+
