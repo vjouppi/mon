@@ -1,5 +1,5 @@
 
-                 Amiga Monitor 1.20 instructions
+                 Amiga Monitor 1.21 instructions
                  ===============================
 
   The monitor can be started both from CLI and from workbench. If you want
@@ -107,6 +107,10 @@
     ''''  -- this means one single quote
     'both',$0A,'text',10,'and','numbers'
 
+
+New features and bug fixes in version 1.21
+------------------------------------------
+ - variables are now case-insensitive
 
 New features and bug fixes in version 1.20
 ------------------------------------------
@@ -497,7 +501,7 @@ x -- exit
  and exits the monitor.
 
 
-version 1.20 of the monitor (and this document) --> 1989-12-31
+version 1.21 of the monitor (and this document) --> 1990-01-06
 
   Timo Rossi
   Kellankoski			internet e-mail:
