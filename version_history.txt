@@ -36,6 +36,7 @@
 * ...				   *
 * v1.55 ->	     1992-07-04    *
 * v1.56 ->	     1993-02-06	   *
+* v1.57 ->	     1993-03-16+   *
 ************************************
 
 ;
@@ -495,4 +496,7 @@
 ; ?? remove/make optional pr_ConsoleTask setting ?? -- ifd ...
 ; ?? tc_TrapData/tc_UserData? user-selectable ??
 ; ?? convert all singly linked list stuff to use exec lists
+;
+; 1993-03-16(?) --> 1.57(b)
+;		- memory display can stop in middle of a line.
 ;

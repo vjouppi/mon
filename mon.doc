@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.56 instructions
+                 Amiga Monitor v1.57 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -343,6 +343,9 @@ m -- Display memory in hex and ASCII
   m                   -- display 20 lines from current address
   m <addr>            -- display 20 lines from <addr>
   m <addr> <end-addr> -- display from <addr> to <end-addr>
+
+ If the memory display was started inside a hunk of currently loaded executable,
+ it automatically stops at the end of that hunk.
 
 mf -- Formatted memory display
  Usage:
@@ -860,8 +863,12 @@ if counter <= _10 goto loop
 
 Version history:
 ----------------
+1.57 ->
+ - memory display displays only the requested memory block
+   (the last line is not always full)
+
 1.56 ->
- - memorydisplay stops at end of hunk (disassembly already did that)
+ - memory display stops at end of hunk (disassembly already did that)
  - memory allocation error now stops script execution
  - added %s and %x formats to the mf-command
 
@@ -1081,10 +1088,10 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.56 Copyright © 1987-1993 by Timo Rossi. The monitor
+  Amiga Monitor v1.57 Copyright © 1987-1993 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lha-archive 'mon156.lha'.
+way of distribution is the lha-archive 'mon157.lha'.
 
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.
