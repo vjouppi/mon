@@ -1,7 +1,17 @@
 ;
 ; execute.asm
 ;
+		nolist
+		include "exec/types.i"
+		include "exec/memory.i"
+		include "exec/tasks.i"
+		include "exec/execbase.i"
+		include "offsets.i"
+		list
+
 		include	"monitor.i"
+		include "breakpoint.i"
+
 
 		ifnd	_LVOCacheClearU
 _LVOCacheClearU	equ	-$27c
@@ -633,6 +643,7 @@ trap_dregs	bclr	#MONB_QTRACE,flags(a4)
 		bne.s	tr99
 		move.l	D0,Addr(a4)
 		move.l	D0,a5
+		call	PutLabel
 		startline
 		call	Disassemble
 		call	printstring
@@ -704,7 +715,7 @@ notraps		putchr	SPACE
 ;#
 		cmd	showtrap
 
-		cmp.b	(a3),d0
+		cmp.b	#'^',(a3)
 		beq.s	dbug
 		call	GetExpr
 		move.l	D0,D5

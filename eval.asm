@@ -5,8 +5,15 @@
 ;
 ; modulo operator --> '%' -- 1991-07-26 -- 1.42
 ;
-		include	"monitor.i"
+		nolist
+		include "exec/types.i"
+		include "exec/memory.i"
+		include "exec/execbase.i"
+		include "libraries/dosextens.i"
+		include "offsets.i"
+		list
 
+		include	"monitor.i"
 
 ;
 ; this module defines the following public subroutines
@@ -63,6 +70,7 @@
 		movem.l	d1-d2/a0-a1/a6,-(sp)
 		bsr.s	get_ex1
 		move.l	d0,d2
+
 get_expr_loop	call	skipspaces
 		move.b	(a3)+,d0
 		cmp.b	#'+',d0
@@ -177,25 +185,26 @@ ex32		cmp.b	#'+',d0
 		bsr.s	get_ex3
 		not.l	d0
 		rts
+
 ex33		cmp.b	#'''',d0
 		beq	get_strnum
+
 		cmp.b	#'$',d0		;hex prefix '$'
 		bne.s	ex34
 		moveq	#16,d0
 		bra.s	gnum_j
-ex34		cmp.b	#'@',d0		;octal prefix '@'
-		bne.s	ex35
-		moveq	#8,d0
-		bra.s	gnum_j
-ex35		cmp.b	#'%',d0		;binary prefix '%'
+
+ex34		cmp.b	#'%',d0		;binary prefix '%'
 		bne.s	ex37
 		moveq	#2,d0
 gnum_j		bra	get_num
-ex37		cmp.b	#'*',d0
+
+ex37		cmp.b	#'*',d0		;current address
 		bne.s	ex37a
 		move.l	Addr(a4),d0
 		rts
-ex37a		cmp.b	#'[',d0
+
+ex37a		cmp.b	#'[',d0		;register?
 		bne.s	ex38
 		move.b	(a3)+,d0
 		call	tolower
@@ -215,6 +224,7 @@ ex37a		cmp.b	#'[',d0
 01$		moveq	#0,d0
 		move.b	RegCCR_B(a4),d0
 		bra.s	ex37z
+
 ex37b		lea	RegSP(a4),a0
 		cmp.w	#'sp',d0
 		beq.s	ex37x
@@ -235,6 +245,7 @@ ex37x		move.l	(a0),d0
 ex37z		cmp.b	#']',(a3)+
 		beq.s	exrt01
 ex37_err	bra	expression_error
+
 ex38		subq.l	#1,a3
 		bsr	get_token
 		tst.l	d0
@@ -246,26 +257,42 @@ ex38		subq.l	#1,a3
 		jmp	(a0)
 
 ex38b		move.b	(a3),d0
+		cmp.b	#'@',d0
+		beq.s	00$
+		cmp.b	#'.',d0
+		beq.s	00$
 		call	isalpha
 		bcc.s	ex39b
-		move.l	a3,a0
+
+00$		move.l	a3,a0			;variable?
+		addq.l	#1,a0
+
 01$		move.b	(a0)+,d0
 		call	isalnum
 		bcs.s	01$
 		subq.l	#1,a0
+
 		move.b	(a0),d0
 		clr.b	(a0)
+
 		movem.l	d0/a0,-(sp)
 		move.l	a3,a0
 		bsr	findvar
 		movem.l	(sp)+,d1/a0
 		bcs.s	ex39
+
 		move.b	d1,(a0)
 		move.l	a0,a3
 exrt01		rts
 
 ex39		move.b	d1,(a0)
-ex39b		moveq	#10,d0
+ex39b		cmp.b	#'@',(a3)		; octal prefix
+		bne.s	ex39c
+		addq.l	#1,a3
+		moveq	#8,d0
+		bra.s	ex39x
+
+ex39c		moveq	#10,d0
 		cmp.b	#'_',(a3)+		;decimal perix '_'
 		beq.s	ex39x
 		subq.l	#1,a3

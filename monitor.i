@@ -4,43 +4,12 @@
 
 ;
 ; include file for Amiga Monitor
-; version 1.44 -- 1991-10-27
+; version 1.47 -- 1991-11-22
 ; Copyright © 1991 by Timo Rossi
 ;
-
-
+		ifnd	EXEC_TYPES_I
 		include	"exec/types.i"
-		include	"exec/nodes.i"
-		include	"exec/lists.i"
-		include	"exec/memory.i"
-		include	"exec/tasks.i"
-		include	"exec/errors.i"
-		include	"exec/devices.i"
-		include	"exec/io.i"
-		include	"exec/execbase.i"
-		include	"libraries/dos.i"
-		include	"libraries/dosextens.i"
-		include	"graphics/gfx.i"
-		include	"graphics/gfxbase.i"
-		include	"devices/trackdisk.i"
-		include	"devices/console.i"
-		include	"devices/conunit.i"
-		include	"devices/audio.i"
-		include	"workbench/startup.i"
-
-		include	"offsets.i"
-
-
-*** This macro is an easy way to update the version number ***
-
-BETA		equ	0	;special 'Beta version' flag
-
-VERSION		macro
-		dc.b	'1.46'
-		ifne	BETA
-		dc.b	'b'
 		endc
-		endm
 
 ;;;;;
 ;
@@ -85,7 +54,11 @@ rw		macro
 _ExecBase	equ	4
 
 ;
-; new library call macros
+; library call macros
+;
+
+;
+; get library base to a register, default is a6
 ;
 getbase		macro
 		ifc	'\1','Exec'
@@ -106,6 +79,12 @@ getbase		macro
 		endc
 		endm
 
+;
+; call Amiga library routine
+;
+; call name     ->  jsr _LVOname(a6)
+; call lib,name -> getbase lib; jsr _LVOname(a6)
+;
 lib		macro
 		ifeq	NARG-2
 		  getbase	\1
@@ -116,6 +95,9 @@ lib		macro
 		endc
 		endm
 
+;
+; jump to Amiga library routine
+;
 jlib		macro
 		ifeq	NARG-2
 		  getbase  \1
@@ -126,6 +108,9 @@ jlib		macro
 		endc
 		endm
 
+;
+; call Amiga library routine, preserve value of a6
+;
 slib		macro
 		move.l  a6,-(sp)
 		lib	\1,\2
@@ -176,6 +161,9 @@ pub		macro
 		endm
 ;
 ; call a public routine
+;
+;   call name      ->  bsr name_routine
+;   call JUMP,name ->  bra name_routine
 ;
 call		macro
 		ifnc	'\1','JUMP'
@@ -229,7 +217,7 @@ SHIFT_CURSOR_LEFT	equ	$0700
 SHIFT_CURSOR_RIGHT	equ	$0800
 
 
-LEN		equ	100	;length of input & output buffers
+LEN		equ	128	;length of input & output buffers
 NLINES		equ	10	;number of lines of command line history
 
 DNBUFSIZE	equ	50	;length of disk device name buffer
@@ -241,25 +229,6 @@ BOOTBLOCKSIZE	equ	2*DISKBLOCKSIZE
 MONSTACK	equ	2000
 
 ILLEGAL_INSTR	equ	$4AFC	;illegal instruction (used by breakpoints)
-
-*** BREAKPOINT STRUCTURE ***
-
-		STRUCTURE BrkPoint,0
-		 APTR	brk_Next	;linked list
-		 APTR	brk_Address	;address of breakpoint
-		 UWORD	brk_Count	;count required for activation
-		 UWORD	brk_ActCount	;actual count when active
-		 UWORD	brk_Content	;word contents of that location
-		LABEL brk_SIZE	;because it is temporarily replaced by ILLEGAL
-
-*** Variable structure ***
-; the size of this structure depends on the length of the variable name
-
-		STRUCTURE Variable,0
-		 APTR	var_Next	;linked list
-		 LONG	var_Value	;32-bit interger value of variable
-		 WORD	var_Length	;size of structure for FreeMem()
-		LABEL	var_Name	;null-terminated string
 
 ** Data structure containing all monitor internal variables **
 
@@ -283,6 +252,8 @@ ILLEGAL_INSTR	equ	$4AFC	;illegal instruction (used by breakpoints)
 
 		 APTR	InitialFileName	;file name given in command line
 		 LONG	SegList		;currently loaded segment
+		 LONG	NumHunks
+		 APTR	HunkTypeTable
 
 		 APTR	MemoryList	;linked list of allocated memory
 		 APTR	BreakList	;linked list of breakpoints
@@ -322,14 +293,20 @@ RegSP		equ	AddrRegs+7*4
 		 UWORD	TmpBrkSave	;storage for original contents
 					;of a temporary breakpoint
 
-		 UWORD	opcode		;opcode for disassembler
-
 		 UWORD	size		;current instruction size
+
 		 UBYTE	flags		;flags, see below for bitdefs...
 		 UBYTE	defbase		;current default number base for input
 		 UBYTE	MonOptions	;option flags
 		 UBYTE	__pad__
 		LABEL MonitorData_SIZE
+
+;
+; safety check
+;
+		ifne	MonitorData_SIZE-$764
+		FAIL	Panic! MonitorData wrong size!
+		endc
 
 ;
 ; monitor flags

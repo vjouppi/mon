@@ -1,6 +1,14 @@
 ;
 ; disk_io.asm
 ;
+		nolist
+		include "exec/types.i"
+		include "exec/memory.i"
+		include "exec/errors.i"
+		include "devices/trackdisk.i"
+		include "offsets.i"
+		list
+
 		include	"monitor.i"
 ;
 ; This module defines the following command routines:

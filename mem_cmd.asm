@@ -1,6 +1,14 @@
 ;
-; memory.asm
+; mem_cmd.asm
 ;
+		nolist
+		include "exec/types.i"
+		include "exec/memory.i"
+		include "exec/execbase.i"
+		include "devices/conunit.i"
+		include "offsets.i"
+		list
+
 		include	"monitor.i"
 ;
 ; This module defines the following command routines:

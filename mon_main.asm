@@ -1,8 +1,18 @@
 ;
 ; mon_main.asm -- monitor main program -- must be first module to be linked in
 ;
+		nolist
+		include	"exec/types.i"
+		include "exec/memory.i"
+		include "exec/tasks.i"
+		include "libraries/dosextens.i"
+		include "workbench/startup.i"
+		include "graphics/gfxbase.i"
+		include "offsets.i"
+		list
 
 		include	"monitor.i"
+		include "mon_version.i"
 ;
 ; This module defines the following command routines:
 ;
@@ -18,6 +28,7 @@
 		xref	clear_all_variables
 		xref	loadseg1
 		xref	set_cmdline	;from misc_cmd.asm
+		xref	unload_seg	;from mon_dos.asm
 
 		xref	trapreturn	;execute.asm
 		xref	returncode	;execute.asm
@@ -92,7 +103,7 @@ main		move.l	#MonitorData_SIZE,d0
 		moveq	#ONE_POINT_TWO,d0
 		lib	OpenLibrary
 		move.l	d0,_DosBase(a4)
-		beq	cleanexit
+		beq	exit9
 
 		moveq	#-1,d4			window width
 		moveq	#-1,d5			window height
@@ -107,17 +118,18 @@ main		move.l	#MonitorData_SIZE,d0
 		move.l	wa_Lock(a0),d1
 		lib	Dos,CurrentDir
 		move.l	d0,OldCD(a4)
-		bra.s	cmdline_done
+		bra	cmdline_done
 
 handle_cli_start
 		move.l	pr_CurrentDir(a5),OldCD(a4)
 
+		moveq	#0,d6
 		clr.b	-1(a3,d3.l)		;null-terminate command line
 parse_cmdline	call	skipspaces
 		tst.b	(a3)
 		beq.s	cmdline_done
 		cmp.b	#'?',(a3)
-		beq.s	put_usage
+		beq.s	put_usage0
 		cmp.b	#'-',(a3)
 		bne.s	no_opt
 		addq.l	#1,a3
@@ -145,12 +157,21 @@ no_h		cmp.b	#'o',d0
 		bcs.s	put_usage
 		move.b	d0,MonOptions(a4)
 		bra.s	parse_cmdline
+
+put_usage0	lea	version_msg(pc),a0
+		call	puts_stdout
 no_o
 put_usage	lea	usage_txt(pc),a0
 		call	puts_stdout
 		bra	cleanexit
 
-no_opt		call	GetName
+no_opt		cmp.b	#'+',(a3)
+		bne.s	get_name
+		st	d6
+		addq.l	#1,a3
+		bra.s	parse_cmdline
+
+get_name	call	GetName
 		move.l	d0,InitialFileName(a4)
 
 		call	skipspaces
@@ -245,6 +266,7 @@ win_com		move.l	d0,WinFile(a4)
 		move.l	TC_Userdata(a0),OldUserData(a4)	; & UserData
 		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
 		move.l	a4,TC_Userdata(a0)
+
 ; save pr_ReturnAddr pointer
 		move.l	pr_ReturnAddr(a0),OldRetAddr(a4)
 		bset	#MONB_TASKSET,flags(a4)
@@ -282,6 +304,8 @@ win_com		move.l	d0,WinFile(a4)
 ;
 		move.l	InitialFileName(a4),d1
 		beq.s	mainloop
+
+		move.l	d6,d5		;'+' flag from cmdline
 		bsr	loadseg1
 
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
@@ -396,18 +420,14 @@ cleanexit	move.l	StackPtr(a4),sp
 		move.l	OldRetAddr(a4),pr_ReturnAddr(a0) ; and ReturnAddr
 
 02$		bsr	FreeAllMem		free all memory allocated by commands & and (
+
+		bsr	unload_seg		unload exefile, if necessary
+
 		bsr	remove_all_breaks	remove all breakpoints (free memory)
 		bsr	clear_all_variables
 
-		getbase	Dos,d0
-		beq.s	exit9
-		move.l	d0,a6
-
-		move.l	SegList(a4),D1		if a seglist is loaded, unload it
-		beq.s	03$
-		lib	UnLoadSeg
-
-03$		move.l	OutputFile(a4),D1	if output is redirected, close output file
+		getbase Dos
+		move.l	OutputFile(a4),D1	if output is redirected, close output file
 		cmp.l	WinFile(a4),D1
 		beq.s	04$
 		lib	Close
@@ -584,7 +604,7 @@ helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
 		dc.b	'cd [name]',TAB,': current dir',TAB
 		dc.b	'| ] addr length name',TAB,': save absolute',LF
-		dc.b	'l name',TAB,TAB,': load exefile',TAB
+		dc.b	'l [+] name',TAB,': load exefile',TAB
 		dc.b	'| < addr unit block cnt',TAB,': read disk blocks',LF
 		dc.b	'sl',TAB,TAB,': hunk list',TAB
 		dc.b	'| > addr unit block cnt',TAB,': write disk blocks',LF
@@ -619,7 +639,7 @@ helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'h adr1 adr2 bytes: hunt memory',TAB
 		dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
 		dc.b	'cv',TAB,TAB,': clear vars',TAB
-		dc.b	'| set [var=expr]',TAB,': set/show variables',LF,0
+		dc.b	'| set [var=expr] [hunk]',TAB,': set/show variables',LF,0
 
 **** INFO TEXT ****
 infotext	dc.b LF
@@ -635,7 +655,7 @@ infotext	dc.b LF
 		dc.b	' Note2: the default number base is hex, use ''_'' as prefix',LF
 		dc.b	' for decimal or change the base with the ba-command.',LF
 		dc.b	' You can use expressions in most places where',LF
-		dc.b	' numbers are needed.',LF,LF
+		dc.b	' numbers are needed. This version also supports symbols.',LF,LF
 		dc.b	' I hope you find this program useful, but if you find any bugs',LF
 		dc.b	' in this program, please let me know.',LF,LF
 		dc.b	' Read the ''mon.doc''-file for more information.',LF,0
@@ -643,6 +663,13 @@ infotext	dc.b LF
 dosname		dc.b	'dos.library',0
 gfxname		dc.b	'graphics.library',0
 tdname		dc.b	'trackdisk.device',0
+
+version_string	dc.b	0,'$VER: '
+version_msg	dc.b	'Amiga Monitor v'
+		VERSION
+		dc.b	' ('
+		DATE
+		dc.b	')',LF,0
 
 windowfmt	dc.b	'RAW:0/%ld/%ld/%ld/Amiga Monitor v'
 		VERSION
@@ -659,7 +686,8 @@ welcometxt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
 
 main_prompt	dc.b	'-> ',0
 
-usage_txt	dc.b	'Usage: [run] mon [-w<winwidth>] [-h<winheight>] [-o<options>] [filename [cmdline]]',LF,0
+usage_txt	dc.b	'Usage: [run] mon [-w<width>] [-h<height>] '
+		dc.b	'[-o<opt>] [+] [filename [cmdline]]',LF,0
 win_openerr_txt	dc.b	'Can''t open window',LF,0
 
 cls_str		dc.b	ESC,'[H',ESC,'[J',0
@@ -669,7 +697,7 @@ error_messages	dc.b	'???',0			; 0
 		dc.b	'odd address',0		; 1
 out_range_txt	dc.b	'out of range',0	; 2
 		dc.b	'out of memory',0	; 3
-		dc.b	'expr error',0		; 4
+		dc.b	'invalid expression',0	; 4
 		dc.b	'illegal addrmode',0	; 5
 
 		end

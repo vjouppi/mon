@@ -2,7 +2,14 @@
 ; Monitor Disassembly module
 ;
 ;
+		nolist
+		include "exec/types.i"
+		include "exec/tasks.i"
+		include "exec/execbase.i"
+		list
+
 		include	"monitor.i"
+		include "variables.i"
 		include	"instructions.i"
 
 ;
@@ -18,7 +25,7 @@
 
 		xref	puthex1_68
 		xref	puthex_68
-
+		xref	find_var_value
 ;
 ; equates for disassembler routine
 ;
@@ -68,7 +75,10 @@ BIT	equ	$92	; bit instruction type
 		bclr	#0,Addr+3(a4)
 		move.l	Addr(a4),a5
 
-disasmloop	startline
+disasmloop	move.l	a5,d0
+		call	PutLabel
+
+		startline
 	;;	call	disassemble
 		bsr	Disassemble_routine
 
@@ -476,7 +486,37 @@ pc_offset	move.l	a5,d1
 		bsr	GetWord
 		ext.l	d0
 		add.l	d1,d0
-put_addr	bra	puthex_68
+
+put_addr	move.l	a4,-(sp)
+
+		move.l	_ExecBase,a4
+		move.l	ThisTask(a4),a4
+		move.l	TC_Userdata(a4),a4
+
+		tst.l	HunkTypeTable(a4)
+		beq.s	put_adr1a
+		move.l	d0,-(sp)
+		bsr	find_var_value
+		tst.l	d0
+		beq.s	put_adr1
+		move.l	d0,a0
+
+		moveq	#30,d1
+		lea	var_Name(a0),a1
+1$		move.b	(a1)+,(a3)+
+		dbeq	d1,1$
+
+		move.b	#'[',-1(a3)
+		move.l	(sp)+,d0
+		bsr	puthex_68
+		move.b	#']',(a3)+
+		move.l	(sp)+,a4
+		rts
+
+put_adr1	move.l	(sp)+,d0
+put_adr1a	bsr	puthex_68
+		move.l	(sp)+,a4
+		rts
 
 trapnum		move.b	#'#',(a3)+
 		move.w	d7,d0

@@ -2,10 +2,22 @@
 ; lister.asm -- list libraries, devices, resources, ports & semaphores
 ;
 ;
-		include	'monitor.i'
+		nolist
+		include "exec/types.i"
+		include "exec/memory.i"
+		include "exec/tasks.i"
+		include "exec/execbase.i"
+		include "libraries/dosextens.i"
+		include "offsets.i"
+		list
+
+		include	"monitor.i"
 
 		xref	out_memory_error
 
+;
+; structure for storing library/device/etc data
+;
 		STRUCTURE BufData,0
 		 APTR	bdat_NodeAddr
 		 UWORD	bdat_Flags1
@@ -14,7 +26,9 @@
 		 UWORD	bdat_Revision
 		 STRUCT	bdat_Name,32
 		LABEL	bdat_SIZE
-
+;
+; structure for storing task data
+;
 		STRUCTURE BufTaskData,0
 		 APTR	btd_NodeAddr
 		 UBYTE	btd_Type
@@ -319,7 +333,10 @@ do_curr		move.l	ThisTask(a6),a0
 
 task_bufo	lib	Enable
 		bra.s	list_bufo1
-
+;
+; here we collect task data to buffer. if the task is a cli process,
+; the command name is used, else task LN_NAME is used as task/process name.
+;
 do_task		move.l	a0,(a3)+
 		move.b	LN_TYPE(a0),(a3)+
 		move.b	TC_STATE(a0),(a3)+

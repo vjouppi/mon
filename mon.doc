@@ -1,31 +1,32 @@
 
-                 Amiga Monitor v1.46 instructions
+                 Amiga Monitor v1.47 instructions
                  ================================
 
-  This is a machine code monitor/debugger program for the Amiga. The first
-  version was created over two years ago, and many of the features and
-  commands of the monitor were made similar to those of the monitors
-  available for the Commodore 64. However, because the Amiga is a very
-  different machine many new commands and features were needed. Later
-  versions of the monitor add many more useful features, as expressions
-  and variables. (But the monitor is still not a 'Symbolic debugger'.
-  Although you can define symbols, they cannot be read from executable
-  files and they are not automatically listed with disassembly etc.
-  This may change in some future version...)
+  This is a machine code monitor/debugger program for the Amiga.
+  The first version was created over 3 years ago, and many of the
+  features and commands of the monitor were made similar to those
+  of the monitors available for the Commodore 64. However, because
+  the Amiga is a quite different machine many new commands and
+  features were needed. Later versions of the monitor add many more
+  useful features, as expressions and variables. This version is quite
+  close to an actual symbolic debugger as it can read symbol table
+  information from executable files and display them in disassembly
+  listings.
 
-  The monitor can be started both from CLI and from workbench. If you want
-  to start the monitor from workbench, you must first make an icon for it.
-  (starting the monitor from workbench is not recommended, because the
-  programs that are run under the control of the monitor may require the
-  CLI environment or else they may wait for workbench startup message
-  forever...)
+  The monitor can be started both from CLI and from workbench. If you
+  want to start the monitor from workbench, you must first make an icon
+  for it. (starting the monitor from workbench is not recommended,
+  because the  programs that are run under the control of the monitor
+  may require the CLI environment or else they may wait for workbench
+  startup message forever...but you can use IconX to start the monitor
+  from workbench as a CLI process)
 
   The monitor is re-entrant (pure) code and can be made resident
-  (for example, using the Workbench 1.3 resident command or ARP 1.3 ares)
+  (for example, using the Workbench 1.3/2.0 resident command or ARP 1.3 ares)
 
 
- Command line arguments (New in versions 1.26+):
- ---------------------------------------------
+ Command line arguments
+ ----------------------
 
  options:
   -w <window width>
@@ -37,7 +38,6 @@
  The filename must be in quotes if it contains spaces. If there is anything
  on the command line after the file name, that will be used as the command
  line for the program loaded to the monitor (a0/d0 registers, see @-command)
-
 
  Using the monitor from a remote terminal
  ----------------------------------------
@@ -57,9 +57,8 @@
  the monitor with the command 'mon -o4'.
 
 
-
- Option flags (New in versions 1.34+)
- ------------------------------------
+ Option flags
+ ------------
 
  Commands 'opt +n' and 'opt -n' where 'n' is a number between 1 and 3
  can be used to set and reset monitor option flags. Currently three
@@ -85,7 +84,7 @@
  This includes a hexadecimal 'flag value' that can be used on
  the command line with the '-o' option to set initial flags when the
  monitor is started (That flag value is simply a bit map of the option
- flags, option#1 is bit#0 -- this is new in 1.42).
+ flags, option#1 is bit#0).
 
 
  Input line editing and command line history:
@@ -209,7 +208,7 @@
  if they have been previously defined. Variables are defined with the
  set-command.  All variable values are 32-bit integers. Variable names can
  contain alphanumeric characters and underscores ('_'), but they cannot
- begin with a number. Variable names are not case sensitive in this version.
+ begin with a number. Variable names are case sensitive in this version.
 
  (There are still some problems using variables with the assembler.
  Especially variables with names starting with 'a','d' or 's' may
@@ -532,21 +531,31 @@ programs that use the internal BCPL library from the monitor.
 
 l -- Load segment
  Usage:
-  l <name> -- loads the executable file <name> in memory and displays
-  the starting address of the first hunk, also sets PC to this address.
-  only one executable file be loaded at the same time. Before loading a new
-  file you must unload the old file with the u-command. To display
+  l [+] <name> -- loads the executable file <name> in memory and displays
+    the starting address of the first hunk, also sets PC to this address.
+   only one executable file be loaded at the same time. Before loading a
+  new file you must unload the old file with the u-command.  To display
   the starting & ending addresses of all the hunks in the file, use the
   sl-command.
+
+  Command 'l + <name>' loads symbol table and hunk type information in
+  addition to the actual file hunks. Those symbols are like the variables
+  defined by 'set' command, but they also have a hunk number associated with
+  them (it shows in square brackets in the 'set' listing). Also, the symbols
+  are automatically removed when the file is unloaded with the 'u'-command.
+
+  Overlays are not supported.
 
 u -- Unload segment
  Usage:
   u  -- unload the currently loaded executable file.
+        symbol information loaded by 'l +' is removed by this command.
 
 sl -- Segment list
  Usage:
   sl -- displays the starting & ending addresses and length of each hunk
-  of the currently loaded file.
+  of the currently loaded file. If the 'l +' command has been used to
+  load the file, also the type of each hunk is displayed.
 
 ( -- Allocate memory
  Usage:
@@ -619,7 +628,7 @@ dev -- set/show current disk device
  Displays old and new checksums. This command is useful if use use the
  monitor as a disk editor. Addr must be even.
 
- New in 1.38+: extended usage: = <addr> <len> <offs>
+ Extended usage: = <addr> <len> <offs>
  where <len> is block length to be checksummed and <offs> is the offset
  of the checksum longword from the start of the block. The checksum is
  calculated to that the sum of the longwords in the block is zero.
@@ -635,7 +644,7 @@ dev -- set/show current disk device
  it in the bootblock (in memory). Displays old and new checksums.
  Addr must be even.
 
- New in 1.38+: extended usage: # <addr> <len> <offs>
+ Extended usage: # <addr> <len> <offs>
  where <len> is block length to be checksummed and <offs> is the offset
  of the checksum longword from the start of the block. The checksum is
  calculated to that the sum of the longwords with carry in the block
@@ -700,6 +709,10 @@ x -- Exit
 
 Version history:
 ----------------
+1.47 ->
+ - symbol support
+ - variables now case sensitive
+
 1.46 ->
  - added breakpoint counts.
 
@@ -876,11 +889,10 @@ Version history:
  - prehistoric versions...
 
 
-
-  Amiga Monitor v1.46 Copyright © 1987-1991 by Timo Rossi. The monitor
+  Amiga Monitor v1.47 Copyright © 1987-1991 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lharc-archive 'mon146.lzh'.
+way of distribution is the lharc-archive 'mon147.lzh'.
 
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.

@@ -30,6 +30,7 @@ displayregs_d	bsr	displayregs
 		move.l	D0,a5
 		tst.w	(a5)
 		beq.s	rr9
+		call	PutLabel
 		startline
 		call	Disassemble
 		tst.w	d0

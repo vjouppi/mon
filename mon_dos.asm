@@ -1,6 +1,12 @@
 ;
 ; mon_dos.asm
 ;
+		nolist
+		include "exec/types.i"
+		include "exec/memory.i"
+		include "libraries/dos.i"
+		include "offsets.i"
+		list
 
 		include	"monitor.i"
 ;
@@ -10,9 +16,7 @@
 ;	new_cli,deletefile,current_dir
 ;
 		xdef	loadseg1
-
-		xref	seghead
-		xref	seglistfmt
+		xdef	unload_seg
 
 		xref	showrange
 
@@ -113,11 +117,18 @@ DOSErr		;error number in D0
 		tst.l	SegList(a4)
 		bne.s	oldseg		;can't do this before old segment is unloaded
 
-		call	GetName
+		moveq	#0,d5
+		cmp.b	#'+',(a3)
+		bne.s	1$
+		addq.l	#1,a3
+		st	d5
+
+1$		call	GetName
 		move.l	d0,d1
 		beq	generic_error
 
-loadseg1	lib	Dos,LoadSeg
+loadseg1	move.l	d1,d4
+		lib	Dos,LoadSeg
 		move.l	D0,SegList(a4)
 		beq.s	segerr		;branch if LoadSeg failed
 
@@ -136,7 +147,8 @@ loadseg1	lib	Dos,LoadSeg
 		addq.l	#1,d0
 		bra.s	01$
 
-02$		lea	s_txt(pc),a0
+02$		move.l	d0,NumHunks(a4)
+		lea	s_txt(pc),a0
 		moveq	#1,d2
 		cmp.l	d0,d2
 		bne.s	03$
@@ -145,7 +157,14 @@ loadseg1	lib	Dos,LoadSeg
 		move.l	(sp)+,d2
 		lea	seg_addr_fmt(pc),a0
 		call	printf
-		bra.s	mjump
+
+		tst.b	d5
+		beq.s	04$
+
+		move.l	d4,a0
+		call	load_symbols
+
+04$		bra.s	mjump
 
 oldseg		;message 'unload old segment first'
 		lea	unload_old_msg(pc),A0
@@ -154,7 +173,7 @@ oldseg		;message 'unload old segment first'
 
 segerr		;come here if LoadSeg failed
 		lib	IoErr
-		bsr.s	DOSErr
+		bsr	DOSErr
 mjump		rts
 
 nosegerr	;error 'no segment loaded'
@@ -167,9 +186,23 @@ nosegerr	;error 'no segment loaded'
 
 		move.l	SegList(a4),D1
 		beq.s	nosegerr	;branch if no segment
+
+unload_seg	move.l	SegList(a4),d1
+		beq.s	2$
 		lib	Dos,UnLoadSeg
 		clr.l	SegList(a4)	;remember to clear the seglist pointer
-		bra.s	mjump
+
+		move.l	HunkTypeTable(a4),d1
+		beq.s	1$
+		move.l	d1,a1
+		move.l	NumHunks(a4),d0
+		lsl.l	#2,d0
+		lib	Exec,FreeMem
+		clr.l	HunkTypeTable(a4)
+
+1$		call	clear_hunk_vars
+		clr.l	NumHunks(a4)
+2$		rts
 
 **** SEGMENT LIST ****
 		cmd	showseglist
@@ -178,7 +211,17 @@ nosegerr	;error 'no segment loaded'
 		beq.s	nosegerr	;branch if no seglist
 		lea	seghead(pc),A0
 		call	printstring_a0
+
+		move.l	HunkTypeTable(a4),a3
 		moveq	#0,d5
+		move.l	a3,d0
+		beq.s	1$
+
+		lea	typetext(pc),a0
+		call	printstring_a0
+
+1$		emit	LF
+
 segloop		lsl.l	#2,d4		;BPTR->APTR
 		move.l	d4,a2
 		move.l	d4,d1
@@ -191,6 +234,23 @@ segloop		lsl.l	#2,d4		;BPTR->APTR
 		move.l	d5,d0
 		lea	seglistfmt(pc),a0
 		call	printf
+
+		move.l	a3,d0
+		beq.s	1$
+		move.l	(a3)+,d0
+		sub.l	#$3e9,d0	;!!
+		bcs.s	1$
+		moveq	#2,d1
+		cmp.l	d1,d0
+		bhi.s	1$
+		lsl.l	#2,d0
+		lea	hunktypes_txt(pc),a0
+		add.l	a0,d0
+		lea	htype_fmt(pc),a0
+		call	printf
+
+1$		emit LF
+
 		addq.l	#1,d5
 		move.l	(A2),D4		;get next segment pointer
 		call	CheckKeys
@@ -363,7 +423,17 @@ freeblkfmt	dc.b	'%ld Blocks free.',LF,0
 NewShellCom	dc.b	'NewShell',0
 NewCLICom	dc.b	'NewCLI',0
 
+hunktypes_txt	dc.b	'codedatabss '
+htype_fmt	dc.b	'   %4.4s',0
+
+seghead		dc.b	'Segment list:',LF
+		dc.b	'  #   startloc   endloc    length',0
+typetext	dc.b	'   type',0
+
+seglistfmt	dc.b	'%3ld  $%08lx  $%08lx %7ld',0
+
 nosegmes	dc.b	'No segment loaded',LF,0
 notfound_txt	dc.b	'File not found',LF,0
+
 
 		end

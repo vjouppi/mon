@@ -5,6 +5,12 @@
 ;
 ; NOTE: this must be the last module linked in
 ;
+		nolist
+		include "exec/types.i"
+		include "libraries/dos.i"
+		include "devices/conunit.i"
+		include "offsets.i"
+		list
 
 		include	"monitor.i"
 ;
@@ -15,8 +21,6 @@
 
 		xdef	showrange
 
-		xdef	seghead
-		xdef	seglistfmt
 		xdef	loctext
 		xdef	memlistfmt
 
@@ -188,10 +192,8 @@ cont		moveq	#-1,D0
 
 rangefmt	dc.b	'%ld bytes read from $%08lx to $%08lx',LF,0
 
-seglistfmt	dc.b	'%3ld  '
 memlistfmt	dc.b	'$%08lx  $%08lx  %ld',LF,0
 
-seghead		dc.b	'Segment list:',LF,'  # '
 loctext		dc.b	' startloc   endloc    length',LF,0
 
 break_txt	dc.b	'*** Break ***',LF,0

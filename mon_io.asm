@@ -1,6 +1,11 @@
 ;
 ; mon_io.asm
 ;
+		nolist
+		include "exec/types.i"
+		include "libraries/dos.i"
+		include "offsets.i"
+		list
 
 		include	"monitor.i"
 ;

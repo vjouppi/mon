@@ -1,6 +1,13 @@
 ;
 ; sound.asm
 ;
+		nolist
+		include "exec/types.i"
+		include "devices/audio.i"
+		include "libraries/dos.i"
+		include "offsets.i"
+		list
+
 		include	"monitor.i"
 ;
 ; This module defines the following command routine:

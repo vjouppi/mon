@@ -421,3 +421,10 @@ lm;		  and trap numbers.
 ;		- breakpoints with counts
 ;		  (these don't work with qtrace)
 ;
+;  1991-11-21	--> 1.47
+;		- loads symbols from executable files.
+;		- some source reorganization
+;		- ^^ works again
+;		- 2.0-compatible version string
+;		- symbol sorting: '.' last
+;

@@ -2,6 +2,15 @@
 ; mon_util.asm
 ;
 ;
+		nolist
+		include "exec/types.i"
+		include "exec/memory.i"
+		include "exec/ports.i"
+		include "libraries/dosextens.i"
+		include "devices/conunit.i"
+		include "offsets.i"
+		list
+
 		include	"monitor.i"
 ;
 ; This module defines the following public subroutines:
