@@ -16,6 +16,7 @@
 * v1.22 -> last mod. 1990-01-07    *
 * v1.23 -> last mod. 1990-01-08    *
 * v1.24 -> last mod. 1990-01-13    *
+* v1.25 -> last mod. 1990-05-24    *
 *                                  *
 ************************************
 
@@ -310,6 +311,20 @@
 ;		- the assembler/disassembler accidentally exchanged
 ;		  the tas and trap-instructions. now fixed.
 ;
+;   1990-05-24 --> v1.25 (Now using A68k v2.6)
+;		- now uses TC_Userdata instead of TC_TRAPDATA (because
+;		  TC_TRAPDATA is marked as private in 1.4/2.0 includes...)
+;		- '\'-command first tries to start a shell, and if that
+;		  fails, then a CLI (Must check IoErr() code, Execute()
+;		  seems to return -1 even if the command can not be executed)
+;		- disk read/write commands can now be used with devices
+;		  other than trackdisk.device, for example hard disks.
+;		  * noticed a problem with the 2090 hd controller. it doesn't
+;		    set io_Actual correctly...changed disk read/write
+;		    routines to ignore io_Actual.
+;		- fixed condition code register setting with j & g-
+;		  commands (move <ea>,ccr size is WORD).
+;
 
 		include	'exec/types.i'
 		include	'include.i'
@@ -319,7 +334,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.24'
+		dc.b	'1.25'
 		endm
 
 *** macro to display a single character ***
@@ -374,10 +389,15 @@ SHIFT_CURSOR_DOWN	equ	$0600
 SHIFT_CURSOR_LEFT	equ	$0700
 SHIFT_CURSOR_RIGHT	equ	$0800
 
-LEN	equ	100	;length of input & output buffers
-NLINES	equ	10	;number of lines of command line history
+LEN		equ	100	;length of input & output buffers
+NLINES		equ	10	;number of lines of command line history
 
-ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
+DNBUFSIZE	equ	50	;length of disk device name buffer
+
+DISKBLOCKSIZE	equ	512	; 9
+DISKBLOCKSHIFT	equ	9	;2 = 512
+
+ILLEGAL		equ	$4AFC	;illegal instruction (used by breakpoints)
 
 *** BREAKPOINT STRUCTURE ***
 
@@ -396,7 +416,7 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 		 WORD	var_Length	;size of structure for FreeMem()
 		LABEL	var_Name	;null-terminated string
 
-** Data structure containing all variables **
+** Data structure containing all monitor internal variables **
 
 		STRUCTURE MonitorData,0
 ; first the long word variables
@@ -404,7 +424,7 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 		 APTR	WBenchMsg	;Workbench startup message pointer
 		 APTR	MyTask		;pointer to TCB of monitor process
 		 APTR	OldTrapCode	;task trap code when monitor was started
-		 APTR	OldTrapData	;task trap data when monitor was started
+		 APTR	OldUserData	;task trap data when monitor was started
 
 		 LONG	WinFile		;main window file handle
 		 LONG	OutputFile	;current output file handle
@@ -434,13 +454,18 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 		 STRUCT	InputBuffer,LEN
 		 STRUCT	History,LEN*NLINES
 		 STRUCT	CmdLineBuf,LEN
+		 STRUCT DevNameBuf,DNBUFSIZE
 
 ; processor register storage
 		 STRUCT	DataRegs,8*4	;data registers
 		 STRUCT	AddrRegs,8*4	;address registers
 		 APTR	RegPC		;program counter
-		 UBYTE	RegCC		;condition code register
-		 UBYTE	pad
+;
+; note: the following is because move ea,ccr moves a word and ignores
+; the high byte of it...
+;
+		 UBYTE	RegCCR_W
+		 UBYTE	RegCCR_B	;condition code register
 
 ; now word and byte variables
 		 UWORD	TmpBrkSave	;storage for original contents
@@ -608,9 +633,9 @@ main		move.l	#MonitorData_SIZE,d0
 		lea	trapreturn(pc),A1
 		move.l	MyTask(A5),A0
 		move.l	TC_TRAPCODE(A0),OldTrapCode(A5)	;save old TrapCode
-		move.l	TC_TRAPDATA(a0),OldTrapData(a5)	; & TrapData
+		move.l	TC_Userdata(a0),OldUserData(a5)	; & UserData
 		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
-		move.l	a5,TC_TRAPDATA(a0)
+		move.l	a5,TC_Userdata(a0)
 
 ;
 ; find pointer to intuition window structure of the monitor output window
@@ -632,6 +657,14 @@ main		move.l	#MonitorData_SIZE,d0
 		move.l	IO_UNIT(a0),ConsoleUnit(a5)
 
 ;
+; set default disk device name ("trackdisk.device")
+;
+		lea	tdname(pc),a0
+		lea	DevNameBuf(a5),a1
+01$		move.b	(a0)+,(a1)+
+		bne.s	01$
+
+;
 ; set the stack pointer
 ;
 		move.l	sp,a0
@@ -647,7 +680,7 @@ main		move.l	#MonitorData_SIZE,d0
 		lea	welcometxt(pc),A0
 		bsr	printstring_a0_window		;display welcome message
 
-; this is for error handling...and for the retrun from the trap routine...
+; this is for error handling...and for the return from the trap routine...
 		move.l	sp,StackPtr(a5)
 
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
@@ -704,7 +737,7 @@ info		lea	infotext(pc),A0
 *** EXIT FROM MONITOR ***
 exit		move.l	MyTask(A5),A0
 		move.l	OldTrapCode(A5),TC_TRAPCODE(A0)	;restore old TrapCode
-		move.l	OldTrapData(a5),TC_TRAPDATA(a0)	; and TrapData
+		move.l	OldUserData(a5),TC_Userdata(a0)	; and UserData
 		bsr	FreeAllMem		;free all memory allocated by commands & and (
 		bsr	remove_all_breaks	;remove all breakpoints (free memory)
 		bsr	clear_all_variables
@@ -851,9 +884,9 @@ loadseg		tst.l	SegList(A5)
 		move.l	D0,SegList(A5)
 		beq.s	segerr		;branch if LoadSeg failed
 		lea	segadrmes(pc),a0
-		lsl.l	#2,d0
-		addq.l	#4,d0
-		move.l	d0,RegPC(a5)
+		lsl.l	#2,d0		;BPTR->APTR
+		addq.l	#4,d0		;skip next segment pointer
+		move.l	d0,RegPC(a5)	;PC points to first instruction
 		move.l	d0,Addr(a5)
 		bsr	printf
 		bra.s	mjump
@@ -885,7 +918,7 @@ show_seglist	move.l	SegList(A5),D4
 		lea	seghead(pc),A0
 		bsr	printstring_a0
 		moveq	#0,d5
-segloop		lsl.l	#2,d4
+segloop		lsl.l	#2,d4		;BPTR->APTR
 		move.l	d4,a2
 		move.l	d4,d1
 		addq.l	#4,d1
@@ -1347,13 +1380,25 @@ redir1		bsr	skipspaces
 
 jmp_mainloop_2	bra	mainloop
 
-*** NEW CLI ***
-new_cli		; Execute("NewCLI",0,WinFile)
-		lea	NewCliCom(pc),A0
+*** NEW SHELL/CLI ***
+;
+; Now tries first to start a shell...TR 1990-05-24
+;
+new_cli		lea	NewShellCom(pc),A0
 		move.l	A0,D1
 		moveq	#0,D2
 		move.l	WinFile(A5),D3
 		call	DosBase(a5),Execute
+		tst.l	d0
+		beq.s	01$
+		call	IoErr
+		tst.l	d0
+		beq.s	jmp_mainloop_2
+01$		lea	NewCLICom(pc),a0
+		move.l	a0,d1	
+		moveq	#0,d2
+		move.l	WinFile(a5),d3
+		call	Execute
 		bra.s	jmp_mainloop_2
 
 showrange	;start addr in D5, length in D6
@@ -1389,7 +1434,7 @@ disk_rw		bsr	get_expr
 		bsr	get_expr
 		move.l	D0,D5		;length
 		beq	error		;error: zero length
-		move.l	#512,d0
+		move.l	#DISKBLOCKSIZE,d0
 		move.l	#MEMF_CLEAR!MEMF_CHIP,d1
 		call	ExecBase,AllocMem
 		tst.l	d0
@@ -1404,22 +1449,23 @@ disk_rw		bsr	get_expr
 		tst.l	D0
 		beq	disk_io_8	;branch if CreateIO failed
 		move.l	D0,A2
+
 		move.l	D3,D0
-		lea	tdname(pc),A0
+		lea	DevNameBuf(a5),A0
 		move.l	A2,A1
 		moveq	#0,D1
 		call	OpenDevice
 		tst.l	D0
-		bne	disk_io_7		branch if OpenDevice failed
+		bne	opendev_fail
 
 		move.l	a4,IO_DATA(A2)
-		move.l	#512,IO_LENGTH(A2)
+		move.l	#DISKBLOCKSIZE,IO_LENGTH(A2)
 
-		moveq	#9,D0
-		lsl.l	D0,D4			multiply by 512
+		moveq	#DISKBLOCKSHIFT,D0
+		lsl.l	D0,D4			multiply by DISKBLOCKSIZE
 		move.l	D4,IO_OFFSET(A2)
 
-		lsl.l	D0,D5			multiply by 512
+		lsl.l	D0,D5			multiply by DISKBLOCKSIZE
 		move.l	d5,d4
 
 		tst.l	D7
@@ -1431,12 +1477,12 @@ disk_rd		move.w	#CMD_READ,IO_COMMAND(A2)	;read from disk
 		move.l	A2,A1
 		call	DoIO
 		tst.l	D0
-		bne.s	disk_io_err
-		move.l	IO_ACTUAL(a2),d0
+		bne	disk_io_err
+		move.l	#DISKBLOCKSIZE,d0
 		move.l	a4,a0
 		move.l	Addr(a5),a1
 		call	CopyMem
-		move.l	IO_ACTUAL(a2),d0
+		move.l	#DISKBLOCKSIZE,d0
 		add.l	d0,IO_OFFSET(a2)
 		add.l	d0,Addr(a5)
 		sub.l	d0,d4
@@ -1451,14 +1497,14 @@ disk_rd		move.w	#CMD_READ,IO_COMMAND(A2)	;read from disk
 ;
 disk_wr		move.l	Addr(a5),a0
 		move.l	a4,a1
-		move.l	#512,d0
+		move.l	#DISKBLOCKSIZE,d0
 		call	CopyMem
 		move.w	#CMD_WRITE,IO_COMMAND(A2)	;write to disk
 		move.l	A2,A1
 		call	DoIO
 		tst.l	D0
 		bne.s	disk_io_err
-		move.l	IO_ACTUAL(a2),d0
+		move.l	#DISKBLOCKSIZE,d0
 		add.l	d0,IO_OFFSET(a2)
 		add.l	d0,Addr(a5)
 		sub.l	d0,d4
@@ -1495,6 +1541,10 @@ disk_io_5	;stop drive motor
 
 disk_io_6	move.l	A2,A1
 		call	CloseDevice
+		bra.s	disk_io_7
+
+opendev_fail	lea	opendevfailfmt(pc),a0
+		bsr	printf_window
 
 disk_io_7	move.l	MN_REPLYPORT(a2),d6
 		move.l	A2,A1
@@ -1504,9 +1554,28 @@ disk_io_8	move.l	D6,A1
 		bsr	MyDeletePort
 
 disk_io_9	move.l	a4,a1
-		move.l	#512,d0
+		move.l	#DISKBLOCKSIZE,d0
 		call	FreeMem
-		bra	mainloop
+d_mloop_1	bra	mainloop
+
+;
+; set disk device, dev-command
+;
+setdevice	addq.l	#2,a3
+		bsr	skipspaces
+		tst.b	(a3)
+		beq.s	showdev
+		lea	DevNameBuf(a5),a0
+		moveq	#DNBUFSIZE-2,d1
+01$		move.b	(a3)+,(a0)+
+		dbeq	d1,01$
+		clr.b	(a0)
+		bra.s	d_mloop_1
+
+showdev		lea	DevNameBuf(a5),a0
+		bsr	printstring_a0
+		emit	LF
+		bra.s	d_mloop_1
 
 *** PLAY DIGITIZED SOUND ***
 digisound	bsr	get_expr
@@ -1591,7 +1660,7 @@ block_check	bsr	get_expr
 		move.l	D0,A0
 		move.l	D0,A1
 		moveq	#0,D0
-		moveq	#512/4-1,D1	;disk block size 512 bytes
+		moveq	#DISKBLOCKSIZE/4-1,D1	;disk block size 512 bytes
 
 bl_check	add.l	(A0)+,D0
 		dbf	D1,bl_check
@@ -1993,6 +2062,8 @@ disassem
 		bne.s	nodel
 		cmp.b	#'l',1(A3)
 		beq	Deletefile
+		cmp.b	#'v',1(a3)
+		beq	setdevice
 nodel		cmp.b	#'i',(A3)
 		bne.s	nodir
 		cmp.b	#'r',1(A3)
@@ -3021,7 +3092,7 @@ ex37a		cmp.b	#'[',d0
 		bne.s	01$
 		addq.l	#1,a3
 01$		moveq	#0,d0
-		move.b	RegCC(a5),d0
+		move.b	RegCCR_B(a5),d0
 		bra.s	ex37z
 ex37b		lea	AddrRegs+4*7(a5),a0
 		cmp.b	#'sp',d0
@@ -5190,7 +5261,7 @@ nopc		cmp.w	#'cc',D0	;condition code register
 		addq.l	#1,a3
 01$		bsr.s	skipequal
 		bsr	get_expr
-		move.b	D0,RegCC(a5)
+		move.b	D0,RegCCR_B(a5)
 regs_mainloop_jmp
 		bra	mainloop
 
@@ -5234,7 +5305,7 @@ displayregs	startline
 		bsr	phex1_8
 		move.l	#' CCR',(A3)+
 		putchr	<'='>
-		move.b	RegCC(a5),D0
+		move.b	RegCCR_B(a5),D0
 		move.b	D0,D2
 		moveq	#2,d1
 		bsr	put_hexnum1
@@ -5576,7 +5647,10 @@ go_com		bsr	SetBreaks
 
 		move.l	AddrRegs+7*4(a5),sp
 		move.l	RegPC(a5),-(sp)
-		move.b	RegCC(a5),ccr
+;
+; move <ea>,ccr size is WORD! assemblers should check size specifiers better.
+;
+		move.w	RegCCR_W(a5),ccr
 		movem.l	DataRegs(a5),D0-D7/A0-A6
 		rts	;this really jumps to the user program
 
@@ -5591,8 +5665,8 @@ returncode	movem.l	d0-d2/a0-a1/a5-a6,-(sp)
 		suba.l	a1,a1
 		call	FindTask
 		move.l	d0,a1
-		move.l	TC_TRAPDATA(a1),a5
-		move.b	d2,RegCC(a5)
+		move.l	TC_Userdata(a1),a5
+		move.b	d2,RegCCR_B(a5)
 		movem.l	(sp)+,d0-d2/a0-a1
 		movem.l	d0-d7/a0-a4,DataRegs(a5)
 		move.l	(sp)+,AddrRegs+4*5(a5)		a5
@@ -5612,7 +5686,7 @@ trapreturn	;Note! We are in supervisor mode!
 		movem.l	d0/a0/a5/a6,-(sp)
 		move.l	ExecBase,a6
 		move.l	ThisTask(a6),a5
-		move.l	TC_TRAPDATA(a5),a5
+		move.l	TC_Userdata(a5),a5
 
 		cmp.l	#9,4*4(sp)			trace?
 		bne.s	noskipbrk
@@ -5650,7 +5724,7 @@ noskipbrk	cmp.l	#7,4*4(sp)		is this a TRAPV-trap
 walk_trap	lea	4*4+4(sp),sp		clean up stack
 		move.l	RegPC(a5),2(sp)
 		move	sr,d0
-		move.b	RegCC(a5),d0
+		move.b	RegCCR_B(a5),d0
 		bclr	#13,d0			supervisor mode off
 		bset	#15,d0			trace mode on
 		move.w	d0,(sp)
@@ -5676,7 +5750,7 @@ normtrap_1	movem.l	(sp)+,d0/a0
 					;by the 68000
 
 pop_SR_and_PC	move.w	(sp)+,D0	status register
-		move.b	D0,RegCC(a5)
+		move.b	D0,RegCCR_B(a5)
 		move.l	(sp)+,a4
 		cmp.w	#ILLEGAL,(a4)
 		seq	d7
@@ -7304,48 +7378,48 @@ instr_names	dc.b	'as',0
 **** HELP TEXT ****
 helptext	dc.b	FF,TAB,TAB,'-- Amiga Monitor v'
 		VERSION
-		dc.b	' help (i=info) --',LF
-		dc.b	'x',TAB,TAB,': exit',TAB,TAB
-		dc.b	'| \',TAB,TAB,TAB,': NewCLI',LF
+		dc.b	' help (i=info, x=exit) --',LF
 		dc.b	'o [name]',TAB,':redirect output'
-		dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
+		dc.b	'| \',TAB,TAB,TAB,': NewShell',LF
 		dc.b	'dir [name]',TAB,': directory',TAB
-		dc.b	'| ] addr length name',TAB,': save absolute',LF
+		dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
 		dc.b	'cd [name]',TAB,': current dir',TAB
-		dc.b	'| < addr dr block cnt',TAB,': read disk blocks',LF
+		dc.b	'| ] addr length name',TAB,': save absolute',LF
 		dc.b	'l name',TAB,TAB,': load segment',TAB
-		dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
+		dc.b	'| < addr dr block cnt',TAB,': read disk blocks',LF
 		dc.b	'sl',TAB,TAB,': segment list',TAB
-		dc.b	'| ! addr len per [cnt]',TAB,': play digisound',LF
+		dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
 		dc.b	'u',TAB,TAB,': unload segment'
-		dc.b	'| = addr',TAB,TAB,': disk block checksum',LF
+		dc.b	'| dev devicename',TAB,': set disk device',LF
 		dc.b	'r [reg=num]',TAB,': set/show regs',TAB
-		dc.b	'| # addr',TAB,TAB,': bootblock checksum',LF
+		dc.b	'| = addr',TAB,TAB,': disk block checksum',LF
 		dc.b	'a addr',TAB,TAB,': assemble',TAB
-		dc.b	'| g [addr]',TAB,TAB,': execute (go)',LF
+		dc.b	'| # addr',TAB,TAB,': bootblock checksum',LF
 		dc.b	'd addr1 addr2',TAB,': disassemble',TAB
-		dc.b	'| j [addr]',TAB,TAB,': jump to subroutine',LF
+		dc.b	'| ! addr len per [cnt]',TAB,': play digisound',LF
 		dc.b	'm addr1 addr2',TAB,': display memory'
-		dc.b	'| w [addr]',TAB,TAB,': single step (walk)',LF
+		dc.b	'| g [addr]',TAB,TAB,': execute (go)',LF
 		dc.b	': addr bytes',TAB,': modify memory',TAB
-		dc.b	'| e [addr]',TAB,TAB,': execute one instr.',LF
+		dc.b	'| j [addr]',TAB,TAB,': jump to subroutine',LF
 		dc.b	'b addr',TAB,TAB,': set breakpoint'
-		dc.b	'| q [addr]',TAB,TAB,': quicktrace',LF
+		dc.b	'| w [addr]',TAB,TAB,': single step (walk)',LF
 		dc.b	'bl',TAB,TAB,': list brkpoints'
-		dc.b	'| ( length',TAB,TAB,': allocate memory',LF
+		dc.b	'| e [addr]',TAB,TAB,': execute one instr.',LF
 		dc.b	'br addr/all',TAB,':remove brkpoint'
-		dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF
+		dc.b	'| q [addr]',TAB,TAB,': quicktrace',LF
 		dc.b	'f addr1 addr2 bytes: fill mem',TAB
-		dc.b	'| ) addr/all',TAB,TAB,': free memory',LF
+		dc.b	'| ( length',TAB,TAB,': allocate memory',LF
 		dc.b	'@ [line]',TAB,': enter cmd line'
-		dc.b	'| sm',TAB,TAB,TAB,': show allocated mem',LF
+		dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF
 		dc.b	'ba [decnum]',TAB,': set/show base',TAB
-		dc.b	'| c addr1 addr2 dest',TAB,': compare memory',LF
+		dc.b	'| ) addr/all',TAB,TAB,': free memory',LF
 		dc.b	'? [expr]',TAB,': calculator',TAB
-		dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
+		dc.b	'| sm',TAB,TAB,TAB,': show allocated mem',LF
 		dc.b	'mi addr',TAB,TAB,': memory info',TAB
-		dc.b	'| h addr1 addr2 bytes',TAB,': hunt memory',LF
+		dc.b	'| c addr1 addr2 dest',TAB,': compare memory',LF
 		dc.b	'cv',TAB,TAB,': clear vars',TAB
+		dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
+		dc.b	'h addr1 addr2 bytes :hunt memory'
 		dc.b	'| set [var=expr]',TAB,': set/show variables',LF,0
 
 **** INFO TEXT ****
@@ -7401,11 +7475,13 @@ expr_errtxt	dc.b	'expr error',0
 memerr		dc.b	'Out of memory',0
 doserrfmt	dc.b	'DOS error '
 numfmt		dc.b	'%ld',LF,0
-td_errfmt	dc.b	'Trackdisk error %ld',0
+td_errfmt	dc.b	'Disk error %ld',0
 nodisktxt	dc.b	'No disk in drive',0
 wrprotxt	dc.b	'Disk write protected',0
+opendevfailfmt	dc.b	'Can''t open device, error #%ld',LF,0
 
-NewCliCom	dc.b	'NewCLI',0
+NewShellCom	dc.b	'NewShell',0
+NewCLICom	dc.b	'NewCLI',0
 
 comhfmt		dc.b	'%08lx ',0
 sumfmt		dc.b	'Old: $%08lx New: $%08lx',LF,0

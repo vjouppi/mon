@@ -346,3 +346,17 @@ _LVOWritePotgo		equ	-18
 _LVOAddTime		equ	-42
 _LVOSubTime		equ	-48
 _LVOCmpTime		equ	-54
+*** misc.resource
+_LVOAllocMiscResource	equ	-6
+_LVOFreeMiscResource	equ	-12
+*** disk.resource
+_LVOAllocUnit		equ	-6
+_LVOFreeUnit		equ	-12
+_LVOGetUnit		equ	-18
+_LVOGiveUnit		equ	-24
+_LVOGetUnitID		equ	-30
+*** cia.resource
+_LVOAddICRVector	equ	-6
+_LVORemICRVector	equ	-12
+_LVOAbleICR		equ	-18
+_LVOSetICR		equ	-24

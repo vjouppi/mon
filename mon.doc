@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.24 instructions
+                 Amiga Monitor v1.25 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -20,7 +20,7 @@
   CLI environment or else they may wait for workbench startup message
   forever...)
 
-  The monitor is re-entrant (pure) code and can be made resident with
+  The monitor is re-entrant (pure) code and can be made resident
   (for example, using the Workbench 1.3 resident command or ARP 1.3 ares)
 
 
@@ -421,21 +421,39 @@ sm -- Show allocated memory
   ] <addr> <length> <name> -- creates a file named <name> and writes <length>
  bytes of memory starting at <addr> to the file.
 
+dev -- set/show current disk device
+ Usage:
+  dev  --  show current disk device
+  dev devname -- set current disk device
+
+ devname is an exec device name, given without quotes and with the '.device'-
+ suffix. for example, if you have a 2090 hd controller, you can
+ set it as the default disk device with the command: dev hddisk.device
+ Note that the disk read/write commands work in the exec device level and
+ know nothing about hard disk partitions. Be careful if you use the monitor
+ to edit hard disk sectors! Note also that actual disk IO buffers used by
+ the monitor are always in chip memory.
+
+ The current disk device is used by the '<' and '>'-commands.  Previous
+ versions of the monitor had them hardwired to use trackdisk.device.
+
 <  -- Read disk sectors
  Usage:
-  < <addr> <drive> <start-sector> <number-of-sectors>
- Reads <number-of-sectors> sectors from the disk in unit <drive> to memory
- starting at <addr>. <drive> is a number between 0..3,
- corresponding the DOS devices DF0: -- DF3:
+  < <addr> <unit> <start-sector> <number-of-sectors>
+ Reads <number-of-sectors> sectors from the disk in unit <unit> to memory
+ starting at <addr>. <unit> is the unit number to be used in OpenDevice().
+ with the default device (trackdisk.device) units 0..3 correspond DOS
+ devices DF0: -- DF3:
 
  the read destination address does not need to be in chip memory.
 
 >  -- Write disk sectors
  Usage:
-  > <addr> <drive> <start-sector> <number-of-sectors>
- Writes <number-of-sectors> sectors to the disk in unit <drive> from memory
- starting at <addr>. <drive> is a number between 0..3,
- corresponding the DOS devices DF0: -- DF3:
+  > <addr> <unit> <start-sector> <number-of-sectors>
+ Writes <number-of-sectors> sectors to the disk in unit <unit> from memory
+ starting at <addr>. <unit> is the unit number to be used in OpenDevice().
+ with the default device (trackdisk.device) units 0..3 correspond DOS
+ devices DF0: -- DF3:
 
  the write source address does not need to be in chip memory.
 
@@ -469,8 +487,11 @@ dir [<name>]   -- Displays the directory
   if you don't specify the name, then current directory
   will be displayed.
 
-\ -- New CLI
-  Opens a new CLI window by executing a 'NewCLI'-command.
+\ -- New Shell
+  Opens a new Shell window by executing a 'NewShell'-command.
+  if that fails, tries to open a CLI window with a 'NewCLI'-command
+  (this uses Dos Execute, so it requires the Run-command to be
+  in the C:-directory)
 
 x -- Exit
   Cleanup and exit.
@@ -479,6 +500,12 @@ x -- Exit
 
 Version history:
 ----------------
+1.25 ->
+ - (internal change) now uses TC_Userdata instead of TC_TrapData because
+   TC_TrapData is marked as private in 1.4/2.0 includes.
+ - '\'-command now first tries to start a shell, then a CLI.
+ - disk read/write commands can be used with hard disks etc.
+ - fixed condition code register setting with go and jump commands.
 1.24 ->
  - corrected a small bug in the assembler/disassembler mnemonic tables
    (trap and tas-instructions were accidentally exchanged...)
@@ -552,10 +579,10 @@ Version history:
 
 
 
-Amiga Monitor v1.24 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.25 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the zoo-file 'mon124.zoo'.
+way of distribution is the zoo-file 'mon125.zoo'.
 
 
 Send suggestions, bug reports etc. to:
