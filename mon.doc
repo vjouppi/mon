@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.58 instructions
+                 Amiga Monitor v1.59 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -88,6 +88,15 @@
       When this flag is set, the monitor echoes each command to its
       output window/file before actually executing the commands.
       This is mainly useful with scripts.
+
+   - flag #5
+      Normally the monitor automatically resets the stack pointer
+      to point to the normal stack area if it originally was out
+      of range in the j/g/w/e/q-commands. This automatic stack reset
+      can be disabled with this option flag. This is useful when
+      debugging programs that allocate their own stacks and change
+      the stack pointer there. The stack pointer can be reset manually
+      with the rs-command.
 
   Command `opt' without parameters lists the current flag settins.
   This includes a hexadecimal `flag value' that can be used on
@@ -508,7 +517,9 @@ bl -- List breakpoints
 The g, j, w, q and e-commands use the current program counter value
 (displayed with the r-command) if you don't give them an address.
 The stack pointer is reset and a return address to the monitor is
-put in the stack if the stack pointer is out of range.
+put in the stack if the stack pointer is out of range. This automatic
+stack pointer reset can be disabled with option flag #5. The stack
+pointer can be manually reset with the 'rs'-command.
 
 g [addr] -- Go (execute machine code)
 
@@ -592,6 +603,9 @@ l -- Load segment
   defined by `set' command, but they also have a hunk number associated with
   them (it shows in square brackets in the `set' listing). Also, the symbols
   are automatically removed when the file is unloaded with the `u'-command.
+
+  The command line (see @-command) is initialized as empty when this
+  command is executed.
 
   Overlays are not supported.
 
@@ -764,11 +778,19 @@ vr -- show resource list
 
 vp -- show port list
   Shows the addresses, SigBits, mp_Flags-fields and names of all public
-  message ports currently in the system.
+  message ports currently in the system (Note: the flags-field is not
+  in hexadecimal, it was in decimal in previous versions)
 
 vs -- show semaphore list
-  Shows the addresses and names of all public signalsemaphores currently
+  Shows the addresses and names of all public SignalSemaphores currently
   in the system.
+
+ve -- show autoconfig device list
+  Lists information about the autoconfig boards/devices in the system.
+  The ConfigDev structure address, board hardware address, manufacturer and
+  product numbers, size of board in KBytes and cd_Flags/er_Flags values
+  are shown. The ConfigDev and board addresses and the flags are in
+  hexadecimal, the other numbers are in decimal.
 
 echo -- display text and/or numbers
   Usage:
@@ -863,6 +885,13 @@ if counter <= _10 goto loop
 
 Version history:
 ----------------
+1.59 ->
+ - added 've'-command (list autoconfig devices)
+ - 'no auto stackreset'-option flag and 'rs'-command to reset
+   the stack pointer
+ - automatically initializes a0/d0 to point to an empty
+   command line when 'l'-command is used to load a new executable file.
+
 1.58 ->
  - changed window position/size logic. now monitor window should
    open to the visible part of a bigger-than-display screen.
@@ -1092,10 +1121,10 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.58 Copyright © 1987-1993 by Timo Rossi. The monitor
+  Amiga Monitor v1.59 Copyright © 1987-1993 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 `patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lha-archive `mon158.lha'.
+way of distribution is the lha-archive `mon159.lha'.
 
   Permission is given to Fred Fish to distribute this program
 on his `Fish disks'.

@@ -8,6 +8,8 @@
 		include "exec/tasks.i"
 		include "exec/execbase.i"
 		include "libraries/dosextens.i"
+		include	"libraries/configregs.i"
+		include	"libraries/configvars.i"
 		include "offsets.i"
 		list
 
@@ -385,6 +387,53 @@ t_align		move.l	a3,d1
 
 ;
 ;
+		cmd	list_expansion
+
+		lea	expansion_name(pc),a1
+		moveq	#0,d0
+		lib	Exec,OpenLibrary
+		tst.l	d0
+		beq	list_exp_exit
+		move.l	d0,a6
+		clra	a5
+
+		lea	list_exp_hdr(pc),a0
+		call	printstring_a0
+
+list_exp_loop	moveq	#-1,d0
+		moveq	#-1,d1
+		move.l	a5,a0
+		lib	FindConfigDev
+		tst.l	d0
+		beq	list_exp_end
+		move.l	d0,a5
+
+		lea	list_exp_fmt1(pc),a0
+		move.l	a5,d0
+		move.l	cd_BoardAddr(a5),d1
+		moveq	#0,d2
+		move.w	cd_Rom+er_Manufacturer(a5),d2
+		moveq	#0,d3
+		move.b	cd_Rom+er_Product(a5),d3
+		move.l	cd_BoardSize(a5),d4
+		lsr.l	#8,d4
+		lsr.l	#2,d4
+		call	printf
+		lea	list_exp_fmt2(pc),a0
+		moveq	#0,d0
+		move.b	cd_Flags(a5),d0
+		moveq	#0,d1
+		move.b	cd_Rom+er_Flags(a5),d1
+		call	printf
+		bra	list_exp_loop
+
+list_exp_end	move.l	a6,a1
+		lib	Exec,CloseLibrary
+
+list_exp_exit	rts
+
+;
+;
 task_hdr_txt	dc.b	'  Node   Type State Pri  Name',LF,0
 task_list_fmt	dc.b	'%08lx   %lc   %lc   %3ld   %s',LF,0
 
@@ -393,9 +442,13 @@ t_states	dc.b	'iacrwez?'
 lib_hdr_txt	dc.b	'  Node    Ver  Rev  Cnt   Name',LF,0
 lib_list_fmt	dc.b	'%08lx %4ld %4ld %4ld   %s',LF,0
 port_hdr_txt	dc.b	'  Node  SigBit Flags  Name',LF,0
-port_list_fmt	dc.b	'%08lx  %3ld   %2ld    %s',LF,0
+port_list_fmt	dc.b	'%08lx  %3ld   %02lx    %s',LF,0
 res_hdr_txt	dc.b	'  Node     Name',LF,0
 res_list_fmt	dc.b	'%08lx   %s',LF,0
 
+expansion_name	dc.b	'expansion.library',0
+list_exp_hdr	dc.b	'ConfigDev  BoardAddr  Manuf. Prod. Size(KB) cd_Flags er_Flags',LF,0
+list_exp_fmt1	dc.b	'%08lx   %08lx  %5ld   %3ld   %6ld',0
+list_exp_fmt2	dc.b	'      %02lx      %02lx',LF,0
 
 		end

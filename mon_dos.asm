@@ -11,6 +11,7 @@
 		include "exec/memory.i"
 		include	"exec/libraries.i"
 		include "dos/dos.i"
+		include	"dos/dosextens.i"
 		include	"dos/dostags.i"
 		include "offsets.i"
 		list
@@ -166,6 +167,15 @@ printf_dirfile	call	printf
 		move.l	(sp)+,d2
 		lea	seg_addr_fmt(pc),a0
 		call	printf
+
+;
+; setup an empty command line
+;
+		lea	mon_CmdLineBuf(a4),a0
+		move.b	#LF,(a0)
+		move.l	a0,mon_AddrRegs(a4)
+		moveq	#1,d0
+		move.l	d0,mon_DataRegs(a4)
 
 		tst.b	d5
 		beq.s	ret_01
@@ -470,10 +480,25 @@ ret_02		rts
 		move.l	d0,d5
 		beq.s	new_shell
 
+	ifnd	SET_CONSOLE_TASK
+		move.l	mon_Task(a4),a2
+		move.l	pr_ConsoleTask(a2),d6
+
+		move.l	d3,d1
+		lsl.l	#2,d1
+		move.l	d1,a1
+		move.l	fh_Type(a1),pr_ConsoleTask(a2)
+	endc
+
 		lea	con_name(pc),a0
 		move.l	a0,d1
 		move.l	#MODE_OLDFILE,d2
 		lib	Open
+
+	ifnd	SET_CONSOLE_TASK
+		move.l	d6,pr_ConsoleTask(a2)
+	endc
+
 		move.l	d0,d4
 		beq.s	ret_02
 

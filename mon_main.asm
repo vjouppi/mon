@@ -690,6 +690,7 @@ command_names
 		dc.b	'sl',0		;show seglist
 		dc.b	'sm',0		;show allocated memory
 		dc.b	'set',0		;set variable
+		dc.b	'sr',0		;stack reset
 		dc.b	'z',0		;skip instruction
 		dc.b	'e',0		;execute one instruction
 		dc.b	'w',0		;trace (walk)
@@ -726,6 +727,7 @@ command_names
 		dc.b	'vr',0		;list resources
 		dc.b	'vp',0		;list ports
 		dc.b	'vs',0		;list semaphores
+		dc.b	've',0		;list expansion devices
 
 		dc.b	0		;end of command table
 
@@ -763,6 +765,7 @@ command_table	command	list_commands
 		command	showseglist
 		command	showmemory
 		command	setvariable
+		command	stackreset
 		command	skip_one
 		command	exe_one
 		command	walk
@@ -799,6 +802,7 @@ command_table	command	list_commands
 		command list_resources
 		command list_ports
 		command list_semaphores
+		command	list_expansion
 
 **** HELP TEXT ****
 help_text	dc.b	TAB,'-- Amiga Monitor v'

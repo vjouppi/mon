@@ -4,8 +4,8 @@
 
 ;
 ; include file for Amiga Monitor
-; version 1.55 -- 1992-03-10
-; Copyright © 1991 by Timo Rossi
+; version 1.59 -- 1993-05-05
+; Copyright © 1993 by Timo Rossi
 ;
 		ifnd	EXEC_TYPES_I
 		include	"exec/types.i"
@@ -168,7 +168,10 @@ mon_RegSP	equ	mon_AddrRegs+7*4
 		 UBYTE	mon_RelBaseReg	;base register, works with RelBaseAddr
 					;-1 if not in use
 		LABEL MonitorData_SIZE
-
+;
+; Hmm.. I think that I put this check here for a good reason, but I can't
+; remember what is was... probably a bug in assembler or something...
+;
 		ifne	MonitorData_SIZE-$77a
 		fail	Panic! MonitorData wrong size!
 		endc
@@ -186,10 +189,12 @@ mon_RegSP	equ	mon_AddrRegs+7*4
 		BITDEF	MON,TASKSET,6
 
 ;
-; Monitor option flags (note: they now start from zero, not one...1.42)
+; Monitor option flags
 ;
 		BITDEF	OPT,NARROWDIS,0
 		BITDEF	OPT,EXTPRTCHR,1
 		BITDEF	OPT,DUMBTERM,2
 		BITDEF	OPT,CMDECHO,3
-MON_NUM_OPTIONS	equ	4
+		BITDEF	OPT,STACKRESET,4
+
+MON_NUM_OPTIONS	equ	5

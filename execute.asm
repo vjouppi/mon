@@ -276,20 +276,24 @@ RemBr2		move.l	(A1),D2
 		bra.s	RemBr1
 
 RemBr3		bclr	#MONB_TMPBRK,mon_Flags(a4)
-		beq.s	Flush_Cache
+		beq.b	Flush_Cache
 
 		move.l	mon_TempBreakAddr(a4),a0
 		move.w	mon_TempBreakSave(a4),(a0)
-		bra.s	Flush_Cache
+		bra.b	Flush_Cache
 
 ;
 ; check stack pointer and reset it if necessary
 ; now resets also if stack pointer is odd
+; don't reset stack if OPTB_STACKRESET is set (unless SP is odd)
 ;
 check_stackptr	move.l	mon_RegSP(a4),d0
 		btst	#0,d0
-		bne.s	reset_stack
+		bne.b	reset_stack
 		move.l	d0,a2
+
+		btst	#OPTB_STACKRESET,mon_Options(a4)
+		bne.b	stack_set
 
 		move.l	mon_StackHigh(a4),a0
 		cmp.l	a0,a2
@@ -306,6 +310,16 @@ reset_stack	move.l	a0,a2
 
 stack_set	move.l	a2,mon_RegSP(a4)		;sp
 rts_001		rts
+
+
+;
+; stack reset command
+;
+		cmd	stackreset
+
+		move.l	mon_StackHigh(a4),a0
+		bra	reset_stack
+
 
 *** QUICK TRACE ***
 ;executes code in trace mode until a flow control-instruction is encountered
@@ -437,6 +451,8 @@ returncode	movem.l	d0-d2/a0-a1/a4/a6,-(sp)
 
 		bclr	#MONB_QTRACE,mon_Flags(a4)
 		bsr	RemBreaks
+
+		bsr	flush_stdout
 
 		lea	returned_txt(pc),A0
 		call	printstring_a0
@@ -626,7 +642,10 @@ no_qtrace	move.l	mon_RegPC(a4),D0
 
 do_brkpoint	lea	brkpoint_txt(pc),A0
 
-trap_msg_dregs	call	printstring_a0
+trap_msg_dregs	move.l	a0,-(sp)
+		bsr	flush_stdout
+		move.l	(sp)+,a0
+		call	printstring_a0
 		bra.s	trap_dregs
 
 handle_brk_count
@@ -640,7 +659,8 @@ handle_brk_count
 		bsr	Flush_Cache
 		bra	go_special
 
-normal_trap	bsr.s	show_trap_name
+normal_trap	bsr	flush_stdout
+		bsr.s	show_trap_name
 
 trap_dregs	bclr	#MONB_QTRACE,mon_Flags(a4)
 		bsr	RemBreaks
@@ -735,6 +755,19 @@ dbug		lea	hexfmt(pc),a0
 		move.l	a4,d0
 		call	printf
 mloop_j		rts
+
+;
+; flush 2.0+ buffered output to standard output
+;
+flush_stdout	getbase	Dos
+		cmp.l	#36,LIB_VERSION(a6)
+		bcs.b	flsh_stdout_done
+		lib	Output
+		move.l	d0,d1
+		beq.b	flsh_stdout_done
+		lib	Flush
+flsh_stdout_done
+		rts
 
 returned_txt	dc.b	'*** Returned ***',LF,0
 brkpoint_txt	dc.b	'*** Breakpoint ***',LF,0

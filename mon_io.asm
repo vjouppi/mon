@@ -104,7 +104,7 @@ print_loop	move.l	a2,d2
 
 ;
 ; format a string in output buffer using RawDoFmt
-; arguments in registers d0-d3
+; arguments in registers d0-d4
 ;
 		pub	fmtstring
 

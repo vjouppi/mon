@@ -297,6 +297,7 @@ option_strings	dc.b	'Narrow disassembly',0
 		dc.b	'8BitChars printable',0
 		dc.b	'Dumb terminal',0
 		dc.b	'Echo commands',0
+		dc.b	'No auto stackreset',0
 		dc.b	0
 
 		end

@@ -38,6 +38,7 @@
 * v1.56 ->	     1993-02-06	   *
 * v1.57 ->	     1993-03-16+   *
 * v1.58 ->	     1993-04-04    *
+* v1.59 ->	     1993-05-05..  *
 ************************************
 
 ;
@@ -504,4 +505,12 @@
 ; 1993-04-04 --> 1.58
 ;		- window position/size logic changed. now should open window
 ;		  to the visible part of bigger-than-display screen.
+;
+;
+; 1993-05-05 --> 1.59
+;		- added autoconfig device list command
+;		- load segment command now sets an empty command line
+;		- added "don't reset stack" option flag
+;		  and rs-command to reset stack
+;		- now does a console task trick in '\'-command
 ;
