@@ -13,6 +13,7 @@
 * v1.18 -> last mod. 1989-12-14    *
 * v1.19 -> last mod. 1989-12-21    *
 * v1.20 -> last mod. 1989-12-31    *
+* v1.22 -> last mod. 1990-01-07    *
 *                                  *
 ************************************
 
@@ -273,17 +274,36 @@
 ;		- uses 'new' include files
 ;		- added ^^-command for debugging. this command displays
 ;		  the monitor data area pointer.
-;		- (adding new trace modes...)
 ;
+; 1990-01-06..07 --> v1.22
+;		- removed some unused strings...they were left
+;		  when the disassembler routines were changed...
+;		- added e-command (execute one instruction)
+;		  this command can be used as trace command that doesn't
+;		  enter subroutines.
+;		  it executes the instruction by placing a temporary
+;		  breakpoint after the instruction.
+;		- memdisplay now reads memory as bytes can can be started
+;		  at odd address.
+;		- the monitor window initial size is now full 200 lines
+;		  on NTSC machines (full help text fits in the window).
+;		- edited help and info texts.
+;		- cleaned up monitor TC_TRAPDATA routine and go/jump-
+;		  routines (especially stack pointer handling).
+;		- j, g, w and e-commands now reset stack pointer
+;		  if necessary.
+;
+
 
 		include	'exec/types.i'
 		include	'include.i'
 		include	'offsets.i'
 		include	'macros.i'
 
+
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.21'
+		dc.b	'1.22'
 		endm
 
 *** macro to display a single character ***
@@ -312,6 +332,7 @@ putchr		macro
 		move.b	#\1,(a3)+
 		endm
 
+
 ; definitions of the instruction size variable
 BSIZE		equ	0
 WSIZE		equ	1
@@ -322,7 +343,6 @@ LSIZE		equ	2
 CtrlC	equ	3	;control-c, break
 CtrlE	equ	5	;control-key to edit existing assembler instruction
 CtrlK	equ	11	;cursor up
-CLS	equ	12	;clear screen (form feed)
 CtrlX	equ	24	;control-x, clear input line
 SPACE	equ	32
 NCSI	equ	CSI-$100	;this one can be used with MOVEQ
@@ -369,17 +389,27 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 		 APTR	MyTask		;pointer to TCB of monitor process
 		 APTR	OldTrapCode	;task trap code when monitor was started
 		 APTR	OldTrapData	;task trap data when monitor was started
+
 		 LONG	WinFile		;main window file handle
+		 LONG	OutputFile	;current output file handle
+
 		 APTR	ConsoleUnit	;console device unit pointer for main window
 		 APTR	StackPtr	;saved monitor stack pointer
+
 		 LONG	SegList		;currently loaded segment
+
 		 APTR	MemoryList	;linked list of allocated memory
 		 APTR	BreakList	;linked list of breakpoints
 		 APTR	VarList		;linked list of variables
-		 LONG	OutputFile	;current output file handle
+
 		 APTR	Addr		;current address
 		 APTR	EndAddr		;for disassembler & memdisplay
 		 APTR	instrad		;instruction address for disassembler
+
+		 APTR	StackHigh	;high limit of stack used
+					;by g- and j-commands
+
+		 APTR	TmpBrkAddr	;address of temporary breakpoint
 
 		 APTR	GoBrkPtr	;address of skipped brkpoint struct
 
@@ -397,7 +427,11 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 		 UBYTE	pad
 
 ; now word and byte variables
+		 UWORD	TmpBrkSave	;storage for original contents
+					;of a temporary breakpoint
+
 		 UWORD	opcode		;opcode for disassembler
+
 		 UWORD	size		;current instruction size
 		 UWORD	inpspecial	;input special mode for GetInput
 		 UBYTE	flags		;flags, see below for bitdefs...
@@ -410,6 +444,7 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 
 		BITDEF	MON,BRKACTIVE,0
 		BITDEF	MON,BRKSKIP,1
+		BITDEF	MON,TMPBRK,2
 
 ;
 ; equates for disassembler routine
@@ -473,7 +508,7 @@ TOKSTART	equ	$a0
 monitor_code_start
 		moveq	#0,d5
 		move.l	d5,a1
-		call	ExecBase,FindTask		;find our task
+		call	ExecBase,FindTask	;find our task
 		move.l	D0,A4
 		tst.l	pr_CLI(A4)		;started from CLI ?
 		bne.s	main			;branch if yes
@@ -523,7 +558,13 @@ main		move.l	#MonitorData_SIZE,d0
 
 		lea	OutputBuffer(a5),a0
 		movem.w	sc_Width(a0),d0-d1	this sign-extends to long
-		subq.w	#8,d1
+;#
+;# this causes the monitor to open a full-height window on a NTSC display
+;#
+		cmp.w	#200,d1
+		bls.s	200$
+		sub.w	#16,d1
+200$
 ;
 ; window "filename" is created using RawDoFmt in the output buffer
 ;
@@ -577,10 +618,14 @@ main		move.l	#MonitorData_SIZE,d0
 ; set the stack pointer
 ;
 		move.l	sp,A0
-		sub.w	#$100,A0		;a safe area from this task's stack
+		sub.w	#$200,A0		;a safe area from this task's stack
 		move.l	a0,d0
 		and.b	#$fc,d0			;long word align
 		move.l	d0,AddrRegs+4*7(a5)	;set stack pointer
+		move.l	d0,StackHigh(a5)
+		lea	returncode(pc),a1
+		move.l	d0,a0
+		move.l	a1,(a0)
 
 		lea	welcometxt(pc),A0
 		bsr	printstring_a0_window		;display welcome message
@@ -593,8 +638,10 @@ mainloop	move.l	StackPtr(a5),sp		;restore stack pointer
 		moveq	#0,D0			;clear CTRL-C/D/E/F flags
 		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
 		call	ExecBase,SetSignal
-		lea	prompt(pc),A0
+
+		lea	main_prompt(pc),A0
 		bsr	printstring_a0_window	;display prompt
+
 		moveq	#0,D0
 		bsr	GetInput
 		move.b	(A3)+,D0
@@ -608,26 +655,23 @@ mainloop	move.l	StackPtr(a5),sp		;restore stack pointer
 		bra.s	mainloop
 
 ml1		bsr	tolower
-		lea	comtable(pc),A0
-		moveq	#0,D1		;find command...
 
-findcom		cmp.b	(A0),D0
-		beq.s	foundcom
-		addq.l	#1,D1
-		cmp.b	#$FF,(A0)+	;end of command table ??
-		bne.s	findcom
+		lea	comtable(pc),A0
+		moveq	#NUMCOM-1,d1
+01$		cmp.b	(a0)+,d0
+		dbeq	d1,01$
+		bne.s	error
+
+		add.w	d1,d1
+		lea	comadrs(pc),a0
+		add.w	d1,a0
+		add.w	(a0),a0
+		jmp	(a0)
 
 error		lea	errtx(pc),A0	;command not found, print error message
 errcom		bsr	printstring_a0_window
 		emitwin	LF
 		bra.s	mainloop
-
-foundcom			;command found, execute it
-		add.l	D1,D1		;D1 = D1 * 2
-		lea	comadrs(pc),A0
-		add.l	D1,A0
-		add.w	(A0),A0		;get command address
-		jmp	(A0)		;jump to command
 
 *** THE HELP COMMAND ***
 help		lea	helptext(pc),A0
@@ -1662,7 +1706,7 @@ memcomp		move.b	(a3),d0
 		bne.s	no_cls
 
 *** THE CLS COMMAND ***
-		emitwin	CLS	;Clear the Screen
+		emitwin	FF	;Clear the Screen
 		bra.s	jmp_mainloop_3
 
 **** COMPARE MEMORY ****
@@ -1878,7 +1922,6 @@ getparams	bsr	skipspaces
 		tst.b	(A3)
 		beq.s	param9
 		bsr	get_expr
-		bclr	#0,D0
 		move.l	D0,Addr(A5)
 		bsr	skipspaces
 		tst.b	(A3)
@@ -1939,6 +1982,7 @@ nodel		cmp.b	#'i',(A3)
 
 **** DISASSEMBLE ****
 nodir		bsr	getparams
+		bclr	#0,Addr+3(a5)
 		move.l	Addr(A5),A4
 
 disasmloop	startline
@@ -2702,8 +2746,19 @@ memoryinfo	addq.l	#1,a3
 
 599$		bra	mainloop
 
+;
+; subroutine to read an unaligned word
+;
+mgetw		move.b	(a4)+,d0
+		lsl.w	#8,d0
+		move.b	(a4)+,d0
+		rts
 
 **** DISPLAY MEMORY ****
+;#
+;# ->v1.22  1990-01-06
+;# memdisplay now reads memory as bytes and can be started at odd address.
+;#
 memdisplay	move.b	(a3),d0
 		bsr	tolower
 		cmp.b	#'i',d0
@@ -2720,16 +2775,21 @@ disploop	startline
 		putchr	<':'>
 		putchr	SPACE
 		moveq	#16/4-1,D2
-01$		move.l	(A4)+,D0
+
+01$		bsr.s	mgetw
+		swap	d0
+		bsr.s	mgetw
 		bsr	phex1_8
 		putchr	SPACE
 		dbf	D2,01$
+
 		sub.w	#16,A4
 		putchr	SPACE
 		tst.b	d6
 		bmi.s	100$
 		putchr	<''''>
 100$		moveq	#16-1,D2
+
 02$		move.b	(A4)+,D0	;printable codes are $20-$7F and $A0-$FF
 		cmp.b	#SPACE+$80,D0
 		bcc.s	03$
@@ -2738,6 +2798,7 @@ disploop	startline
 		move.b	#'.',D0
 03$		move.b	D0,(A3)+
 		dbf	D2,02$
+
 		tst.b	d6
 		bmi.s	101$
 		putchr	<''''>
@@ -5357,9 +5418,23 @@ brk_ret2	clr.l	BreakList(A5)
 ; don't set a breakpoint if the current PC is pointing to it
 ; but save the address of the breakpoint structure so the breakpoint
 ; can be activated from the trap handler...
-;
+;#
+;# ->v1.22 1990-01-06
+;#
+;# a temporary breakpoint address is given as a parameter to this routine
+;# in the register d0. if it is zero, no temporary breakpoint is used.
+;# temporary breakpoint is used by the e-command.
+;#
 SetBreaks	bset	#MONB_BRKACTIVE,flags(a5)
-		move.l	BreakList(A5),D2
+		tst.l	d0
+		beq.s	SetBr0
+		move.l	d0,TmpBrkAddr(a5)
+		bset	#MONB_TMPBRK,flags(a5)
+		move.l	d0,a0
+		move.w	(a0),TmpBrkSave(a5)
+		move.w	#ILLEGAL,(a0)
+
+SetBr0		move.l	BreakList(A5),D2
 SetBr1		tst.l	D2
 		beq.s	brk_ret
 		move.l	D2,A1
@@ -5376,20 +5451,50 @@ SetBr2		move.l	(A1),D2
 *** RESTORE ORIGINAL CONTENTS OF BREAKPOINTS ***
 RemBreaks	bclr	#MONB_BRKACTIVE,flags(a5)
 		beq.s	brk_ret
-		move.l	BreakList(A5),D2
+RemBr0		move.l	BreakList(A5),D2
 RemBr1		tst.l	D2
-		beq.s	brk_ret
+		beq.s	RemBr3
 		move.l	D2,A1
 		move.l	brk_Address(A1),A0
 		move.w	brk_Content(A1),(A0)
-		clr.w	brk_Content(a1)		this helps debugging...
+;#		clr.w	brk_Content(a1)		this helps debugging...
 RemBr2		move.l	(A1),D2
 		bra.s	RemBr1
 
+RemBr3		bclr	#MONB_TMPBRK,flags(a5)
+		beq.s	RemBr9
+
+		move.l	TmpBrkAddr(a5),a0
+		move.w	TmpBrkSave(a5),(a0)
+
+RemBr9		rts
+
+;
+; check stack pointer and reset it if necessary
+;
+check_stackptr	move.l	AddrRegs+4*7(a5),a2
+
+		move.l	StackHigh(a5),a0
+		cmp.l	a0,a2
+		bhi.s	reset_stack
+		lea	-2000(a0),a1
+		cmp.l	a1,a2
+		bcc.s	stack_set
+
+reset_stack	move.l	a0,a2
+		lea	returncode(pc),a1
+		move.l	a1,(a0)			;put return addr. in stack
+		lea	stackreset_txt(pc),a0
+		bsr	printstring_a0_window
+
+stack_set	move.l	a2,AddrRegs+4*7(a5)		;sp
+		rts
+
+
 **** SINGLE STEP (WALK) ****
 * NOTE: This ignores breakpoints
-walk		bsr.s	getpc
-		move.l	AddrRegs+7*4(a5),sp
+walk		bsr	check_stackptr
+		bsr.s	getpc
 		or	#2,CCR		;set overflow flag
 		trapv			;let the trap handler do the rest...
 walk_here	;a label so we can reference it in the handler routine
@@ -5401,25 +5506,46 @@ getpc		bsr	skipspaces
 		move.l	d0,RegPC(a5)
 01$		rts
 
+*** EXECUTE ONE INSTRUCTION ***
+;
+; execute one instruction by placing a temporary breakpoint after it.
+;
+; find the length of the current instruction by disassembling it
+; then set temporary breakpoint to the following instruction and
+; do normal go...
+;
+exe_one		bsr	check_stackptr
+		bsr.s	getpc
+		move.l	RegPC(a5),d0
+		btst	#0,d0		;test if current pc is even
+		bne	error		;error if it is
+		move.l	d0,a4
+		lea	OutputBuffer(a5),a3
+		bsr	disassemble
+		move.l	a4,d0
+		bra.s	go_com
+
 **** EXECUTE MACHINE CODE (GO) ****
-go		bsr	getpc
-		bsr	SetBreaks
-		move.l	AddrRegs+7*4(a5),sp
+go		bsr	check_stackptr
+		bsr.s	getpc
+		moveq	#0,d0
 		bra.s	go_com
 
 **** JUMP TO SUBROUTINE (RETURN WITH RTS) ***
-jumpsr		bsr	getpc
-		bsr	SetBreaks
-		move.l	sp,A0	;set stack ptr
-		sub.w	#$100,A0
-		move.l	a0,d0
-		and.b	#$fc,d0		;long word align
-		move.l	d0,AddrRegs+4*7(a5)
-		move.l	A0,sp
-		lea	returncode(pc),A0
-		move.l	A0,(sp)		;put return address in stack
+jumpsr		bsr	check_stackptr
+		bsr.s	getpc
+		moveq	#0,d0
+;
+; put return address in stack
+;
+		move.l	AddrRegs+7*4(a5),a0
+		lea	returncode(pc),A1
+		move.l	a1,-(a0)
+		move.l	a0,AddrRegs+7*4(a5)
 
-go_com		move.l	RegPC(a5),d0
+go_com		bsr	SetBreaks
+		move.l	AddrRegs+7*4(a5),sp
+		move.l	RegPC(a5),d0
 		bsr	find_break
 		bpl.s	go_special
 
@@ -5445,10 +5571,9 @@ returncode	movem.l	d0-d2/a0-a1/a5-a6,-(sp)
 		movem.l	d0-d7/a0-a4,DataRegs(a5)
 		move.l	(sp)+,AddrRegs+4*5(a5)		;a5
 		move.l	(sp)+,AddrRegs+4*6(a5)		;a6
-		addq.l	#4,sp
 		move.l	sp,AddrRegs+4*7(a5)		;sp
 
-		move.l	StackPtr(a5),sp
+		move.l	StackPtr(a5),sp		;restore monitor sp
 
 		bsr	RemBreaks
 
@@ -5469,6 +5594,8 @@ trapreturn	;Note! We are in supervisor mode!
 		beq.s	noskipbrk
 ;
 ; we have just skipped a breakpoint in trace mode
+;
+; note: user stack pointer does not need to be initialized here
 ;
 		move.l	GoBrkPtr(a5),a5
 		move.l	brk_Address(a5),a0
@@ -5492,15 +5619,17 @@ noskipbrk	cmp.l	#7,4*4(sp)	;is this a TRAPV-trap (possibly by the walk routine)
 ; the code contains a breakpoint. in that case we trace over the
 ; instruction and then continue at full speed
 		bset	#MONB_BRKSKIP,flags(a5)
+
 ; fall to walk trap routine
-walk_trap	move.l	RegPC(a5),4*4+6(sp)
+walk_trap	lea	4*4+4(sp),sp		clean up stack
+		move.l	RegPC(a5),2(sp)
 		move	sr,d0
 		move.b	RegCC(a5),d0
 		bclr	#13,d0			supervisor mode off
 		bset	#15,d0			trace mode on
-		move.w	d0,4*4+4(sp)
-
-		lea	4*4+4(sp),sp
+		move.w	d0,(sp)
+		move.l	AddrRegs+4*7(a5),a0
+		move.l	a0,usp
 		movem.l	DataRegs(a5),d0-d7/a0-a6
 		rte
 
@@ -5589,15 +5718,21 @@ go_user_mode	and.w	#$5FFF,D0	clear supervisor & trace bits
 		endc
 
 		bsr	RemBreaks
+
 		move.l	RegPC(a5),D0
 		cmp.w	#4,D5
 		bne.s	normal_trap
-		bsr	find_break
+		cmp.l	TmpBrkAddr(a5),d0
+		bne.s	480$
+		lea	tmpBrkTxt(pc),a0
+		bra.s	500$
+
+480$		bsr	find_break
 		bne.s	normal_trap
 		tst.b	d7
 		beq.s	normal_trap
 		lea	brkPtTxt(pc),A0
-		bsr	printstring_a0
+500$		bsr	printstring_a0
 		bra.s	trap_dregs
 
 normal_trap	bsr.s	show_trap_name
@@ -5615,7 +5750,6 @@ tr99		bra	mainloop
 show_trap_name	;trap number in D5
 		startline
 		move.l	#'*** ',(A3)+
-		lea	trapnamtabl(pc),A1
 		move.w	D5,D0
 		cmp.w	#$30,D0
 		bcc.s	unknown_trap
@@ -5630,22 +5764,33 @@ unknown_trap	lea	unknowntrap(pc),a1
 		bsr	put_signed_hexnum
 		bra.s	notraps
 traps		moveq	#10,D0
-txout1		add.w	D0,D0
-		add.w	D0,A1
-		add.w	(A1),A1
+txout1		lea	trapnametable(pc),A0
+		bsr.s	getnth
+		move.l	a0,a1
 		bsr	putstring
 		cmp.w	#$20,D5
 		bcs.s	notraps
 		move.w	D5,D0
 		sub.w	#$20,D0
 		bsr	put_signed_hexnum
-notraps	putchr	SPACE
+notraps		putchr	SPACE
 		moveq	#'*',D0
 		move.b	D0,(A3)+
 		move.b	D0,(A3)+
 		move.b	D0,(A3)+
 		endline
 		bra	printstring
+
+;
+; get a string from a list of null-terminated strings
+; in:	d0 - number
+;	a0 - string table
+; out:	a0 - nth string
+;
+nth1		tst.b	(a0)+
+		bne.s	nth1
+getnth		dbf	d0,nth1
+		rts
 
 *** SHOW TRAP NAME (USAGE: ^ num) ***
 ;#
@@ -5667,7 +5812,7 @@ dbug		lea	hexfmt(pc),a0
 cmdline		bsr	skipspaces
 		tst.b	(a3)
 		bne.s	01$
-		lea	cmdlinetxt(pc),a0
+		lea	cmdline_prompt(pc),a0
 		bsr	printstring_a0_window
 		moveq	#0,d0
 		bsr	GetInput
@@ -5685,7 +5830,7 @@ mloop_jx	bra	mainloop
 calculator	bsr	skipspaces
 		tst.b	(a3)
 		bne.s	01$
-		lea	calctxt(pc),a0
+		lea	calc_prompt(pc),a0
 		bsr	printstring_a0_window
 		moveq	#0,d0
 		bsr	GetInput
@@ -6057,6 +6202,7 @@ inp99		tst.w	inpspecial(A5)
 		emitwin	LF
 inp99a		move.w	inpspecial(A5),D0
 		rts
+
 rightedge	;Shift-Cursor right
 		cmp.l	D6,D7
 		beq	inp1
@@ -6243,21 +6389,21 @@ MyCreatePort	movem.l	D2/A6,-(sp)
 		move.b	D2,D0
 		call	FreeSignal
 		bra.s	CrepFail
-Crep1		move.l	D0,-(sp)
-		sub.l	A1,A1
-		call	FindTask
-		move.l	D0,A1
-		move.l	(sp)+,D0
-		move.l	D0,A0
-		move.l	A1,MP_SIGTASK(A0)
+Crep1		move.l	D0,A0
+;#
+;# no need to call FindTask here...get the pointer from MyTask-variable
+;# changed in version 1.22  1990-01-06
+;#
+		move.l	MyTask(a5),MP_SIGTASK(A0)
 		move.b	D2,MP_SIGBIT(A0)
 		move.b	#NT_MSGPORT,LN_TYPE(A0)
-		move.b	#PA_SIGNAL,MP_FLAGS(A0)
+; PA_SIGNAL is zero...
+;#		move.b	#PA_SIGNAL,MP_FLAGS(A0)
 		lea	MP_MSGLIST(A0),A0
 		NEWLIST	A0
 		bra.s	Crep9
-CrepFail
-		moveq	#0,D0
+
+CrepFail	moveq	#0,D0
 Crep9		movem.l	(sp)+,D2/A6	;port addr in D0 or zero if failed
 		rts
 
@@ -6378,149 +6524,50 @@ sp9		movem.l	(sp)+,a2-a3/a6
 
 
 **** Command & address tables ****
-comtable
-		dc.b	'ioxmfthc:arbgjwlsud()&[]<>!=#\^@?',$FF
+
+comtable	dc.b	'ioxmfthc:arbgjwelsud()&[]<>!=#\^@?'
+
+NUMCOM		equ	*-comtable
+
 		even
 
-comadrs	rw	info
-		rw	redirect
-		rw	exit
-		rw	memdisplay
-		rw	memfill
-		rw	memtransfer
-		rw	memhunt
-		rw	memcomp
-		rw	modifymem
-		rw	assemble
-		rw	regs
-		rw	breaks
-		rw	go
-		rw	jumpsr
-		rw	walk
-		rw	loadseg
-		rw	show
-		rw	unloadseg
-		rw	disassem
-		rw	allocate_mem
-		rw	free_mem
-		rw	alloc_abs
-		rw	abs_load
-		rw	abs_save
-		rw	disk_read
-		rw	disk_write
-		rw	digisound
-		rw	block_check
-		rw	boot_check
-		rw	new_cli
-		rw	showtrap
+comadrs		rw	calculator
 		rw	cmdline
-		rw	calculator
-
-**** HELP TEXT ****
-helptext	dc.b	CLS,TAB,TAB,'-- Amiga Monitor Help (version '
-		VERSION
-		dc.b	') --',LF,LF
-		dc.b	'h',TAB,TAB,': help (this)',TAB
-		dc.b	'| i',TAB,TAB,TAB,': some information...',LF
-		dc.b	'x',TAB,TAB,': exit',TAB,TAB
-		dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
-		dc.b	'o [name]',TAB,':redirect output'
-		dc.b	'| ] addr length name',TAB,': save absolute',LF
-		dc.b	'dir [name]',TAB,': directory',TAB
-		dc.b	'| < addr dr block cnt',TAB,': read disk blocks',LF
-		dc.b	'cd [name]',TAB,': current dir',TAB
-		dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
-		dc.b	'l name',TAB,TAB,': load segment',TAB
-		dc.b	'| \',TAB,TAB,TAB,': new CLI',LF
-		dc.b	'sl',TAB,TAB,': segment list',TAB
-		dc.b	'| ! addr len per [cnt]',TAB,': play digisound',LF
-		dc.b	'u',TAB,TAB,': unload segment'
-		dc.b	'| = addr',TAB,TAB,': disk block checksum',LF
-		dc.b	'r [reg=num]',TAB,': set/show regs',TAB
-		dc.b	'| # addr',TAB,TAB,': bootblock checksum',LF
-		dc.b	'a addr',TAB,TAB,': assemble',TAB
-		dc.b	'| g [addr]',TAB,TAB,': execute (go)',LF
-		dc.b	'd addr1 addr2',TAB,': disassemble',TAB
-		dc.b	'| j [addr]',TAB,TAB,': jump to subroutine',LF
-		dc.b	'm addr1 addr2',TAB,': display memory'
-		dc.b	'| w [addr]',TAB,TAB,': single step (walk)',LF
-		dc.b	': addr bytes',TAB,': modify memory',TAB
-		dc.b	'| ( length',TAB,TAB,': allocate memory',LF
-		dc.b	'b addr',TAB,TAB,': set breakpoint'
-		dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF
-		dc.b	'bl',TAB,TAB,': list brkpoints'
-		dc.b	'| ) addr/all',TAB,TAB,': free memory',LF
-		dc.b	'br addr/all',TAB,':remove brkpoint'
-		dc.b	'| sm',TAB,TAB,TAB,': show allocated mem',LF
-		dc.b	'f addr1 addr2 bytes: fill mem',TAB
-		dc.b	'| c addr1 addr2 dest',TAB,': compare memory',LF
-		dc.b	'@ [line]',TAB,': enter cmd line'
-		dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
-		dc.b	'ba [decnum]',TAB,': set/show base',TAB
-		dc.b	'| h addr1 addr2 bytes',TAB,': hunt memory',LF
-		dc.b	'? [expr]',TAB,': calculator',TAB
-		dc.b	'| set [var=expr]',TAB,': set/show variables',LF
-		dc.b	'mi addr',TAB,TAB,': memory info',TAB
-		dc.b	'| cv',TAB,TAB,TAB,': clear variables',LF,0
-
-;
-
-pcnam	dc.b	'(pc)',0	;program counter
-USPnam	dc.b	'usp',0		;user stack pointer for Move An,usp & Move usp,An
-zerotxt	dc.b	'dc.w    $00',0	;for zero "padding words"
-linenam	dc.b	'line-',0	;for Line-A & Line-F
-		even
-
-*** INSTRUCTION NAMES ***
-asnam		dc.b	'as',0
-lsnam		dc.b	'ls',0
-roxnam		dc.b	'rox',0
-rotnam		dc.b	'ro',0
-movenam		dc.b	'move',0
-addnam		dc.b	'add',0
-subnam		dc.b	'sub',0
-andnam		dc.b	'and',0
-ornam		dc.b	'or',0
-abcdnam		dc.b	'abcd',0
-sbcdnam		dc.b	'sbcd',0
-mulnam		dc.b	'mul',0
-divnam		dc.b	'div',0
-exgnam		dc.b	'exg',0
-eornam		dc.b	'eor',0
-cmpnam		dc.b	'cmp',0
-btstnam		dc.b	'btst',0
-bchgnam		dc.b	'bchg',0
-bclrnam		dc.b	'bclr',0
-bsetnam		dc.b	'bset',0
-chknam		dc.b	'chk',0
-leanam		dc.b	'lea',0
-extnam		dc.b	'ext',0
-clrnam		dc.b	'clr',0
-negnam		dc.b	'neg',0
-notnam		dc.b	'not',0
-tstnam		dc.b	'tst',0
-nbcdnam		dc.b	'nbcd',0
-swapnam		dc.b	'swap',0
-peanam		dc.b	'pea',0
-linknam		dc.b	'link',0
-unlknam		dc.b	'unlk',0
-resetnam	dc.b	'reset',0
-nopnam		dc.b	'nop',0
-stopnam		dc.b	'stop',0
-rtenam		dc.b	'rte',0
-trapnam		dc.b	'trap',0
-rtsnam		dc.b	'rts',0
-trapvnam	dc.b	'trapv',0
-rtrnam		dc.b	'rtr',0
-jsrnam		dc.b	'jsr',0
-jmpnam		dc.b	'jmp',0
-tasnam		dc.b	'tas',0
-illegalnam	dc.b	'illegal',0
-
-		even
+		rw	showtrap
+		rw	new_cli
+		rw	boot_check
+		rw	block_check
+		rw	digisound
+		rw	disk_write
+		rw	disk_read
+		rw	abs_save
+		rw	abs_load
+		rw	alloc_abs
+		rw	free_mem
+		rw	allocate_mem
+		rw	disassem
+		rw	unloadseg
+		rw	show
+		rw	loadseg
+		rw	exe_one
+		rw	walk
+		rw	jumpsr
+		rw	go
+		rw	breaks
+		rw	regs
+		rw	assemble
+		rw	modifymem
+		rw	memcomp
+		rw	memhunt
+		rw	memtransfer
+		rw	memfill
+		rw	memdisplay
+		rw	exit
+		rw	redirect
+		rw	info
 
 instruction	macro
-		rw	\1nam
+		rw	\1name
 n_\1		equ	InstrCount
 t_\1		equ	TokCount
 InstrCount	set	InstrCount+1
@@ -6575,6 +6622,24 @@ instradrs	instruction	as		;0
 		instruction	trap		;42
 		instruction	illegal		;43
 		dc.w	0	;end mark
+
+;
+; instruction jump table for assembler
+;
+instrjumps	rw	as_asm,ls_asm,rox_asm,rot_asm		;0-3
+		rw	move_asm,add_asm,sub_asm
+		rw	and_asm,or_asm
+		rw	abcd_asm,sbcd_asm
+		rw	mul_asm,div_asm
+		rw	exg_asm,eor_asm,cmp_asm
+		rw	btst_asm,bchg_asm,bclr_asm,bset_asm
+		rw	chk_asm,lea_asm,ext_asm,clr_asm
+		rw	neg_asm,not_asm,tst_asm,nbcd_asm
+		rw	swap_asm,pea_asm,link_asm,unlk_asm
+		rw	reset_asm,nop_asm,stop_asm,rte_asm,tas_asm
+		rw	rts_asm,trapv_asm,rtr_asm
+		rw	jsr_asm,jmp_asm,trap_asm
+		rw	illegal_asm
 
 ;
 ; disassembler instruction code table
@@ -7121,36 +7186,107 @@ DisAsmTable
 		rw	invalid
 		dc.b	0
 
-; why don't asemblers warn if you put word data in odd address ???
-		even
+*** INSTRUCTION NAMES ***
+asname		dc.b	'as',0
+lsname		dc.b	'ls',0
+roxname		dc.b	'rox',0
+rotname		dc.b	'ro',0
+movename	dc.b	'move',0
+addname		dc.b	'add',0
+subname		dc.b	'sub',0
+andname		dc.b	'and',0
+orname		dc.b	'or',0
+abcdname	dc.b	'abcd',0
+sbcdname	dc.b	'sbcd',0
+mulname		dc.b	'mul',0
+divname		dc.b	'div',0
+exgname		dc.b	'exg',0
+eorname		dc.b	'eor',0
+cmpname		dc.b	'cmp',0
+btstname	dc.b	'btst',0
+bchgname	dc.b	'bchg',0
+bclrname	dc.b	'bclr',0
+bsetname	dc.b	'bset',0
+chkname		dc.b	'chk',0
+leaname		dc.b	'lea',0
+extname		dc.b	'ext',0
+clrname		dc.b	'clr',0
+negname		dc.b	'neg',0
+notname		dc.b	'not',0
+tstname		dc.b	'tst',0
+nbcdname	dc.b	'nbcd',0
+swapname	dc.b	'swap',0
+peaname		dc.b	'pea',0
+linkname	dc.b	'link',0
+unlkname	dc.b	'unlk',0
+resetname	dc.b	'reset',0
+nopname		dc.b	'nop',0
+stopname	dc.b	'stop',0
+rtename		dc.b	'rte',0
+trapname	dc.b	'trap',0
+rtsname		dc.b	'rts',0
+trapvname	dc.b	'trapv',0
+rtrname		dc.b	'rtr',0
+jsrname		dc.b	'jsr',0
+jmpname		dc.b	'jmp',0
+tasname		dc.b	'tas',0
+illegalname	dc.b	'illegal',0
 
-;
-; instruction jump table for assembler
-;
-instrjumps
-		rw	as_asm,ls_asm,rox_asm,rot_asm		;0-3
-		rw	move_asm,add_asm,sub_asm
-		rw	and_asm,or_asm
-		rw	abcd_asm,sbcd_asm
-		rw	mul_asm,div_asm
-		rw	exg_asm,eor_asm,cmp_asm
-		rw	btst_asm,bchg_asm,bclr_asm,bset_asm
-		rw	chk_asm,lea_asm,ext_asm,clr_asm
-		rw	neg_asm,not_asm,tst_asm,nbcd_asm
-		rw	swap_asm,pea_asm,link_asm,unlk_asm
-		rw	reset_asm,nop_asm,stop_asm,rte_asm,tas_asm
-		rw	rts_asm,trapv_asm,rtr_asm
-		rw	jsr_asm,jmp_asm,trap_asm
-		rw	illegal_asm
+**** HELP TEXT ****
+helptext	dc.b	FF,TAB,TAB,'-- Amiga Monitor Help (v'
+		VERSION
+		dc.b	') --',LF
+		dc.b	'x',TAB,TAB,': exit',TAB,TAB
+		dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
+		dc.b	'o [name]',TAB,':redirect output'
+		dc.b	'| ] addr length name',TAB,': save absolute',LF
+		dc.b	'dir [name]',TAB,': directory',TAB
+		dc.b	'| < addr dr block cnt',TAB,': read disk blocks',LF
+		dc.b	'cd [name]',TAB,': current dir',TAB
+		dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
+		dc.b	'l name',TAB,TAB,': load segment',TAB
+		dc.b	'| \',TAB,TAB,TAB,': new CLI',LF
+		dc.b	'sl',TAB,TAB,': segment list',TAB
+		dc.b	'| ! addr len per [cnt]',TAB,': play digisound',LF
+		dc.b	'u',TAB,TAB,': unload segment'
+		dc.b	'| = addr',TAB,TAB,': disk block checksum',LF
+		dc.b	'r [reg=num]',TAB,': set/show regs',TAB
+		dc.b	'| # addr',TAB,TAB,': bootblock checksum',LF
+		dc.b	'a addr',TAB,TAB,': assemble',TAB
+		dc.b	'| g [addr]',TAB,TAB,': execute (go)',LF
+		dc.b	'd addr1 addr2',TAB,': disassemble',TAB
+		dc.b	'| j [addr]',TAB,TAB,': jump to subroutine',LF
+		dc.b	'm addr1 addr2',TAB,': display memory'
+		dc.b	'| w [addr]',TAB,TAB,': single step (walk)',LF
+		dc.b	': addr bytes',TAB,': modify memory',TAB
+		dc.b	'| e [addr]',TAB,TAB,': execute one instr.',LF
+		dc.b	'b addr',TAB,TAB,': set breakpoint'
+		dc.b	'| ( length',TAB,TAB,': allocate memory',LF
+		dc.b	'bl',TAB,TAB,': list brkpoints'
+		dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF
+		dc.b	'br addr/all',TAB,':remove brkpoint'
+		dc.b	'| ) addr/all',TAB,TAB,': free memory',LF
+		dc.b	'f addr1 addr2 bytes: fill mem',TAB
+		dc.b	'| sm',TAB,TAB,TAB,': show allocated mem',LF
+		dc.b	'@ [line]',TAB,': enter cmd line'
+		dc.b	'| c addr1 addr2 dest',TAB,': compare memory',LF
+		dc.b	'ba [decnum]',TAB,': set/show base',TAB
+		dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
+		dc.b	'? [expr]',TAB,': calculator',TAB
+		dc.b	'| h addr1 addr2 bytes',TAB,': hunt memory',LF
+		dc.b	'mi addr',TAB,TAB,': memory info',TAB
+		dc.b	'| set [var=expr]',TAB,': set/show variables',LF
+		dc.b	'cv',TAB,TAB,': clear vars',TAB
+		dc.b	'| i',TAB,TAB,TAB,': some information...',LF,0
 
 **** INFO TEXT ****
-infotext dc.b CLS,LF
+infotext	dc.b FF,LF
 		dc.b	TAB,TAB,"Monitor info (version "
 		VERSION
 		dc.b	')',LF
 		dc.b	TAB,TAB,'---------------------------',LF
-		dc.b	TAB,TAB,'by Timo Rossi (c) 1987-1989',LF,LF
-		dc.b	"   This is a machine code monitor for the Amiga.",LF
+		dc.b	TAB,TAB,' © 1987-1990 by Timo Rossi',LF,LF
+		dc.b	"   This is a machine code monitor/debugger for the Amiga.",LF
 		dc.b	" Pressing the HELP-key displays a list of commands.",LF,LF
 		dc.b	" Note1: Some of the assembler commands require the",LF
 		dc.b	" size specifier (.B, .W or .L), but it can't be used by some others.",LF,LF
@@ -7158,7 +7294,6 @@ infotext dc.b CLS,LF
 		dc.b	" for decimal or change the base with the ba-command.",LF
 		dc.b	" You can now use expressions in most places where",LF
 		dc.b	" numbers are needed.",LF,LF
-		dc.b	" This program can be freely distributed for non-commercial purposes.",LF
 		dc.b	" I hope you find this program useful, but if you find any bugs in this",LF
 		dc.b	" program, please let me know.",LF,LF
 		dc.b	" Read the 'mon.doc'-file for more information. (My address is also there)",LF,0
@@ -7182,14 +7317,14 @@ windowfmt	dc.b	'RAW:0/0/%ld/%ld/Amiga Monitor v'
 		VERSION
 		dc.b	0
 
-welcometxt	dc.b	CLS,LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
-		dc.b	TAB,TAB,'by Timo Rossi (c) 1987-1989,  version '
+welcometxt	dc.b	FF,LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
+		dc.b	TAB,TAB,'© 1987-1990 by Timo Rossi, version '
 		VERSION
 		dc.b	LF,LF,0
 
-prompt		dc.b	'-> ',0
-cmdlinetxt	dc.b	'Cmdline> ',0
-calctxt		dc.b	'Calc> ',0
+main_prompt	dc.b	'-> ',0
+cmdline_prompt	dc.b	'Cmdline> ',0
+calc_prompt	dc.b	'Calc> ',0
 
 breaktx		dc.b	'*** Break ***',LF,0
 errtx		dc.b	'???',0
@@ -7246,41 +7381,32 @@ assemfmt	dc.b	'%08lx: ',0
 dnam		dc.b	'(dir)',0
 freeblkfmt	dc.b	'%ld Blocks free.',LF,0
 
+stackreset_txt	dc.b	'*** Stack reset ***',LF,0
+
 rettx		dc.b	'*** Returned ***',LF,0
 brkPtTxt	dc.b	'*** Breakpoint ***',LF,0
+tmpBrkTxt	dc.b	'*** ExtTrace ***',LF,0
 signtxt		dc.b	'unsigned',0
+unknowntrap	dc.b	'Exception #',0
 
 *** TRAP NAMES ***
-buserrnam	dc.b	'Bus error',0
-adrerrnam	dc.b	'Address error',0
-illinstr	dc.b	'Illegal instruction',0
-zerodiv		dc.b	'Zero divide',0
-CHKnam		dc.b	'CHK instruction trap',0
-TRAPVnam	dc.b	'TRAPV instruction trap',0
-privilege	dc.b	'Privilege violation',0
-tracenam	dc.b	'Trace',0
-lineAnam	dc.b	'Line-A emulator trap',0
-lineFnam	dc.b	'Line-F emulator trap',0
-TRAPnam		dc.b	'TRAP instruction #',0
-unknowntrap	dc.b	'Exception #',0
+trapnametable	dc.b	'Bus error',0
+		dc.b	'Address error',0
+		dc.b	'Illegal instruction',0
+		dc.b	'Zero divide',0
+		dc.b	'CHK instruction trap',0
+		dc.b	'TRAPV instruction trap',0
+		dc.b	'Privilege violation',0
+		dc.b	'Trace',0
+		dc.b	'Line-A emulator trap',0
+		dc.b	'Line-F emulator trap',0
+		dc.b	'TRAP instruction #',0
 
 		ifd	DEBUG
 frametypefmt	dc.b	'Frame type #$%02lx',LF,0
 		endc
 
-		ds.w 0
-
-trapnamtabl	rw	buserrnam	;0
-		rw	adrerrnam	;1
-		rw	illinstr	;2
-		rw	zerodiv		;3
-		rw	CHKnam		;4
-		rw	TRAPVnam	;5
-		rw	privilege	;6
-		rw	tracenam	;7
-		rw	lineAnam	;8
-		rw	lineFnam	;9
-		rw	TRAPnam		;10
+		cnop	0,4
 
 monitor_code_end
 
