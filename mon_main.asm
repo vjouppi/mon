@@ -11,6 +11,7 @@
 		xref	ChrOut
 		xref	ChrOutWin
 		xref	getdecnum
+		xref	gethexnum
 		xref	FreeAllMem
 		xref	remove_all_breaks
 		xref	clear_all_variables
@@ -133,7 +134,13 @@ no_w		cmp.b	#'h',d0
 		bcs.s	put_usage
 		move.l	d0,d5
 		bra.s	parse_cmdline
-no_h
+no_h		cmp.b	#'o',d0
+		bne.s	no_o
+		bsr	gethexnum
+		bcs.s	put_usage
+		move.b	d0,MonOptions(a4)
+		bra.s	parse_cmdline
+no_o
 put_usage	lea	usage_txt(pc),a0
 		call	puts_stdout
 		bra	cleanexit
@@ -204,25 +211,9 @@ win_com		move.l	d0,WinFile(a4)
 		beq	cleanexit
 		move.l	D0,OutputFile(a4) 	;default output is monitor window
 
-;
-; find pointer to intuition window structure of the monitor output window
-; also find pointer to the console device unit structure
-;
-		lsl.l	#2,d0			filehandle BPTR->APTR
-		move.l	d0,a0
-		move.l	fh_Type(a0),a0
-		moveq	#ACTION_DISK_INFO,d0
-		lea	OutputBuf(a4),a1	we use output buffer for InfoData
-		move.l	a1,d1
-		lsr.l	#2,d1			infodataptr APTR->BPTR
-		call	sendpacket
-		tst.l	d0
-		beq	01$
+		call	FindConUnit		;this may return zero
+		move.l	d0,ConsoleUnit(a4)
 
-		move.l	OutputBuf+id_InUse(a4),d0	console IORequest ptr
-		beq.s	01$
-		move.l	d0,a0
-		move.l	IO_UNIT(a0),ConsoleUnit(a4)
 		;; set stdout to raw mode
 
 01$		move.l	WinFile(a4),d0
@@ -278,8 +269,6 @@ win_com		move.l	d0,WinFile(a4)
 ;;		moveq	#-1,d0
 ;;		move.l d0,RegPC(a4)
 
-		lea	cls_str(pc),a0
-		call	printstring_a0_window
 		lea	welcometxt(pc),A0
 		call	printstring_a0_window ;display welcome message
 
@@ -355,16 +344,18 @@ errorhandler	lea	error_routines+2(pc),a0
 ;
 		cmd	clear_screen
 
-		lea	cls_str(pc),a0
-		call	JUMP,printstring_a0_window
+cls		lea	cls_str(pc),a0
+		btst	#OPTB_DUMBTERM,MonOptions(a4)
+		beq.s	do_cls
+		addq.l	#cls2_str-cls_str,a0
+do_cls		call	JUMP,printstring_a0_window
 
 ;
 ;*** THE HELP COMMAND ***
 ;
 		cmd	help
 
-help		lea	cls_str(pc),a0
-		call	printstring_a0
+help		bsr.s	cls
 		lea	helptext(pc),A0
 hinfo		call	JUMP,printstring_a0
 
@@ -374,8 +365,7 @@ hinfo		call	JUMP,printstring_a0
 ;
 		cmd	info
 
-		lea	cls_str(pc),a0
-		call	printstring_a0
+		bsr.s	cls
 		lea	infotext(pc),A0
 		bra.s	hinfo
 
@@ -647,11 +637,11 @@ welcometxt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
 
 main_prompt	dc.b	'-> ',0
 
-usage_txt	dc.b	'Usage: [run] mon [-w<winwidth>] [-h<winheight>] [filename [cmdline]]',LF,0
+usage_txt	dc.b	'Usage: [run] mon [-w<winwidth>] [-h<winheight>] [-o<options>] [filename [cmdline]]',LF,0
 win_openerr_txt	dc.b	'Can''t open window',LF,0
 
 cls_str		dc.b	ESC,'[H',ESC,'[J',0
-
+cls2_str	dc.b	12,12,0
 
 error_messages	dc.b	'???',0			; 0
 		dc.b	'odd address',0		; 1

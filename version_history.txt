@@ -389,8 +389,14 @@ lm;		  and trap numbers.
 ;  1991-05-18	--> 1.40
 ;		- cd command ignored first letter of directory name
 ;
-;
 ;  1991-05-22   --> 1.41
 ;		- clr etc. now work again in assembler.
 ;
-
+;  1991-07-26	--> 1.42
+;		- 2.0 shell window close gadget can be used to exit the monitor
+;		- added 'Dumb Terminal' option
+;		- 'opt'-command lists options in readable form
+;		- options can be set from the command line
+;		- modulo operator is now '%'
+;		- redirect appends if possible
+;

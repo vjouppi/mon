@@ -1,9 +1,14 @@
 ;
 ; eval.asm
 ;
+
+;
+; modulo operator --> '%' -- 1991-07-26 -- 1.42
+;
 		include	"monitor.i"
 
 		xdef	getdecnum
+		xdef	gethexnum
 
 		xref	findvar
 		xref	find_brk_num
@@ -20,7 +25,7 @@
 *							 *
 * operations supported (32 bit integer arithmetic):	 *
 *							 *
-* + - * / %%  -- add, subtract, multiply, divide, modulo *
+* + - * / %  -- add, subtract, multiply, divide, modulo  *
 *							 *
 * !| & ^      -- bitwise or, and, xor			 *
 * << >>       -- left & right bit shifts		 *
@@ -30,16 +35,18 @@
 *							 *
 * hunk(n)     -- start address of a hunk		 *
 * hlen(n)     -- length of a hunk			 *
-* hend(n)     -- end address of hunk
-* nhunks      -- number of hunks
+* hend(n)     -- end address of hunk			 *
+* nhunks      -- number of hunks			 *
 * abs(x)      -- absolute value				 *
 * peek(addr)  -- byte value of memory location		 *
 * peekw(addr) -- word value of memory location		 *
 * peekl(addr) -- longword value of memory location	 *
 *							 *
-* numbers can be decimal (no prefix or '_'-prefix),	 *
-* hex($-prefix), octal (@-prefix), binary (%-prefix)	 *
+* numbers can be ('_'-prefix),	hex ($-prefix),		 *
+* octal (@-prefix), binary (%-prefix)	 		 *
 * or strings of ascii-characters between single quotes.	 *
+*							 *
+* if no prefix is used, the default base is assumed	 *
 *							 *
 *		no overflow checking!			 *
 *							 *
@@ -97,9 +104,6 @@ ex11		cmp.b	#'/',d0
 		bra.s	get_ex1_loop
 ex12		cmp.b	#'%',d0
 		bne.s	ex13
-		cmp.b	#'%',(a3)
-		bne.s	ex13
-		addq.l	#1,a3
 		bsr.s	get_ex2
 		tst.l	d0
 		beq	expression_error		;divide by zero
@@ -497,6 +501,10 @@ get_num		;radix in D0
 		bsr.s	getnum0
 		bcs	expression_error
 		rts
+
+gethexnum	call	skipspaces
+		moveq	#16,d0
+		bra.s	getnum0
 
 getdecnum	call	skipspaces
 		moveq	#10,d0

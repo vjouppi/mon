@@ -63,8 +63,8 @@ yes		sec
 		beq.s	1$
 		cmp.b	#$A0,D0
 		bcs.s	0$
-		btst	#OPTB_NOTPRCHR,MonOptions(a4)
-		bne.s	1$
+		btst	#OPTB_EXTPRTCHR,MonOptions(a4)
+		beq.s	1$
 		rts
 0$		cmp.b	#$20,D0
 		bge.s	2$		;note: signed comparison handles correctly codes >= $80
@@ -256,6 +256,33 @@ CreIO9		rts
 		lib	Exec,FreeMem
 		move.l	(sp)+,a6
 		rts
+
+;
+; Return console device unit structure pointer or zero if not possible
+; (for example AUX window)
+; This trashes the output buffer (it is used as storage for InfoData, note
+; also that it needs to be longword aligned)
+; Input: FileHandle in d0
+;
+		pub	FindConUnit
+
+		lsl.l	#2,d0			filehandle BPTR->APTR
+		move.l	d0,a0
+		move.l	fh_Type(a0),a0
+		moveq	#ACTION_DISK_INFO,d0
+		lea	OutputBuf(a4),a1	we use output buffer for InfoData
+		move.l	a1,d1
+		lsr.l	#2,d1			infodataptr APTR->BPTR
+		call	sendpacket
+		tst.l	d0
+		beq	FindCU_End
+
+		move.l	OutputBuf+id_InUse(a4),d0	console IORequest ptr
+		beq.s	FindCU_End
+		move.l	d0,a0
+		move.l	IO_UNIT(a0),d0
+
+FindCU_End	rts
 
 ;
 ; Set Console window mode (RAW/CON)

@@ -272,6 +272,9 @@ abs_load_1	move.l	D7,D1
 		jlib	Close	;close the file
 
 *** REDIRECT OUTPUT ***
+;
+; Now tries to append, if file already exists. -- 1991-07-26 -- 1.42
+;
 		cmd	redirect
 
 		getbase	Dos
@@ -285,15 +288,28 @@ redir1		call	skipspaces
 		beq.s	redir9
 
 		call	GetName
-		move.l	d0,d1
+		move.l	d0,d3
 		beq	generic_error
 
+		move.l	d3,d1
+		move.l	#MODE_OLDFILE,d2
+		lib	Open
+		move.l	d0,d1
+		beq	redir_no_oldfile
+		move.l	d0,OutputFile(a4)
+		moveq	#0,d2
+		moveq	#OFFSET_END,d3
+		lib	Seek
+		rts
+
+redir_no_oldfile
+		move.l	d3,d1
 		move.l	#MODE_NEWFILE,D2
 		lib	Open	;open redirection file
 		tst.l	D0
 		beq	dos_err
-		move.l	D0,OutputFile(a4)
 
+		move.l	D0,OutputFile(a4)
 redir9		rts
 
 *** NEW SHELL/CLI ***

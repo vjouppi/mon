@@ -2,8 +2,40 @@
 ; monitor.i
 ;
 
+;
+; include file for Amiga Monitor
+; version 1.42 -- 1991-07-26
+; Copyright © 1991 by Timo Rossi
+;
+
+;
+; set this if you don't have the special includes
+;
+NORMAL_INCLUDES	set	1
+
 		include	"exec/types.i"
+		ifd	NORMAL_INCLUDES
+		include	"exec/nodes.i"
+		include	"exec/lists.i"
+		include	"exec/memory.i"
+		include	"exec/tasks.i"
+		include	"exec/errors.i"
+		include	"exec/devices.i"
+		include	"exec/io.i"
+		include	"exec/execbase.i"
+		include	"libraries/dos.i"
+		include	"libraries/dosextens.i"
+		include	"graphics/gfx.i"
+		include	"graphics/gfxbase.i"
+		include	"devices/trackdisk.i"
+		include	"devices/console.i"
+		include	"devices/conunit.i"
+		include	"devices/audio.i"
+		include	"workbench/startup.i"
+		endc
+		ifnd	NORMAL_INCLUDES
 		include	"include.i"
+		endc
 		include	"offsets.i"
 
 
@@ -12,7 +44,7 @@
 BETA		equ	0	;special 'Beta version' flag
 
 VERSION		macro
-		dc.b	'1.41'
+		dc.b	'1.42'
 		ifne	BETA
 		dc.b	'b'
 		endc
@@ -314,7 +346,8 @@ RegSP		equ	AddrRegs+7*4
 		BITDEF	MON,TASKSET,6
 
 ;
-; Monitor option flags
+; Monitor option flags (note: they now start from zero, not one...1.42)
 ;
-		BITDEF	OPT,NARROWDIS,1
-		BITDEF	OPT,NOTPRCHR,2
+		BITDEF	OPT,NARROWDIS,0
+		BITDEF	OPT,EXTPRTCHR,1
+		BITDEF	OPT,DUMBTERM,2

@@ -29,30 +29,32 @@
 
 		call	skipspaces
 		tst.b	(A3)
-		bne.s	assem_01
+		bne.s	Assem_Get_Address
 		move.l	Addr(a4),D0
 		addq.l	#1,d0
 		and.b	#$fe,d0		;round to next even addr - /1.31/
-		move.l	d0,Addr(a4)
 		bra.s	assem_02
-assem_01	call	get_expr
+
+Assem_Get_Address
+		call	get_expr
 		btst	#0,D0
 		bne	odd_address_error	;assembling to odd address is illegal
-		move.l	D0,Addr(a4)
-assem_02	move.l	D0,EndAddr(a4)
+
+assem_02	move.l	D0,Addr(a4)
+		move.l	D0,EndAddr(a4)
 		call	skipspaces
 		tst.b	(A3)
-		bne.s	assem1a
+		bne.s	FindInstrName
 
-assem1		move.l	Addr(a4),D0
+Assem_Prompt	move.l	Addr(a4),D0
 		move.l	D0,EndAddr(a4)
 		lea	assemfmt(pc),a0
 		call	printf_window
 		moveq	#1,D0
 
-assem1a0	call	GetInput
+Assem_GetInput	call	GetInput
 		tst.w	D0		;check for Ctrl-E (GetInput returns -1)
-		bpl.s	assem1a1	;branch if not Ctrl-E
+		bpl.s	Assemble_NoCtrlE	;branch if not Ctrl-E
 
 *** disassemble at current address and put result in input buffer ***
 		move.l	Addr(a4),a5
@@ -60,17 +62,22 @@ assem1a0	call	GetInput
 		call	disassemble
 		lea	InputBuf(a4),a1
 		moveq	#LF,D0
-300$		move.b	(A0)+,(A1)+	copy instruction to input buffer
+1$		move.b	(A0)+,(A1)+	copy instruction to input buffer
 		cmp.b	(A0),D0 	until LF found
-		bne.s	300$
+		bne.s	1$
 		clr.b	(A1)		mark end of string
 		moveq	#2,D0		GetInput mode: edit existing line
-		bra.s	assem1a0
-assem1a1	tst.b	(A3)
-		bne.s	assem1a
-		rts
+		bra.s	Assem_GetInput
 
-assem1a		lea	instr_names(pc),a0
+Assemble_NoCtrlE
+		move.b	(a3),d0
+		beq.s	2$
+		call	tolower
+		cmp.b	#'x',d0
+		bne.s	FindInstrName
+2$		rts
+
+FindInstrName	lea	instr_names(pc),a0
 		call	find_name
 		tst.l	d0
 		bmi	try_branch
@@ -233,17 +240,22 @@ dc_exit		move.l	A0,D0	;align address to word boundary
 dc_exit1	move.l	D0,Addr(a4)
 		bra.s	dc_exit2
 
-assem9		call	skipspaces
+Assem_End	call	skipspaces
 		tst.b	(a3)
 		bne	generic_error
 
+		btst	#OPTB_DUMBTERM,MonOptions(a4)
+		bne.s	Assem_DisplayLine
+
 		lea	UpAndClearEol(pc),A0	;move cursor to previous line and clear the line
 		call	printstring_a0_window
+
+Assem_DisplayLine
 		move.l	EndAddr(a4),a5
 		startline
 		call	disassemble
 		call	printstring_window
-dc_exit2	bra	assem1
+dc_exit2	bra	Assem_Prompt
 
 ; check if the chars at A3 form a condition code
 ; result returned in D1, condition number or -1 if not found
@@ -1109,7 +1121,7 @@ do_movem	move.w	size(a4),D1
 		move.l	EndAddr(a4),A0
 		move.w	D0,(A0)+
 		move.w	D3,(A0)
-		bra	assem9
+		bra	Assem_End
 
 addrmod_err1	bra	addrmode_error
 
@@ -1271,7 +1283,7 @@ lea_asm		addq.l	#2,Addr(a4)
 
 set_instr_word	move.l	EndAddr(a4),A0
 		move.w	D0,(A0)
-		bra	assem9
+		bra	Assem_End
 
 *** EXT ***
 ext_asm		bsr	GetSize
@@ -1309,7 +1321,7 @@ one_arg_2	bsr	Get_Dest_EA
 		or.w	D3,D0
 		move.l	EndAddr(a4),A0
 		move.w	D0,(A0)
-		bra	assem9
+		bra	Assem_End
 
 *** NEG & NEGX ***
 neg_asm		move.b	(a3),d0
@@ -1360,7 +1372,7 @@ instr_4e7x	add.w	#$4e70,d0
 one_word_instr	move.l	Addr(a4),A0
 		move.w	D0,(A0)+
 		move.l	A0,Addr(a4)
-		bra	assem9
+		bra	Assem_End
 
 *** ILLEGAL ***
 illegal_asm	move.w	#ILLEGAL_INSTR,D0
@@ -1408,7 +1420,7 @@ two_words_instr	move.l	Addr(a4),A0
 		move.w	D0,(A0)+
 		move.w	D1,(A0)+
 		move.l	A0,Addr(a4)
-		bra	assem9
+		bra	Assem_End
 
 *** EXG ***
 exg_asm		bsr	getreg

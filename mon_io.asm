@@ -187,8 +187,12 @@ key8		cmp.b	#'?',D0
 		rts
 key9		cmp.b	#'~',D0
 		beq.s	key99
+		cmp.b	#'|',d0		;close gadget in 2.0...
+		beq.s	key90
 		bsr	GetChar
 		bra.s	key9
+key90		move.w	#'CL',d0
+		rts
 key99		moveq	#-1,D0	;unknown key
 ret9		rts
 
@@ -213,6 +217,7 @@ input_jumps	inpjump	CR,input_end
 		inpjump	BS,backspace
 		inpjump	DEL,delchar
 		inpjump	<'??'>,inp_help
+		inpjump	<'CL'>,inp_close
 		dc.l	0
 
 
@@ -230,6 +235,9 @@ input_jumps	inpjump	CR,input_end
 ;
 		pub	GetInput
 
+		btst	#OPTB_DUMBTERM,MonOptions(a4)
+		bne	Dumb_GetInput
+
 		move.w	D0,d3
 		moveq	#0,D4
 		lea	InputBuf(a4),a2
@@ -237,8 +245,6 @@ input_jumps	inpjump	CR,input_end
 		moveq	#0,D7	;length
 		cmp.w	#2,D0
 		bne.s	inp0
-	;;!!	lea	ClearEol(pc),a0		erase to end of line
-	;;!!	call	printstring_a0_window
 		move.l	a2,A0
 		call	printstring_a0_window
 		move.l	a2,A0
@@ -273,6 +279,10 @@ left_edge	bsr	gotoleftedge	;shift-cursor-left
 
 inp_help	moveq	#-1,D5		;help
 		moveq	#'h',d0
+		bra.s	put_char_to_input
+
+inp_close	moveq	#-1,d5		;close gadget (hopefully)
+		moveq	#'x',d0
 		bra.s	put_char_to_input
 
 prev_line_ret	moveq	#-1,D5		;shift-cursor-up
@@ -425,12 +435,61 @@ eraseline	bsr.s	gotoleftedge
 		lea	ClearEol(pc),a0
 		call	JUMP,printstring_a0_window
 
+;
+; GetInput for dumb terminal
+;
+Dumb_GetInput	lea	InputBuf(a4),a2
+		lea	InputBuf(a4),a3
+		moveq	#0,d7
+
+dumb_input_loop	bsr	GetChar
+		cmp.b	#CR,d0
+		beq	dumb_input_end
+		cmp.b	#CtrlX,d0
+		beq	dumb_delline
+		cmp.b	#BS,d0
+		beq.s	dumb_delch
+		cmp.b	#DEL,d0
+		bne.s	dumb_input1
+
+dumb_delch	cmp.l	a3,a2
+		beq.s	dumb_input_loop
+		moveq	#0,d3
+
+dumb_delch_loop	subq.l	#1,a2
+		subq.w	#1,d7
+		lea	dumb_delchar(pc),a0
+		call	printstring_a0_window
+dumb_delch1	dbf	d3,dumb_delch_loop
+		bra.s	dumb_input_loop
+
+dumb_delline	move.w	d7,d3
+		bra.s	dumb_delch1
+
+dumb_input1	cmp.b	#$20,d0
+		bcs.s	dumb_input_loop
+		cmp.b	#$7e,d0
+		bhi.s	dumb_input_loop
+		cmp.w	#64,d7
+		bcc.s	dumb_input_loop
+
+		move.b	d0,(a2)+
+		addq.w	#1,d7
+		bsr	ChrOutWin
+		bra.s	dumb_input_loop
+
+dumb_input_end	clr.b	(a2)
+		call	skipspaces
+		emitwin	LF
+		moveq	#0,d0
+		rts
+
 UpAndClearEol	dc.b	ESC,'[A'
 ClearEol	dc.b	ESC,'[K',0
 delch		dc.b	ESC,'[P',0
 insch		dc.b	ESC,'[@',0
 go_left_fmt	dc.b	ESC,'[%ldD',0
 go_right_fmt	dc.b	ESC,'[%ldC',0
-cls_str		dc.b	ESC,'[H',ESC,'[J',0
+dumb_delchar	dc.b	BS,' ',BS,0
 
 		end

@@ -1,3 +1,11 @@
+#
+# Makefile for monitor
+#
+# Timo Rossi, 1991
+#
+# Note that mon_misc.o must be the last object module on linker command line
+#
+
 .SUFFIXES: .asm .o
 
 ASM = a68k
@@ -22,6 +30,9 @@ OBJS = mon_main.o assemble.o disassemble.o disk_io.o eval.o execute.o \
 mon:	$(OBJS)
 	$(LNK) $(LNKOPTS) FROM $(OBJS) TO mon MAP mon.map
 
+patchtrace: patchtrace.o
+	$(LNK) $(LNKOPTS) FROM patchtrace.o to patchtrace
+
 assemble.o:	assemble.asm monitor.i instructions.i
 disassemble.o:	disassemble.asm monitor.i instructions.i
 disk_io.o:	disk_io.asm monitor.i
@@ -37,6 +48,8 @@ registers.o:	registers.asm monitor.i
 sound.o:	sound.asm monitor.i
 variables.o:	variables.asm monitor.i
 
+patchtrace.o:	patchtrace.asm
+
 clean:
-		-delete \#?.o
+		-delete \#?.(o|info)
 

@@ -230,21 +230,39 @@ num_A2		rts
 		bne	generic_error
 ; remove option
 		call	get_expr
+		subq.w	#1,d0
 		bclr	d0,MonOptions(a4)
 		bra.s	opt_9
 
 add_option	call	get_expr
+		subq.w	#1,d0
 		bset	d0,MonOptions(a4)
 		bra.s	opt_9
 
-show_options	startline
+show_options	moveq	#0,d3
+		lea	option_strings(pc),a2
+
+0$		lea	off_txt(pc),a1
+		btst	d3,MonOptions(a4)
+		beq.s	1$
+		addq.l	#on_txt-off_txt,a1
+1$		move.l	a1,d2
+		move.l	a2,d1
+		move.l	d3,d0
+		addq.w	#1,d0
+		lea	option_fmt(pc),a0
+		call	printf
+		addq.w	#1,d3
+2$		tst.b	(a2)+
+		bne.s	2$
+		tst.b	(a2)
+		bne	0$
+
 		moveq	#0,d0
 		move.b	MonOptions(a4),d0
-		moveq	#8,d1
-		moveq	#2,d2
-		call	PutNum
-		endline
-		call	printstring
+		lea	optvalue_fmt(pc),a0
+		call	printf
+
 opt_9		bra	mainloop
 
 ;
@@ -261,5 +279,15 @@ signtxt		dc.b	'unsigned',0
 basefmt		dc.b	'Base is %ld',LF,0
 cmdline_prompt	dc.b	'Cmdline> ',0
 calc_prompt	dc.b	'Calc> ',0
+
+option_fmt	dc.b	'(%ld) %s: %s',LF,0
+optvalue_fmt	dc.b	'Option flag value %02lx hex',LF,0
+off_txt		dc.b	'off',0
+on_txt		dc.b	'on',0
+
+option_strings	dc.b	'Narrow disassembly',0
+		dc.b	'8BitChars printable',0
+		dc.b	'Dumb terminal',0
+		dc.b	0
 
 		end

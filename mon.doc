@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.41 instructions
+                 Amiga Monitor v1.42 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -30,6 +30,7 @@
  options:
   -w <window width>
   -h <window height>
+  -o <options>		(see 'Options Flags')
 
  An optional filename can also be given in the command line.  The monitor
  will try to load the named executable file immediately after starting.
@@ -41,26 +42,48 @@
  Using the monitor from a remote terminal
  ----------------------------------------
 
- The monitor can be used from a vt100/ansi compatible terminal connected
- to the Amiga serial port. If you want to do this, first set the correct
- baud rate and other serial settings using the preferences program. Then
- mount AUX: if necessary, and start a new CLI/Shell with the command
- NewShell AUX: (or NewCLI AUX:). You get the normal CLI/Shell prompt to
- the terminal. Now simply start the monitor by typing 'mon' <cr> to the
- terminal (do not 'run' the monitor from the terminal; if you do it, the
- monitor opens a window on the Amiga display).
-
+ The monitor can be used from a terminal connected to the Amiga serial
+ port. If you want to do this, first set the correct baud rate and other
+ serial settings using the preferences program. Then mount AUX:
+ if necessary, and start a new CLI/Shell with the command NewShell AUX:
+ (or NewCLI AUX:). You get the normal CLI/Shell prompt to the terminal.
+ Now simply start the monitor by typing 'mon' <cr> to the terminal
+ (do not 'run' the monitor from the terminal; if you do it, the
+ monitor opens a window on the Amiga display). If the terminal is not
+ vt100/ansi compatible, you may need to use the 'Dumb Terminal' option
+ flag (flag #3) to disable some features of the monitor (such as
+ command line editing and history, but you can still delete the last
+ character with backspace/delete). Easies way to do that is to start
+ the monitor with the command 'mon -o4'.
+ 
 
 
  Option flags (New in version 1.34)
  ----------------------------------
 
- Commands 'opt +n' and 'opt -n' where 'n' is a number between 1 and 7
- can be used to set and reset monitor option flags. Currently two
- flags is implemented: flag #1 switches on the narrow disassembly
- output mode (does not show the data as hex digits) and flag #2
- causes characters $a0-$ff to be considered unprintable in 'm' command
- listing (may be useful when using the monitor from a terminal)
+ Commands 'opt +n' and 'opt -n' where 'n' is a number between 1 and 3
+ can be used to set and reset monitor option flags. Currently three
+ flags is implemented:
+
+  - flag #1
+      Switches on the narrow disassembly output mode
+      (does not show the data as hex digits)
+  - flag #2
+      Causes characters $a0-$ff to be considered printable in
+      'm' command memory dump (and '?' command ascii display)
+      (Note that this was changed in 1.42, previously they were
+      printable by default).
+  - flag #3
+      This is the 'Dumb terminal' mode flag. When this is set on,
+      the command line history and editing features of the monitor
+      are disabled, and the monitor does not use any vt100/ansi-
+      escape sequences.
+
+ Command 'opt' without parameters lists the current flag settins.
+ This includes a hexadecimal 'flag value' that can be used on
+ the command line with the '-o' option to set initial flags when the
+ monitor is started (That flag value is simply a bit map of the option
+ flags, option#1 is bit#0 -- this is new in 1.42).
 
 
  Input line editing and command line history:
@@ -74,6 +97,9 @@
   press Ctrl-E to edit the assembler instruction currently stored in that
   address.
 
+  These features are not available if the 'Dumb terminal' mode is
+  selected. In that case the only editing function is deleting the
+  last character with backspace or delete key.
 
  Stopping the output:
  --------------------
@@ -111,7 +137,7 @@
  -   subtraction
  *   multiplication
  /   division (integer only, truncated)
- %%  modulo
+ %   modulo   (changed in 1.42, previously '%%' for some strange reason...)
  <<  left shift
  >>  right shift
 
@@ -253,7 +279,9 @@ o -- Redirect output
  usage:
   o name -- redirects monitor output to file or device 'name'
   o      -- returns to normal, output comes to the monitor window
- for example, to send the output to printer use 'o PRT:'.
+ For example, to send the output to printer use 'o PRT:'.
+ If the file specified in the 'o'-command already exists, the monitor
+ output will be appended to the end of the file.
 
 ? [expr]  --  Calculator
   Displays the value of the expression in hex, decimal, octal, binary
@@ -612,15 +640,24 @@ x -- Exit
 
 Version history:
 ----------------
+1.42 ->
+ - better option handling
+ - understands 2.0 shell window close gadget
+ - redirection to file now appends if possible
+ - modulo operator now '%'
+
 1.41 ->
  - fixed a bug that prevented some assembler instructions working.
+
 1.40 ->
  - cd works correctly again
    (in 1.37..1.39 it ignored first letter of dir name...)
+
 1.39 ->
  - interrupting 'c' or 'h' commands no longer causes error conditions.
  - added option flag 2 to select whether characters $a0-$ff are printable
    in 'm' command memory dump.
+
 1.38 ->
  - return from 'j' or 'g' commands with rts now works (was a major bug in 1.37)
  - input routine no longer acts strangely if shift-cursor-down
@@ -765,17 +802,18 @@ Version history:
 
 
 
-  Amiga Monitor v1.41 Copyright © 1987-1991 by Timo Rossi. The monitor
+  Amiga Monitor v1.42 Copyright © 1987-1991 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lharc-file 'mon141.lzh'.
+way of distribution is the lharc-file 'mon142.lzh'.
+
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.
 
 Send suggestions, bug reports etc. to:
 
   Timo Rossi
-  Kellankoski			internet e-mail:
+  Kellankoski			E-mail:
   44300 Konnevesi		trossi@jyu.fi
   FINLAND
 
