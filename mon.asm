@@ -19,7 +19,7 @@
 * v1.26 -> last mod. 1990-05-25    *
 * v1.27 -> last mod. 1990-06-26    *
 * v1.28 -> last mod. 1990-07-13	   *
-* v1.29 -> last mod. 1990-07-15	   *
+* v1.29 -> last mod. 1990-08-07	   *
 ************************************
 
 ;DEBUG	set	1
@@ -352,6 +352,13 @@
 ;   1990-07-15	- monitor now opens its screen 5 pixels from screen topedge
 ;		  (but still opens full height window on ntsc machine)
 ;
+;   1990-08-07 --> v1.29
+;		- added new functions to expression parser:
+;			lib("libname"), dev("devname"), res("resname")
+;			and task("taskname")
+;		- task(clinum) can also be used to find CLI processes,
+;		  task(0) finds current task.
+;
 
 		include	'exec/types.i'
 		include	'include.i'
@@ -361,7 +368,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.28'
+		dc.b	'1.29'
 		endm
 
 *** macro to display a single character ***
@@ -3432,7 +3439,7 @@ r_nhunks	moveq	#0,d0
 		addq.l	#1,d0
 		bra.s	01$
 
-gethunk		bsr.s	get_first_arg
+gethunk		bsr	get_first_arg
 		move.l	SegList(a5),d1
 01$		lsl.l	#2,d1
 		beq	expr_error		;hunk not found
@@ -3444,37 +3451,93 @@ gethunk		bsr.s	get_first_arg
 		bra.s	01$
 g_rts		rts
 
-r_abs		bsr.s	get_first_arg
+r_abs		bsr	get_first_arg
 		tst.l	d0
 		bpl.s	fcom
 		neg.l	d0
-fcom		bra.s	no_more_args
+fcom		bra	no_more_args
 
-r_peek		bsr.s	get_first_arg
+r_peek		bsr	get_first_arg
 		move.l	d0,a0
 		moveq	#0,d0
 		move.b	(a0)+,d0
-		bra.s	no_more_args
+		bra	no_more_args
 
-r_peekw		bsr.s	get_first_arg
+r_peekw		bsr	get_first_arg
 		btst	#0,d0
 		bne	oddaddr_error
 		move.l	d0,a0
 		moveq	#0,d0
 		move.w	(a0),d0
-		bra.s	no_more_args
+		bra	no_more_args
 
-r_peekl		bsr.s	get_first_arg
+r_peekl		bsr	get_first_arg
 		btst	#0,d0
 		bne	oddaddr_error
 		move.l	d0,a0
 		move.l	(a0),d0
-		bra.s	no_more_args
+		bra	no_more_args
 
-r_avail		bsr.s	get_first_arg
+r_avail		bsr	get_first_arg
 		move.l	d0,d1
 		call	ExecBase,AvailMem
-		bra.s	no_more_args
+		bra	no_more_args
+
+;
+; find named library, device or resource from exec lists
+;
+r_lib		move.w	#LibList,d1
+		bra.s	r_execlist
+r_dev		move.w	#DeviceList,d1
+		bra.s	r_execlist
+r_res		move.w	#ResourceList,d1
+r_execlist	bsr	skipspaces
+		cmp.b	#'(',(a3)+
+		bne	expr_error
+		bsr	GetName
+		tst.l	d0
+		beq	expr_error
+		move.l	d0,a1
+		call	ExecBase,Forbid	;Forbid() & Permit are quaranteed
+		lea	0(a6,d1.w),a0	;to preserve all registers
+		call	FindName
+		call	Permit
+		bra	no_more_args
+
+;
+; find a task by name or CLI number (or find current task)
+;
+r_task		bsr	skipspaces
+		cmp.b	#'(',(a3)+
+		bne	expr_error
+		bsr	skipspaces
+		cmp.b	#'"',(a3)
+		beq	r_taskname
+		bsr	get_expr	;find task by CLI number
+		tst.l	d0
+		beq.s	r_ftask
+
+		move.l	DosBase(a5),a0	;Forbid() here??
+		move.l	dl_Root(a0),a0
+		move.l	rn_TaskArray(a0),a0
+		add.l	a0,a0		; BCPL pointer conversion
+		add.l	a0,a0
+		move.l	(a0),d1		; max. number of CLI processes
+		cmp.l	d1,d0
+		bhi	expr_error
+		lsl.l	#2,d0
+		move.l	0(a0,d0.l),d0
+		beq	no_more_args
+		moveq	#pr_MsgPort,d1
+		sub.l	d1,d0
+		bra	no_more_args
+ 
+r_taskname	bsr	GetName
+		tst.l	d0
+		beq	expr_error
+r_ftask		move.l	d0,a1
+		call	ExecBase,FindTask
+		bra	no_more_args
 
 get_first_arg	bsr	skipspaces
 		cmp.b	#'(',(a3)+
@@ -3591,6 +3654,10 @@ tokfuncs	rw	r_hunk
 		rw	r_peekw
 		rw	r_peekl
 		rw	r_avail
+		rw	r_lib
+		rw	r_dev
+		rw	r_res
+		rw	r_task
 
 tokentable	dc.b	'hunk',0
 		dc.b	'hlen',0
@@ -3601,6 +3668,10 @@ tokentable	dc.b	'hunk',0
 		dc.b	'peekw',0
 		dc.b	'peekl',0
 		dc.b	'avail',0
+		dc.b	'lib',0
+		dc.b	'dev',0
+		dc.b	'res',0
+		dc.b	'task',0
 		dc.b	0
 
 		ds.w	0		;word alignment

@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.28 instructions
+                 Amiga Monitor v1.29 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -115,16 +115,42 @@
 		avail(2) returns available chip memory
 		avail($20000) return largest available block.
 
+  The following functions can be used to examine exec library, device,
+  resource and task lists. Note that the pointers returned by these
+  functions may become invalid any time if the library/device/task is
+  expunged/removed from the system.
+
+  lib("libname.library")   --	returns base address of a named library or
+				zero if not found. note that this does not
+				try to load the library from disk, it
+				only searches ExecBase->LibList.
+
+  dev("devname.device")   --	returns base address of a named device or
+				zero if not found. note that this does not
+				try to load the device from disk, it
+				only searches ExecBase->DeviceList.
+
+  res("resname.resource") --	returns base address of a named resource or
+				zero if not found.
+
+  task("taskname")	  --	returns pointer to named task or zero if
+				not found.
+  task(number)		  --	returns pointer to CLI process with the
+				given number or zero if the CLI number
+				is not in use.
+  task(0)		  --	returns pointer to current task (the CLI
+				process that runs the monitor)
+
   Function names are not case sensitive.
 
  Variables:
  ----------
 
  In addition to numbers and functions, variables can be used in expressions
- if they are previously defined. Variables are defined with the set-command.
- All variable values are 32-bit integers. Variable names can contain
- alphanumeric characters and underscores ('_'), but they cannot begin
- with a number. Variable names are not case sensitive in this version.
+ if they have been previously defined. Variables are defined with the
+ set-command.  All variable values are 32-bit integers. Variable names can
+ contain alphanumeric characters and underscores ('_'), but they cannot
+ begin with a number. Variable names are not case sensitive in this version.
 
  (There are still some problems using variables with the assembler.
  Especially variables with names starting with 'a','d' or 's' may
@@ -170,7 +196,8 @@
  ------------
   The monitor now allocates 2K of stack for its own use and the rest
   of the stack can be used by the program being debugged. If you
-  need a larger stack, you can use the CLI 'stack' command.
+  need a larger stack, you can use the CLI 'stack' command before you
+  start the monitor.
 
 
  File/directory names:
@@ -532,6 +559,8 @@ x -- Exit
 
 Version history:
 ----------------
+1.29 ->
+ - added lib(), dev(), res() and task() to expression parser.
 1.28 ->
  - modified patchtrace to work also when vector base is relocated.
  - small changes in initial window placement and size
@@ -540,7 +569,7 @@ Version history:
    check properly for odd addresses.
  - 'odd address'-error message
  - skip instruction-command
- - Exit() now returns back to the monitor.
+ - Exit() now returns control back to the monitor.
 1.26 ->
  - added hend() and nhunks-functions to the expression parser.
  - added command line options for window width and height
@@ -549,7 +578,7 @@ Version history:
    them must be in quotes
 1.25 ->
  - (internal change) now uses TC_Userdata instead of TC_TrapData because
-   TC_TrapData is marked as private in 1.4/2.0 includes.
+   TC_TrapData is marked as private in some prerelease 1.4/2.0 includes.
  - '\'-command now first tries to start a shell, then a CLI.
  - disk read/write commands can be used with hard disks etc.
  - fixed condition code register setting with go and jump commands.
@@ -626,10 +655,10 @@ Version history:
 
 
 
-Amiga Monitor v1.28 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.29 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the zoo-file 'mon126.zoo'.
+way of distribution is the zoo-file 'mon129.zoo'.
 
 
 Send suggestions, bug reports etc. to:
