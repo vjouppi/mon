@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.30 instructions
+                 Amiga Monitor v1.31 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -559,6 +559,9 @@ x -- Exit
 
 Version history:
 ----------------
+1.31 ->
+ - it is now not possible to accidentally try to assemble code to
+   an odd address.
 1.30 ->
  - many internal changes: global variable base register changed, uses
    new library call macros...
@@ -658,10 +661,10 @@ Version history:
 
 
 
-Amiga Monitor v1.30 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.31 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the zoo-file 'mon129.zoo'.
+way of distribution is the zoo-file 'mon131.zoo' or lharc-file 'mon131.lzh'.
 
 
 Send suggestions, bug reports etc. to:

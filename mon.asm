@@ -21,6 +21,7 @@
 * v1.28 -> last mod. 1990-07-13	   *
 * v1.29 -> last mod. 1990-08-07	   *
 * v1.30 -> last mod. 1990-08-22	   *
+* v1.31 -> last mod. 1990-11-02	   *
 ************************************
 
 ;DEBUG	set	1
@@ -361,7 +362,12 @@
 ;		  task(0) finds current task.
 ;
 ;   1990-08-22 --> v1.30
-;		- uses new macros
+;		- uses new macros, variables are relative to a4
+;
+;   1990-11-02 --> v1.31
+;		- it was possible to try to assemble at an odd address.
+;		  now the address in the assemble-command in always rounded
+;		  to an even address.
 ;
 
 		include	'exec/types.i'
@@ -372,7 +378,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.30'
+		dc.b	'1.31'
 		endm
 
 *** macro to display a single character ***
@@ -3727,6 +3733,9 @@ assemble	bsr	skipspaces
 		tst.b	(A3)
 		bne.s	assem_01
 		move.l	Addr(a4),D0
+		addq.l	#1,d0
+		and.b	#$fe,d0		;round to next even addr - /1.31/
+		move.l	d0,Addr(a4)
 		bra.s	assem_02
 assem_01	bsr	get_expr
 		btst	#0,D0
