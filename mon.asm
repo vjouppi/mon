@@ -16,7 +16,7 @@
 * v1.22 -> last mod. 1990-01-07    *
 * v1.23 -> last mod. 1990-01-08    *
 * v1.24 -> last mod. 1990-01-13    *
-* v1.25 -> last mod. 1990-05-24    *
+* v1.26 -> last mod. 1990-05-25    *
 *                                  *
 ************************************
 
@@ -298,7 +298,7 @@
 ;
 ;   1990-01-08 --> v1.23
 ;		- the monitor now reserves 2000 bytes of stack for its own
-;		  use and the rest can be used by the program thas is
+;		  use and the rest can be used by the program that is
 ;		  being debugged.
 ;		- stack pointer is now also reset if it is odd
 ;		- added q-command (quicktrace) that executes code
@@ -325,6 +325,16 @@
 ;		- fixed condition code register setting with j & g-
 ;		  commands (move <ea>,ccr size is WORD).
 ;
+;   1990-05-24/25 --> v1.26
+;		- added hend() and nhunks-functions to the expression parser
+;		- added error message if window cannot be opened
+;		- changed LoadSeg() message, now gives number of hunks.
+;		- new command line handling:
+;		  * window width/height can be set from command line
+;		    options -w<width> and -h<height>
+;		  * initial file name to load from command line
+;		  * usage message
+;
 
 		include	'exec/types.i'
 		include	'include.i'
@@ -334,7 +344,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.25'
+		dc.b	'1.26'
 		endm
 
 *** macro to display a single character ***
@@ -424,14 +434,16 @@ ILLEGAL		equ	$4AFC	;illegal instruction (used by breakpoints)
 		 APTR	WBenchMsg	;Workbench startup message pointer
 		 APTR	MyTask		;pointer to TCB of monitor process
 		 APTR	OldTrapCode	;task trap code when monitor was started
-		 APTR	OldUserData	;task trap data when monitor was started
+		 APTR	OldUserData	;task user data when monitor was started
 
 		 LONG	WinFile		;main window file handle
 		 LONG	OutputFile	;current output file handle
 
+
 		 APTR	ConsoleUnit	;console device unit pointer for main window
 		 APTR	StackPtr	;saved monitor stack pointer
 
+		 APTR	InitialFileName	;file name given in command line
 		 LONG	SegList		;currently loaded segment
 
 		 APTR	MemoryList	;linked list of allocated memory
@@ -548,6 +560,9 @@ TOKSTART	equ	$a0
 
 *** THIS IS THE WORKBENCH/CLI STARTUP CODE ***
 monitor_code_start
+		move.l	a0,a3			get ptr to command line
+		move.l	d0,d3
+
 		moveq	#0,d5
 		move.l	d5,a1
 		call	ExecBase,FindTask	;find our task
@@ -569,6 +584,56 @@ main		move.l	#MonitorData_SIZE,d0
 
 		move.l	d5,WBenchMsg(a5)
 		move.l	a4,MyTask(a5)
+
+*
+* OPEN DOS LIBRARY
+*
+		lea	dosname(pc),A1
+		moveq	#0,d0
+		call	OpenLibrary
+		move.l	d0,DosBase(a5)
+		beq	exit9
+
+		moveq	#-1,d4			window width
+		moveq	#-1,d5			window height
+
+		tst.l	WBenchMsg(a5)
+		bne.s	cmdline_done		;don't try to parse cmdline
+						;if started from Workbench
+
+		clr.b	-1(a3,d3.l)		null-terminate command line
+parse_cmdline	bsr	skipspaces
+		tst.b	(a3)
+		beq.s	cmdline_done
+		cmp.b	#'?',(a3)
+		beq.s	put_usage
+		cmp.b	#'-',(a3)
+		bne.s	no_opt
+		addq.l	#1,a3
+		move.b	(a3)+,d0
+		cmp.b	#SPACE,d0
+		bls.s	no_opt
+		cmp.b	#'w',d0
+		bne.s	no_w
+		bsr	getdecnum
+		bcs.s	put_usage
+		move.l	d0,d4
+		bra.s	parse_cmdline
+no_w		cmp.b	#'h',d0
+		bne.s	no_h
+		bsr	getdecnum
+		bcs.s	put_usage
+		move.l	d0,d5
+		bra.s	parse_cmdline
+no_h
+put_usage	lea	usage_txt(pc),a0
+		bsr	puts_stdout
+		bra	exit8
+
+no_opt		bsr	GetName
+		move.l	d0,InitialFileName(a5)
+
+cmdline_done
 ;
 ; set default number base, currently hex....
 ;
@@ -582,7 +647,7 @@ main		move.l	#MonitorData_SIZE,d0
 		moveq	#33,D0		  version 33: kickstart 1.2 or later
 		call	OpenLibrary
 		tst.l	D0
-		beq	exit9
+		beq	exit8
 		move.l	d0,a6
 
 		lea	OutputBuffer(a5),a0
@@ -596,7 +661,7 @@ main		move.l	#MonitorData_SIZE,d0
 		move.l	a6,a1
 		call	ExecBase,CloseLibrary
 		tst.l	d2
-		beq	exit9
+		beq	exit8
 
 		lea	OutputBuffer(a5),a0
 		movem.w	sc_Width(a0),d0-d1	this sign-extends to long
@@ -606,26 +671,33 @@ main		move.l	#MonitorData_SIZE,d0
 		cmp.w	#200,d1
 		bls.s	200$
 		sub.w	#16,d1
-200$
+
+;
+; use user-specified window dimensions if they exist
+;
+200$		tst.l	d4
+		bmi.s	201$
+		move.l	d4,d0
+201$		tst.l	d5
+		bmi.s	202$
+		move.l	d5,d1
+202$
 ;
 ; window "filename" is created using RawDoFmt in the output buffer
 ;
 		lea	windowfmt(pc),a0
 		bsr	fmtstring
 
-		lea	dosname(pc),A1
-		moveq	#0,d0
-		call	OpenLibrary		Open the DOS library...
-		move.l	d0,DosBase(a5)
-		beq	exit9
-		move.l	D0,A6
 		lea	OutputBuffer(a5),a0
 		move.l	a0,d1
 		move.l	#MODE_OLDFILE,D2
-		call	Open			;open the window
+		call	DosBase(a5),Open		open the window
 		move.l	D0,WinFile(A5)
-		beq	exit8
-		move.l	D0,OutputFile(A5) 	;default output is monitor window
+		bne.s	01$
+		lea	win_openerr_txt(pc),a0
+		bsr	puts_stdout
+		bra	exit8
+01$		move.l	D0,OutputFile(A5) 	;default output is monitor window
 
 ;
 ; set the the task trap code and data pointers
@@ -661,8 +733,8 @@ main		move.l	#MonitorData_SIZE,d0
 ;
 		lea	tdname(pc),a0
 		lea	DevNameBuf(a5),a1
-01$		move.b	(a0)+,(a1)+
-		bne.s	01$
+02$		move.b	(a0)+,(a1)+
+		bne.s	02$
 
 ;
 ; set the stack pointer
@@ -682,6 +754,9 @@ main		move.l	#MonitorData_SIZE,d0
 
 ; this is for error handling...and for the return from the trap routine...
 		move.l	sp,StackPtr(a5)
+		move.l	InitialFileName(a5),d1
+		beq.s	mainloop
+		bsr	loadseg1
 
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
 mainloop	move.l	StackPtr(a5),sp		;restore stack pointer
@@ -738,26 +813,26 @@ info		lea	infotext(pc),A0
 exit		move.l	MyTask(A5),A0
 		move.l	OldTrapCode(A5),TC_TRAPCODE(A0)	;restore old TrapCode
 		move.l	OldUserData(a5),TC_Userdata(a0)	; and UserData
-		bsr	FreeAllMem		;free all memory allocated by commands & and (
-		bsr	remove_all_breaks	;remove all breakpoints (free memory)
+		bsr	FreeAllMem		free all memory allocated by commands & and (
+		bsr	remove_all_breaks	remove all breakpoints (free memory)
 		bsr	clear_all_variables
 		move.l	DosBase(a5),a6
-		move.l	SegList(A5),D1		;if a seglist is loaded, unload it
+		move.l	SegList(A5),D1		if a seglist is loaded, unload it
 		beq.s	exit7
 		call	UnLoadSeg
 
-exit7		move.l	OutputFile(A5),D1	;if output is redirected, close output file
+exit7		move.l	OutputFile(A5),D1	if output is redirected, close output file
 		cmp.l	WinFile(A5),D1
 		beq.s	exit7a
 		call	Close
 
 exit7a		move.l	WinFile(A5),D1
-		call	Close			;close window file
+		call	Close			close window file
 
-exit8		move.l	A6,A1
-		call	ExecBase,CloseLibrary		;close dos library
+exit8		move.l	DosBase(a5),a1
+		call	ExecBase,CloseLibrary	close dos library
 
-exit9		move.l	WBenchMsg(A5),D3	;started from workbench??
+exit9		move.l	WBenchMsg(A5),D3	started from workbench??
 
 		move.l	a5,a1
 		move.l	#MonitorData_SIZE,d0
@@ -782,9 +857,14 @@ dir		addq.l	#2,A3
 		tst.l	D0
 		beq	OutOfMem
 		move.l	D0,A4		;we keep the fib-pointer in A4
-		bsr	skipspaces
-		move.l	A3,D1		;use rest of command line as a name
-		moveq	#SHARED_LOCK,D2
+
+		bsr	GetName
+		move.l	d0,d1
+		bne	dir_lock
+		lea	null_txt(pc),a0
+		move.l	a0,d1
+
+dir_lock	moveq	#SHARED_LOCK,D2
 		call	DosBase(a5),Lock
 		move.l	D0,D7		;we keep the lock pointer in D7
 		beq.s	dir7		;if i/o error
@@ -872,24 +952,51 @@ txmov10		bsr	printstring
 
 *** PRINT DOS ERROR NUMBER ***
 DOSErr		;error number in D0
+		cmp.l	#ERROR_OBJECT_NOT_FOUND,d0
+		beq.s	01$
 		lea	doserrfmt(pc),a0
 		bra	printf_window
+01$		lea	notfound_txt(pc),a0
+		bra	printstring_a0_window
 
 **** LOAD SEGMENT ****
 loadseg		tst.l	SegList(A5)
 		bne.s	oldseg		;can't do this before old segment is unloaded
-		bsr	skipspaces
-		move.l	A3,D1
-		call	DosBase(a5),LoadSeg
+
+		bsr	GetName
+		move.l	d0,d1
+		beq	error
+
+loadseg1	call	DosBase(a5),LoadSeg
 		move.l	D0,SegList(A5)
 		beq.s	segerr		;branch if LoadSeg failed
-		lea	segadrmes(pc),a0
+
+		move.l	d0,d1
 		lsl.l	#2,d0		;BPTR->APTR
 		addq.l	#4,d0		;skip next segment pointer
 		move.l	d0,RegPC(a5)	;PC points to first instruction
 		move.l	d0,Addr(a5)
+		move.l	d0,-(sp)
+
+		moveq	#0,d0
+01$		lsl.l	#2,d1
+		beq.s	02$
+		move.l	d1,a0
+		move.l	(a0),d1
+		addq.l	#1,d0
+		bra.s	01$
+
+02$		lea	s_txt(pc),a0
+		moveq	#1,d2
+		cmp.l	d0,d2
+		bne.s	03$
+		lea	null_txt(pc),a0
+03$		move.l	a0,d1
+		move.l	(sp)+,d2
+		lea	segadrmes(pc),a0
 		bsr	printf
 		bra.s	mjump
+
 oldseg		;message 'unload old segment first'
 		lea	ulserr(pc),A0
 		bsr	printstring_a0_window
@@ -1320,8 +1427,11 @@ abs_save	bsr	get_expr
 		move.l	D0,A4
 		bsr	get_expr
 		move.l	D0,D6
-		bsr	skipspaces
-		move.l	A3,D1
+
+		bsr	GetName
+		move.l	d0,d1
+		beq	error
+
 		move.l	#MODE_NEWFILE,D2
 		call	DosBase(a5),Open
 		move.l	D0,D7
@@ -1342,8 +1452,11 @@ abs_save_1	move.l	D7,D1
 *** LOAD ABSOLUTE (using DOS Read) ***
 abs_load	bsr	get_expr
 		move.l	D0,A4
-		bsr	skipspaces
-		move.l	A3,D1
+
+		bsr	GetName
+		move.l	d0,d1
+		beq	error
+
 		move.l	#MODE_OLDFILE,D2
 		call	DosBase(a5),Open	;open file
 		move.l	D0,D7
@@ -1371,7 +1484,11 @@ redirect	move.l	DosBase(a5),a6
 redir1		bsr	skipspaces
 		tst.b	(A3)
 		beq.s	jmp_mainloop_2
-		move.l	A3,D1
+
+		bsr	GetName
+		move.l	d0,d1
+		beq	error
+
 		move.l	#MODE_NEWFILE,D2
 		call	Open	;open redirection file
 		tst.l	D0
@@ -1565,9 +1682,15 @@ setdevice	addq.l	#2,a3
 		bsr	skipspaces
 		tst.b	(a3)
 		beq.s	showdev
-		lea	DevNameBuf(a5),a0
+
+		bsr	GetName
+		tst.l	d0
+		beq.s	digi_err
+
+		move.l	d0,a0
+		lea	DevNameBuf(a5),a1
 		moveq	#DNBUFSIZE-2,d1
-01$		move.b	(a3)+,(a0)+
+01$		move.b	(a0)+,(a1)+
 		dbeq	d1,01$
 		clr.b	(a0)
 		bra.s	d_mloop_1
@@ -1740,8 +1863,10 @@ gstr9		move.l	A1,D2
 
 *** DELETE A FILE ***
 Deletefile	addq.l	#2,A3
-		bsr	skipspaces
-		move.l	A3,D1
+		bsr	GetName
+		move.l	d0,d1
+		beq	error
+
 		call	DosBase(a5),DeleteFile
 		tst.l	D0
 		beq	dos_err
@@ -1749,19 +1874,18 @@ Deletefile	addq.l	#2,A3
 
 *** CHANGE CURRENT DIRECTORY (CD) ***
 CurrentDirectory
-		addq.l	#1,A3
-		bsr	skipspaces
 		move.l	DosBase(a5),a6
-		tst.b	(A3)
-		bne.s	cd_1
-		moveq	#0,D1	;if no name given set lock to zero (initial boot device root dir)
-		bra.s	cd_2
-cd_1		move.l	A3,D1
+		addq.l	#1,A3
+		bsr	GetName
+		move.l	d0,d1
+		beq.s	cd_2	;if no name set currentdir to zero lock
+
 		moveq	#SHARED_LOCK,D2
 		call	Lock
 		tst.l	D0
 		beq	dos_err
 		move.l	D0,D1
+
 cd_2		call	CurrentDir
 		move.l	D0,D1
 		call	UnLock	;unlock previous current directory
@@ -2923,6 +3047,8 @@ skipspaces	cmp.b	#SPACE,(A3)+
 *							 *
 * hunk(n)     -- start address of a hunk		 *
 * hlen(n)     -- length of a hunk			 *
+* hend(n)     -- end address of hunk
+* nhunks      -- number of hunks
 * abs(x)      -- absolute value				 *
 * peek(addr)  -- byte value of memory location		 *
 * peekw(addr) -- word value of memory location		 *
@@ -3233,25 +3359,41 @@ diz02		roxl.l	#1,d7
 r_hunk		bsr.s	gethunk
 		move.l	d1,d0
 		addq.l	#4,d0
-		bra.s	no_more_args
+		bra	no_more_args
 
 r_hlen		bsr.s	gethunk
 		move.l	d1,a0
 		move.l	-4(a0),d0
 		subq.l	#8,d0
-		bra.s	no_more_args
+		bra	no_more_args
+
+r_hend		bsr.s	gethunk
+		move.l	d1,d0
+		move.l	d1,a0
+		add.l	-4(a0),d0
+		subq.l	#5,d0
+		bra	no_more_args
+
+r_nhunks	moveq	#0,d0
+		move.l	SegList(a5),d1
+01$		lsl.l	#2,d1
+		beq.s	g_rts
+		move.l	d1,a0
+		move.l	(a0),d1
+		addq.l	#1,d0
+		bra.s	01$
 
 gethunk		bsr.s	get_first_arg
 		move.l	SegList(a5),d1
 01$		lsl.l	#2,d1
 		beq	expr_error		;hunk not found
 		tst.l	d0
-		beq.s	02$
+		beq.s	g_rts
 		move.l	d1,a0
 		move.l	(a0),d1
 		subq.l	#1,d0
 		bra.s	01$
-02$		rts
+g_rts		rts
 
 r_abs		bsr.s	get_first_arg
 		tst.l	d0
@@ -3302,7 +3444,16 @@ no_more_args	;D0 not changed!
 		rts
 
 get_num		;radix in D0
-		movem.l	d2/d3,-(sp)
+		bsr.s	getnum0
+		bcs	expr_error
+		rts
+
+getdecnum	bsr	skipspaces
+		moveq	#10,d0
+;
+; get a number, radix in d0, return carry set if error
+;
+getnum0		movem.l	d2/d3,-(sp)
 		move.l	d0,d2
 		moveq	#0,d0
 		move.l	a3,a0
@@ -3329,8 +3480,8 @@ getnum3		cmp.b	d2,d1
 		add.l	d1,d0
 		bra.s	getnum1
 getnum9		subq.l	#1,a3
-		cmp.l	a0,a3
-		beq.s	expr_error		;empty number
+		cmp.l	a3,a0
+		eor	#1,ccr		complement carry
 		movem.l	(sp)+,d2/d3
 		rts
 
@@ -3352,10 +3503,9 @@ get_token	movem.l	d2/a2,-(sp)
 		moveq	#0,d0
 
 gt1		move.l	a3,a2
-		tst.w	(a0)
+		tst.b	(a0)
 		beq.s	gt_nf
 		move.l	a0,a1
-		add.w	(a1),a1
 gt2		move.b	(a2)+,d1
 		move.b	(a1)+,d2
 		or.b	#$20,d1
@@ -3371,7 +3521,8 @@ gt2a		tst.b	d2
 gt3		cmp.b	d1,d2
 		beq.s	gt2
 
-gt_next		addq.l	#2,a0
+gt_next		tst.b	(a0)+
+		bne.s	gt_next
 		addq.l	#1,d0
 		bra.s	gt1
 
@@ -3382,32 +3533,28 @@ gt_ret		movem.l	(sp)+,d2/a2
 expr_error	lea	expr_errtxt(pc),a0
 		bra	errcom
 
-tokentable	rw	hunk_t
-		rw	hlen_t
-		rw	abs_t
-		rw	peek_t
-		rw	peekw_t
-		rw	peekl_t
-		rw	avail_t
-		dc.w	0
-
 tokfuncs	rw	r_hunk
 		rw	r_hlen
+		rw	r_hend
+		rw	r_nhunks
 		rw	r_abs
 		rw	r_peek
 		rw	r_peekw
 		rw	r_peekl
 		rw	r_avail
 
-hunk_t		dc.b	'hunk',0
-hlen_t		dc.b	'hlen',0
-abs_t		dc.b	'abs',0
-peek_t		dc.b	'peek',0
-peekw_t		dc.b	'peekw',0
-peekl_t		dc.b	'peekl',0
-avail_t		dc.b	'avail',0
+tokentable	dc.b	'hunk',0
+		dc.b	'hlen',0
+		dc.b	'hend',0
+		dc.b	'nhunks',0
+		dc.b	'abs',0
+		dc.b	'peek',0
+		dc.b	'peekw',0
+		dc.b	'peekl',0
+		dc.b	'avail',0
+		dc.b	0
 
-		ds.w	0
+		ds.w	0		;word alignment
 
 ;
 ; test if character in d0 is alphanumeric
@@ -5355,8 +5502,8 @@ flagstring	dc.b	'CVZNX'
 xbase		bsr	skipspaces
 		tst.b	(a3)
 		beq.s	showbase
-		moveq	#10,d0
-		bsr	get_num
+		bsr	getdecnum
+		bcs.s	base_err
 		moveq	#2,d1
 		cmp.b	d1,d0
 		bcs.s	base_err
@@ -6130,6 +6277,19 @@ printstring_a0_window
 		bra.s	print_text
 
 ;
+; pointer to null-terminated string to be printed in a0
+;
+puts_stdout	movem.l	a2/a6,-(sp)
+		move.l	a0,a2
+		call	DosBase(a5),Output
+		move.l	d0,d1
+		beq.s	01$
+		move.l	a2,a0
+		bsr.s	print_text
+01$		movem.l	(sp)+,a2/a6
+		rts
+
+;
 ; format a string in output buffer using RawDoFmt
 ; arguments in registers d0-d3
 ;
@@ -6663,6 +6823,59 @@ sp8		move.l	sp_Pkt+dp_Res2(a2),-(sp)	save result codes to stack
 		movem.l	(sp)+,d0-d1			get result codes in d0/d1
 
 sp9		movem.l	(sp)+,a2-a3/a6
+		rts
+
+*{
+;
+; string=GetName(cmdline)
+;   d0             a3
+;
+; Inputs:
+;  a3  -  Pointer to string or command line
+;
+; Returns:
+;  d0  -  Pointer to string argument or zero if failed.
+;  a3  -  Updated to the position after the end of the argument in the string.
+;
+; Gets the next string argument from command line pointed by a3 to
+; d0. returns zero if no valid string argument found. Arguments are
+; separated by spaces and can enclosed in double quotes if they contain
+; spaces. After the call, a3 points to the command line to a position
+; immediately after the argument.
+; NOTE: The command line itself is modified as this routine null-terminates
+; the strings it returns.
+;
+; modifies only registers d0 and a3.
+;
+; no libraries used.
+;
+*}
+
+GetName
+01$		cmp.b	#' ',(a3)+
+		beq.s	01$		;skip spaces
+		bcs.s	noname
+		subq.l	#1,a3
+		cmp.b	#'"',(a3)
+		beq.s	quoted
+		move.l	a3,D0
+
+getname1	cmp.b	#' ',(a3)+
+		bhi.s	getname1
+		clr.b	-1(a3)
+		rts
+
+quoted		addq.l	#1,a3
+		move.l	a3,D0
+
+getname2	cmp.b	#' ',(a3)
+		bcs.s	noname
+		cmp.b	#'"',(a3)+
+		bne.s	getname2
+		clr.b	-1(a3)
+		rts
+
+noname		moveq	#0,D0
 		rts
 
 
@@ -7390,7 +7603,7 @@ helptext	dc.b	FF,TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'sl',TAB,TAB,': segment list',TAB
 		dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
 		dc.b	'u',TAB,TAB,': unload segment'
-		dc.b	'| dev devicename',TAB,': set disk device',LF
+		dc.b	'| dev [devicename]',TAB,': set disk device',LF
 		dc.b	'r [reg=num]',TAB,': set/show regs',TAB
 		dc.b	'| = addr',TAB,TAB,': disk block checksum',LF
 		dc.b	'a addr',TAB,TAB,': assemble',TAB
@@ -7469,12 +7682,15 @@ main_prompt	dc.b	'-> ',0
 cmdline_prompt	dc.b	'Cmdline> ',0
 calc_prompt	dc.b	'Calc> ',0
 
+usage_txt	dc.b	'Usage: mon [-w<winwidth>] [-h<winheight>] [filename]',LF,0
+win_openerr_txt	dc.b	'Can''t open window',LF,0
 errtx		dc.b	'???',0
 outrangetxt	dc.b	'Out of range',0
 expr_errtxt	dc.b	'expr error',0
 memerr		dc.b	'Out of memory',0
 doserrfmt	dc.b	'DOS error '
 numfmt		dc.b	'%ld',LF,0
+notfound_txt	dc.b	'File not found',LF,0
 td_errfmt	dc.b	'Disk error %ld',0
 nodisktxt	dc.b	'No disk in drive',0
 wrprotxt	dc.b	'Disk write protected',0
@@ -7490,8 +7706,10 @@ brklistTx	dc.b	'Breakpoints:',LF,0
 audiotxt	dc.b	'Press Ctrl-C to stop...',LF,0
 ulserr		dc.b	'Unload old segment first',LF,0
 
-segadrmes	dc.b	'First segment at '
+segadrmes	dc.b	'%ld hunk%s at '
 hexfmt		dc.b	'$%08lx',LF,0
+s_txt		dc.b	's, first hunk'
+null_txt	dc.b	0
 
 allocfmt	dc.b	'Allocated from $%08lx to $%08lx',LF,0
 rangefmt	dc.b	'%ld bytes read from $%08lx to $%08lx',LF,0

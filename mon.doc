@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.25 instructions
+                 Amiga Monitor v1.26 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -22,6 +22,18 @@
 
   The monitor is re-entrant (pure) code and can be made resident
   (for example, using the Workbench 1.3 resident command or ARP 1.3 ares)
+
+
+ Command line arguments (New in version 1.26):
+ ---------------------------------------------
+
+ options:
+  -w <window width>
+  -h <window height>
+
+ An optional filename can also be given in the command line.  The monitor
+ will try to load the named executable file immediately after starting.
+ The filename must be in quotes if it contains spaces.
 
 
  Input line editing and command line history:
@@ -92,6 +104,8 @@
 
   hunk(n)  --  start address of nth hunk of currently loaded seglist
   hlen(n)  --  length of nth hunk of currently loaded seglist
+  hend(n)  --  end address of nth hunk of currently loaded seglist
+  nhunks   --  number of hunks in the currently loaded seglist
   abs(x)   --  absolute value of a number  
   peek(a)  --  8-bit contents of a memory location
   peekw(a) --  16-bit contents of a memory location
@@ -157,6 +171,15 @@
   The monitor now allocates 2K of stack for its own use and the rest
   of the stack can be used by the program being debugged. If you
   need a larger stack, you can use the CLI 'stack' command.
+
+
+ File/directory names:
+ ---------------------
+
+  When the monitor requires a file or directory name or the device name
+  for the 'dev'-command, the name must be in quotes if it contains spaces.
+  This has been changed from the previous versions.
+
 
 
  The following commands are available in the monitor:
@@ -326,7 +349,8 @@ put in the stack if the stack pointer is out of range.
 g [addr] -- Go (execute machine code)
 
 j [addr] -- Jump to subroutine
- As g-command but pushes return address first.
+ As g-command but pushes return address first. this return address will
+ give control back to the monitor when rts-instructions is executed.
 
 w [addr] -- Walk (single step trace)
  This single steps code using the 68000 processor built-in trace mode.
@@ -379,14 +403,14 @@ l -- Load segment
  Usage:
   l <name> -- loads the executable file <name> in memory and displays
   the starting address of the first hunk, also sets PC to this address.
-  only one segment can be loaded at the same time. Before loading a new
-  segment you must unload the old segment with the u-command. To display
+  only one executable file be loaded at the same time. Before loading a new
+  file you must unload the old file with the u-command. To display
   the starting & ending addresses of all the hunks in the file, use the
   sl-command.
 
 u -- Unload segment
  Usage:
-  u  -- unload the current segments (frees the memory of that segment)
+  u  -- unload the currently loaded executable file.
 
 sl -- Segment list
  Usage:
@@ -500,6 +524,12 @@ x -- Exit
 
 Version history:
 ----------------
+1.26 ->
+ - added hend() and nhunks-functions to the expression parser.
+ - added command line options for window width and height
+ - a file name to LoadSeg() can be given in the command line
+ - new filename parse routine, now names with spaces in
+   them must be in quotes
 1.25 ->
  - (internal change) now uses TC_Userdata instead of TC_TrapData because
    TC_TrapData is marked as private in 1.4/2.0 includes.
@@ -579,10 +609,10 @@ Version history:
 
 
 
-Amiga Monitor v1.25 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.26 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the zoo-file 'mon125.zoo'.
+way of distribution is the zoo-file 'mon126.zoo'.
 
 
 Send suggestions, bug reports etc. to:
