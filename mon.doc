@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.22 instructions
+                 Amiga Monitor v1.24 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -133,90 +133,30 @@
     'both',$0A,'text',10,'and','numbers'
 
 
-Version history:
-----------------
+ Special Note:
+ -------------
+  There is a problem with the walk (trace) command and several instructions
+  that cause processor exceptions. These instructions are chk, trap #n,
+  trapv and divu/divs (with divisions by zero). If you try to trace these
+  instructions, a trace-exception occurs in supervisor-mode, out of the
+  control of the monitor and you get a guru meditation alert with number
+  00000009. This problem was with the earlier monitor versions as well.
 
-1.22 ->
- - better handling of stack pointer with jump & go-commands
- - extended trace command
- - memory display can be used at odd addresses
- - generally cleaned up the source code
- - variables are now case-insensitive.
-1.20 ->
- - added the '[register]'-syntax in the expression parser
-1.19 ->
- - disassembler now uses new routines. this makes the monitor
-   executable little smaller than 1.17
-1.17 ->
- - monitor is now re-entrant and can be made resident
- - transfer no longer crashes if you transfer from location zero
- - default base is again hexadecimal
-1.15 ->
- - some minor bug fixes in assembler
-   (move sp,usp or exg Rx,sp did not work)
- - 'memory info'-command
- - underscores are allowed in variable names
- - variable list is kept in alphabetical order
-1.12 ->
- - expressions can now be used instead of numbers. also included
-   calculator-command.
- - variables can be used in expressions.
- - user-defineable default number base, default is now decimal.
- - hunt-command no longer finds anything in the monitor code/data areas
- - show seglist now displays hunk numbers
- - chip memory allocation syntax has been changed.
-1.08 ->
- - the monitor works ok with 68010/68020 processors. previous versions
-   left sometimes extra data in supervisor stack.
-1.07 ->
- - The disassembler and assembler handle exg Dn,An correctly
-   (previously the data and address register numbers were reversed)
- - The disassembler no more displays any invalid codes as valid
-   instructions (On the 68000 processor, of course. The monitor does
-   not currently support 68010/68020 extra instructions).
- - The pc-relative indexed addressing mode now works with the assembler.
- - Some little bugs were fixed in the assembler.
-    + And/or-instructions work with a pc-relative source operand. 
-    + cmpm works with all sizes
-    + most(if not all...) of the bugs that caused the assembler to
-      assemble invalid instructions have been fixed.
- - 'sp' can be used instead of 'a7' in the assembler and the disassmbler
-   displays a7 as 'sp'.
- - The assembler now unserstands blo/bhs, slo/shs and dblo/sbhs
-   and assembles them as bcs/bcc, scs/scc and dbcs/dbcc
- - The disassembler displays address-register relative offsets and short
-   absolute addresses as signed numbers.
- - The monitor works now better with 60-column default font (TOPAZ60).
- - Disk read/write commands can be used with non-chip memory
- - Play digisound command has an optional parameter to specify
-   how many times the sample is played.
- - A new command has been added to specify a command line for programs
-   executed under the control of the monitor.
- - Breakpoints work even if you jump into the code at to breakpoint.
-   The breakpoint does not activate until the instruction at the break
-   position is executed, so you don't get immediately interrupted.
-   (internally the monitor uses the trace-exception to skip the breakpoint
-   at the first time...)
+  Included with the monitor distribution is a program called patchtrace
+  that changes directly the processor hardware trace-exception vector to
+  point a new routine that removes the trap-trace problem.
 
+  (The monitor does not support executing code in supervisor mode, so there
+  is not normally any reason to trace any of the instructions that can
+  cause problems. However, because you can accidentally cause the machine
+  to crash by tracing these instructions, the patchtrace-program
+  may be useful.)
 
-Special Note:
--------------
- There is a problem with the walk (trace) command and several instructions
- that cause processor exceptions. These instructions are chk, trap #n,
- trapv and divu/divs (with divisions by zero). If you try to trace these
- instructions, a trace-exception occurs in supervisor-mode, out of the
- control of the monitor and you get a guru meditation alert with number
- 00000009. This problem was with the earlier monitor versions as well.
-
- Included with the monitor distribution is a program called patchtrace
- that changes directly the processor hardware trace-exception vector to
- point a new routine that removes the trap-trace problem.
-
- (The monitor does not support executing code in supervisor mode, so there
- is not normally any reason to trace any of the instructions that can
- cause problems. However, because you can accidentally cause the machine
- to crash by tracing these instructions, the patchtrace-program
- may be useful.)
+ Stack usage:
+ ------------
+  The monitor now allocates 2K of stack for its own use and the rest
+  of the stack can be used by the program being debugged. If you
+  need a larger stack, you can use the CLI 'stack' command.
 
 
  The following commands are available in the monitor:
@@ -378,7 +318,7 @@ bl -- List breakpoints
  Usage:
   bl -- display a list of all breakpoints
 
-The g, j, w and e-commands use the current program counter value
+The g, j, w, q and e-commands use the current program counter value
 (displayed with the r-command) if you don't give them an address.
 The stack pointer is reset and a return address to the monitor is
 put in the stack if the stack pointer is out of range.
@@ -394,7 +334,6 @@ w [addr] -- Walk (single step trace)
 
  (This command does not activate breakpoints)
 
-
 e [addr] -- Extended trace (execute with temporary breakpoint)
  This command allows you to execute subroutine calls in full speed
  when tracing and you don't need to manually place a breakpoint after
@@ -409,13 +348,18 @@ e [addr] -- Extended trace (execute with temporary breakpoint)
  normally, but after that the monitor interrupts execution to the
  invisible breakpoint.
 
- Note that if you use the e-command in an address that contains a jump
- or branch instruction, the code flow may never come to the temporary
+ Note that if you use the e-command in an address that contains a flow-
+ control instruction, the code flow may never come to the temporary
  breakpoint. Normally it is better to trace using the w-instruction,
  but for example, system calls cannot always be traced, and even if
  they can, you most probably don't want to do it. In previous versions
  of the monitor you had to manually insert a breakpoint after the call
  and use the g-command. Now you can simply use the e-command.
+
+q [addr] -- QuickTrace (execute until flow-control instruction)
+ This command executes code one instruction at time (in the 68000 trace mode)
+ until it encounters a program flow control instruction (jump, branch,
+ subroutine call or return, trap).
 
 Note: there is no easy way to run BCPL programs (CLI commands) or other
 programs that use the internal BCPL library from the monitor.
@@ -423,10 +367,11 @@ programs that use the internal BCPL library from the monitor.
 @ -- Enter command line
  Usage:
   @ [command line]. If you don't specify a command line (enter only @<cr>)
-  then the monitor will prompt for command line. the command line will
+  then the monitor will prompt for command line. The command line will
   be put in a special memory area and the register a0 will contain pointer
   to the string and d0 will contain length of the string (with a linefeed
-  appended to end of it).
+  appended to end of it). If you want an empty command line, enter the
+  @-command without parameters and press return on the 'Cmdline>'-prompt.
   The purpose of this command is to specify a command line for the program
   that you are running from the monitor.
 
@@ -517,6 +462,7 @@ sm -- Show allocated memory
 cls -- Clears the monitor window
 
 del <filename> -- Deletes a file
+
 cd  <dirname>  -- Sets the current directory
 
 dir [<name>]   -- Displays the directory
@@ -524,19 +470,92 @@ dir [<name>]   -- Displays the directory
   will be displayed.
 
 \ -- New CLI
-  Opens a new CLI window. This CLI is a separate process, so you can continue
-  to use the monitor when the CLI window is there. Also the CLI window does
-  not close automatically when you exit the monitor. You must close it with
-  the CLI command EndCLI. In fact the monitor uses the NewCLI command
-  to open the new CLI window.
+  Opens a new CLI window by executing a 'NewCLI'-command.
 
 x -- Exit
   Cleanup and exit.
 
 
 
-Amiga Monitor v1.22 Copyright © 1987-1990 by Timo Rossi. The monitor
-can be freely distributed non-commercially.
+Version history:
+----------------
+1.24 ->
+ - corrected a small bug in the assembler/disassembler mnemonic tables
+   (trap and tas-instructions were accidentally exchanged...)
+1.23 ->
+ - quicktrace-command
+ - now reserves separate areas of stack for the monitor itself and
+   the program being debugged.
+1.22 ->
+ - better handling of stack pointer with jump & go-commands
+ - extended trace command
+ - memory display can be used at odd addresses
+ - generally cleaned up the source code
+ - variables are now case-insensitive.
+1.20 ->
+ - added the '[register]'-syntax in the expression parser
+1.19 ->
+ - disassembler now uses new routines. this makes the monitor
+   executable little smaller than 1.17
+1.17 ->
+ - monitor is now re-entrant and can be made resident
+ - transfer no longer crashes if you transfer from location zero
+ - default base is again hexadecimal
+1.15 ->
+ - some minor bug fixes in assembler
+   (move sp,usp or exg Rx,sp did not work)
+ - 'memory info'-command
+ - underscores are allowed in variable names
+ - variable list is kept in alphabetical order
+1.12 ->
+ - expressions can now be used instead of numbers. also included
+   calculator-command.
+ - variables can be used in expressions.
+ - user-defineable default number base, default is now decimal.
+ - hunt-command no longer finds anything in the monitor code/data areas
+ - show seglist now displays hunk numbers
+ - chip memory allocation syntax has been changed.
+1.08 ->
+ - the monitor works ok with 68010/68020 processors. previous versions
+   left sometimes extra data in supervisor stack.
+1.07 ->
+ - The disassembler and assembler handle exg Dn,An correctly
+   (previously the data and address register numbers were reversed)
+ - The disassembler no more displays any invalid codes as valid
+   instructions (On the 68000 processor, of course. The monitor does
+   not currently support 68010/68020 extra instructions).
+ - The pc-relative indexed addressing mode now works with the assembler.
+ - Some little bugs were fixed in the assembler.
+    + And/or-instructions work with a pc-relative source operand. 
+    + cmpm works with all sizes
+    + most(if not all...) of the bugs that caused the assembler to
+      assemble invalid instructions have been fixed.
+ - 'sp' can be used instead of 'a7' in the assembler and the disassmbler
+   displays a7 as 'sp'.
+ - The assembler now unserstands blo/bhs, slo/shs and dblo/sbhs
+   and assembles them as bcs/bcc, scs/scc and dbcs/dbcc
+ - The disassembler displays address-register relative offsets and short
+   absolute addresses as signed numbers.
+ - The monitor works now better with 60-column default font (TOPAZ60).
+ - Disk read/write commands can be used with non-chip memory
+ - Play digisound command has an optional parameter to specify
+   how many times the sample is played.
+ - A new command has been added to specify a command line for programs
+   executed under the control of the monitor.
+ - Breakpoints work even if you jump into the code at to breakpoint.
+   The breakpoint does not activate until the instruction at the break
+   position is executed, so you don't get immediately interrupted.
+   (internally the monitor uses the trace-exception to skip the breakpoint
+   at the first time...)
+1.06 and older...
+ - prehistoric versions...
+
+
+
+Amiga Monitor v1.24 Copyright © 1987-1990 by Timo Rossi. The monitor
+can be freely distributed non-commercially. This document file and the
+'patchtrace'-program should be included in the distribution. Preferred
+way of distribution is the zoo-file 'mon124.zoo'.
 
 
 Send suggestions, bug reports etc. to:
