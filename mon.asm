@@ -6,10 +6,12 @@
 * v1.06 -> last mod. 1988-05-02    *
 * v1.07 -> last mod. 1989-08-28    *
 * v1.08 -> last mod. 1989-08-29    *
-* v1.12 -> last mod. 1989-11-28	   *
-* v1.14 -> last mod. 1989-11-29	   *
-* v1.15 -> last mod. 1989-11-30	   *
+* v1.12 -> last mod. 1989-11-28    *
+* v1.14 -> last mod. 1989-11-29    *
+* v1.15 -> last mod. 1989-11-30    *
 * v1.17 -> last mod. 1989-12-09    *
+* v1.18 -> last mod. 1989-12-14    *
+* v1.19 -> last mod. 1989-12-21    *
 *                                  *
 ************************************
 
@@ -70,6 +72,38 @@
 ;     *done in version 1.10*
 ;  - 68010 support
 ;  - 68020/68881 support (quite difficult...)
+;
+
+;#
+;# here are the starting comments from dis.a (the new disassembler routine)
+;#
+;
+; dis.a  --  68000 disassembler
+;
+; created  1989-08-20  TR
+;
+; version 1.0 -- 1989-08-25
+;
+; 1989-08-24  TR  -->	now works quite well, tested, no bugs found!!
+;			prints signed offsets, hex output leading zero
+;			elimination works ok. zero word padding does not
+;			confuse the disassembler any more...
+;			now understands btst Dn,#immediate mode...
+;			also changed hex output to use lower case letters.
+;
+;		  -->	it seems that you never find the last bug...just
+;			when I though this was practically bug-free code
+;			I received a letter from John van Dijk telling
+;			that my monitor disassembler does not correctly
+;			disassemble exg Dn,An-instruction. after little
+;			examination I found that the bug was really in
+;			my 68000 documents, I had made no error in the
+;			program...at least it now works correctly in this
+;			disassembler. and maybe I'll make a new version
+;			of the monitor too...
+;
+; 1989-08-25  TR  -->	changed usp, sr & ccr to lower case, absolute
+;			short addresses are now displayed as signed numbers
 ;
 
 ;
@@ -201,6 +235,15 @@
 ;		- transfer from location zero now works. this bug was in
 ;		  the original code. strange that nobody noticed it...
 ;
+;   1989-12-14 --> v1.18
+;		- disassembler now uses new routines. shorter executable.
+;
+;   1989-12-21 -->v1.19
+;		- disassembler now prints the dollar signs that were missing
+;		  in previous version in immediate word/byte operands
+;		  and trap numbers.
+;
+
 
 ;
 ; lots of includes...
@@ -228,7 +271,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION	macro
-	dc.b	'1.17'
+	dc.b	'1.19'
 	endm
 
 *** macro to generate 16-bit self-relative addresses ***
@@ -249,6 +292,12 @@ clc	macro
 
 sec	macro			;set carry
 	or	#$01,ccr
+	endm
+
+str	macro
+	dc.b	str2\@-str1\@
+str1\@	dc.b	\1
+str2\@
 	endm
 
 *** macros to call system routines ***
@@ -402,8 +451,50 @@ ILLEGAL	equ	$4AFC	;illegal instruction (used by breakpoints)
 	BITDEF	MON,BRKACTIVE,0
 	BITDEF	MON,BRKSKIP,1
 
-	section	MonitorCode,CODE
+;
+; equates for disassembler routine
+;
 
+EABITS	equ	$1f
+DATA	equ	1
+MEMORY	equ	2
+CONTROL	equ	4
+ALTER	equ	8
+NIMM	equ	$10	;not immediate
+
+SIZBITS	equ	$60
+SIZSHFT	equ	5
+BYTE	equ	$20
+WORD	equ	$40
+LONG	equ	$60
+
+; this bit means that there is a special routine to handle this instruction
+SPECIAL_CASE	equ	$80
+
+DRB	equ	$80	; data register, number from bits 11-9
+DR2	equ	$81	; data register, number from bits 2-0
+ARB	equ	$82	; address register, number from bits 11-9
+AR2	equ	$83	; address register, number from bits 2-0
+EA	equ	$84	; effective address
+SZ	equ	$85	; size specifier
+IMM	equ	$86	; immediate data byte/word/long
+IMMQ	equ	$87	; immediate data for addq/subq/shifts
+IMVQ	equ	$88	; immediate data for moveq
+SCCR	equ	$89	; sr/ccr
+SD	equ	$8a	; shift direction
+STP1	equ	$8b	; register shift type
+STP2	equ	$8c	; memory shift type
+CC	equ	$8d	; condition code or 'sr' or 'ra'
+SOFFS	equ	$8e	; 8-bit pc-relative offset (short branches)
+OFFS	equ	$8f	; 16-bit pc-relative offset
+IMMOFFS	equ	$90	; immediate word constant, no '#'-sign
+TRAPN	equ	$91	; trap number
+BIT	equ	$92	; bit instruction type
+
+TOKSTART	equ	$a0
+
+;
+	section	MonitorCode,CODE
 ;
 ; although the monitor can be started from workbench, that is not
 ; recommended, because if you run a program from the monitor it runs
@@ -472,7 +563,7 @@ main	move.l	#MonitorData_SIZE,d0
 
 	lea	OutputBuffer(a5),a0
 	movem.w	sc_Width(a0),d0-d1	this sign-extends to long
-	sub.w	#16,d1
+	subq.w	#8,d1
 ;
 ; window "filename" is created using RawDoFmt in the output buffer
 ;
@@ -1913,7 +2004,8 @@ nodir
 	bsr	getparams
 	move.l	Addr(A5),A4
 disasmloop
-	bsr.s	disasmline
+	startline
+	bsr.s	disassemble
 	bsr	printstring
 	bsr	CheckEnd
 	bne.s	disasmloop
@@ -1921,1450 +2013,668 @@ disasmloop
 	bra	mainloop
 
 *** DISASSEMBLE ONE INSTRUCTION ***
-* address in A4
-disasmline
-	startline
-	move.l	A4,D0
-	bsr	puthex1_68		print address
-	putchr	SPACE
-	move.l	A3,A2
-	move.l	a2,a3
-	add.w	#27,A3
-	move.l	a3,d6
-	bsr	DGetWord
-	move.w	d2,opcode(a5)
-	move.l	A4,instrad(A5)
-	move.w	D2,D0
-	moveq	#12,D1
-	lsr.w	D1,D0	;jump according to the first four bits (first hex digit)
-	add.w	D0,D0
-	lea	disadrtabl(pc),A1
-	add.w	D0,A1
-	add.w	(A1),A1
-	jmp	(A1)
+;
+; disassembler routine main entry point
+;
+; a4 contains memory address of opcode on entry, incremented to
+; next instruction on exit.
+;
+; a3 contains address of output text buffer, incremented to end of
+; text on exit.
+;
+; return pointer to start of instruction mnemonic name in a0
+; return d0 zero if valid instruction was disasembled
+;
+disassemble
+	movem.l	d2-d7/a2/a5-a6,-(sp)
 
-*** $4xxx ***
-handlefour
-	cmp.w	#ILLEGAL,D2	;illegal instruction $4AFC
-	bne.s	no_illegal
-	moveq	#n_illegal,D0
-	bsr	put_instr_name
-	bra	dis9
-no_illegal
-	btst	#8,D2
-	beq.s	no_lea_or_chk
-	btst	#7,D2
-	beq.s	derr_4
-	btst	#6,D2
-	bne.s	lea_instr
-	and.w	#$38,D2
-	cmp.w	#$08,D2		;An addr mode illegal
-	beq.s	derr_4
-	moveq	#n_chk,D0		;chk instruction
-	bsr	put_instr_name
-	move.w	#WSIZE,size(a5)
-	bsr	padd
-	bsr	NormEA
-	putchr	COMMA
-	bsr	putDreg9
-	bra.s	chk_lea_zap9
-derr_4	bra	diserr
-lea_instr
-	bsr	check_jump_adrmode
-	bne.s	derr_4
-	moveq	#n_lea,D0
-	bsr	put_instr_name
-;%%	move.w	#LSIZE,size(a5) actually no size
-	bsr	padd
-	bsr	NormEA
-	putchr	COMMA
-	bsr	putAreg9
-chk_lea_zap9
-	bra	dis9
+	move.l	a4,d0
+	bsr	puthex1_68
 
-no_lea_or_chk
-	move.w	D2,D0
-	and.w	#$0E00,D0
-	bne.s	no_negx_or_move_sr
+	move.l	a3,a5
+	addq.l	#1,a5
+	moveq	#SPACE,d0
+	moveq	#24-1,d1
+01$	move.b	d0,(a3)+
+	dbf	d1,01$
+	move.l	a3,-(sp)
 
-negate	bsr	check_dest_adrmode
-	bne.s	derr_4
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	move_from_sr
-	moveq	#n_neg,D0
-	bsr	put_instr_name
-	btst	#10,D2
-	bne.s	noextneg
-	putchr	<'x'>
-noextneg
-	bsr	putsize
-	bsr	padd
-	bsr	NormEA
-	bra.s	mngxzap9
-move_from_sr	;MOVE	sr,Ea
-	moveq	#n_move,D0
-	bsr	put_instr_name
-	move.w	#WSIZE,size(a5)
-	bsr	padd
-	move.l	#'sr, ',d0
-	bsr	PutLong
-	subq.l	#1,a3
-	bsr	NormEA
-mngxzap9
-	bra	dis9
-no_negx_or_move_sr
-	cmp.w	#$0200,D0
-	bne.s	noclr
-	move.w	D2,D0	;clr instruction
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	derr_zap
-	bsr	check_dest_adrmode
-	bne.s	derr_zap
-	moveq	#n_clr,D0
-	bsr	put_instr_name
-	bsr	putsize
-	bsr	padd
-	bsr	NormEA
-	bra.s	mngxzap9
-derr_zap
-	bra	diserr
+; store stack pointer in high words of d4 and d5
+	move.l	sp,d4
+	move.w	d4,d5
+	swap	d5
 
-noclr	cmp.w	#$0400,D0
-	bne.s	no_neg_or_move_ccr
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	bne	negate
-	and.w	#$38,D2
-	cmp.w	#$08,D2	;An addr mode is illegal
-	beq.s	derr_zap
-	moveq	#n_move,D0	;move to ccr
-	bsr	put_instr_name
-	clr.w	size(a5)	byte size
-	bsr	padd
-	bsr	NormEA
-	move.l	#',ccr',D0
-	bsr	PutLong
-	bra.s	nzapp99
+	move.l	a3,d3
 
-no_neg_or_move_ccr
-	cmp.w	#$0600,D0
-	bne.s	no_not_or_move_sr
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	move_to_sr
-	bsr	check_dest_adrmode	;not-insturuction
-	bne.s	derr_zap
-	moveq	#n_not,d0
-	bsr	put_instr_name
-	bsr	putsize
-	bsr	padd
-	bsr	NormEA
-nzapp99
-	bra	dis9
-move_to_sr
-	and.w	#$38,D2
-	cmp.w	#$08,D2		;An addr mode illegal
-	beq.s	derr_zump
-	moveq	#n_move,D0		;move to SR
-	bsr	put_instr_name
-	move.w	#WSIZE,size(a5)
-	bsr	padd
-	bsr	NormEA
-	move.l	#',sr ',D0
-	bsr	PutLong
-	subq.l	#1,A3
-	bra.s	nzapp99
-derr_zump
-	bra	diserr
+	bsr	GetWord			get opcode
+	move.l	a4,a6
+	move.w	d0,d7
+	bne.s	02$
+	move.w	(a4),d1
+	and.w	#$ff00,d1
+	beq.s	02$
+	lea	zero_txt(pc),a0
+	bsr	put_str
+	moveq	#-1,d0
+	bra.s	dis_end
+02$
+	lea	DisAsmTable(pc),a2
+instr_loop
+	move.w	d7,d0
+	and.w	(a2)+,d0
+	cmp.w	(a2)+,d0
+	beq.s	i_found
+	moveq	#0,d1
+	move.b	1(a2),d1
+	move.l	a2,d0			get next table entry
+	add.l	d1,d0
+	addq.l	#3,d0
+	and.b	#$fe,d0
+	move.l	d0,a2
+	bra.s	instr_loop
 
-no_not_or_move_sr
-	cmp.w	#$0A00,D0
-	bne.s	no_tst_or_tas
-	bsr	check_dest_adrmode
-	bne.s	derr_zump
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	tas_instr
-	moveq	#n_tst,d0	;tst-instruction
-	bsr	put_instr_name
-	bsr	putsize
-	bsr	padd
-	bsr	NormEA
-	bra.s	ttzap9
-tas_instr
-	moveq	#n_tas,D0
-	bsr	put_instr_name
-	clr.w	size(a5)	byte size
-	bsr	padd
-	bsr	NormEA
-ttzap9	bra	dis9
+i_found
+	move.b	(a2)+,d6		get flags
+	bmi.s	special_routine
 
-no_tst_or_tas
-	cmp.w	#$0800,D0
-	bne	no_48
-	btst	#7,D2
-	bne.s	movem_or_ext
-	btst	#6,D2
-	beq.s	negate_bcd
-	move.w	D2,D0
-	and.w	#$38,D0
-	beq.s	swap_instr
-	bsr	check_jump_adrmode	;pea-instruction
-	bne.s	derr_zip
-	moveq	#n_pea,D0
-	bsr	put_instr_name
-	bsr	padd
-;%% no size
-	bsr	NormEA
-	bra.s	swapzap9
-swap_instr
-	moveq	#n_swap,d0
-	bsr	put_instr_name
-	bsr	padd
-	bsr	putDreg0
-swapzap9
-	bra	dis9
-derr_zip
-	bra	diserr
-negate_bcd
-	bsr	check_dest_adrmode
-	bne.s	derr_zip
-	moveq	#n_nbcd,D0
-	bsr	put_instr_name
-;%% byte size, immediate mode not valid
-	bsr	padd
-	bsr	NormEA
-	bra.s	swapzap9
-movem_or_ext
-	move.w	D2,D0
-	and.w	#$38,D0
-	bne.s	movem_to_mem
-	moveq	#n_ext,D0	;ext
-	bsr	put_instr_name
-	bsr	put_wl_size
-	bsr	padd
-	bsr	putDreg0
-	bra	dis9
-movem_to_mem
-	bsr	check_dest_adrmode
-	bne.s	derr_zip
-	and.w	#$38,D2
-	cmp.w	#$18,D2
-	beq.s	derr_zip
-	moveq	#n_move,D0
-	bsr	put_instr_name
-	putchr	<'m'>
-	bsr	put_wl_size
-	bsr	padd
-	bsr	DGetWord
-	bsr	RegisterList
-	putchr	COMMA
-	bsr	NormEA
-	bra.s	dazap9
+	clr.w	d4			get size
+	move.b	d6,d4
+	lsr.b	#SIZSHFT,d4
+	and.b	#3,d4
+	bne.s	siz01
 
-no_48	cmp.w	#$0C00,D0
-	bne.s	special_4e
-	btst	#7,d2
-	beq.s	derr_4e
-	and.w	#$3F,D2	;lots of testing for illegal addressing modes
-	cmp.w	#$3B,D2
-	bhi.s	derr_4e
-	and.w	#$38,D2
-	cmp.w	#$20,D2
-	beq.s	derr_4e
-	cmp.w	#$10,D2
-	bcs.s	derr_4e
-	moveq	#n_move,D0	;movem from mem
-	bsr	put_instr_name
-	putchr	<'m'>
-	bsr	put_wl_size
-	bsr	padd
-	bsr	DGetWord
-	move.w	D2,D5
-	bsr	NormEA
-	putchr	COMMA
-	move.w	D5,D2
-	bsr	RegisterList
-dazap9	bra	dis9
-derr_4e	bra	diserr
+	move.b	d7,d4
+	lsr.b	#6,d4			get size from opcode bits 7-6
+	addq.b	#1,d4
+	and.b	#3,d4
+siz01
+	and.b	#EABITS,d6
 
-*** $4Exx ***
-special_4e
-	cmp.w	#$4E40,D2
-	bcs.s	derr_4e
-	cmp.w	#$4e50,D2
-	bcc.s	notrapinst
-	moveq	#n_trap,D0	;TRAP #n
-	bsr	put_instr_name
-	bsr	padd
-	putchr	<'#'>
-	move.w	D2,D0
-	and.b	#$0F,D0
-	moveq	#2,d1
-	bsr	put_hexnum
-	bra.s	dazap9
-notrapinst
-	cmp.w	#$4E58,D2
-	bcc.s	nolink
-	moveq	#n_link,D0
-	bsr	put_instr_name	;LINK An,#cc
-	bsr	padd
-	bsr	putAreg0
-	putchr	COMMA
-	putchr	<'#'>
-	bsr	DGetWord
-	move.w	D2,D0
-	ext.l	d0
-	bsr	put_signed_hexnum	%%signed offset
-	bra.s	dazap9
-nolink
-	cmp.w	#$4E60,D2
-	bcc.s	nounlk
-	moveq	#n_unlk,D0	;UNLK An
-	bsr	put_instr_name
-	bsr	padd
-	bsr	putAreg0
-	bra.s	dazap9
-nounlk	cmp.w	#$4E68,D2
-	bcc.s	no_move_to_usp
-	moveq	#n_move,D0	
-	bsr	put_instr_name	;MOVE An,usp
-	bsr	padd
-	bsr	putAreg0
-	putchr	COMMA
-	lea	USPnam(pc),A1
-	bsr	putstring
-uspzap9	bra	dis9
-no_move_to_usp
-	cmp.w	#$4E70,D2
-	bcc.s	no_move_from_usp
-	moveq	#n_move,D0
-	bsr	put_instr_name	;MOVE usp,An
-	bsr	padd
-	lea	USPnam(pc),A1
-	bsr	putstring
-	putchr	COMMA
-	bsr	putAreg0
-	bra.s	uspzap9
-no_move_from_usp
-	cmp.w	#$4E78,D2
-	bcc.s	jumps
-	cmp.w	#$4E74,D2
-	beq.s	derr_zero	;$4E74 is illegal
-	move.w	D2,D0
-	and.w	#7,D0
-	add.w	#n_reset,D0
-	bsr	put_instr_name	;RTS, NOP, RTE, STOP, RESET, RTR...
-	cmp.w	#$4E72,D2	;STOP ?
-	bne.s	uspzap9
-	bsr	padd
-	bsr	DGetWord	;if it is, print '#num'
-	move.w	D2,D0
-	putchr	<'#'>
-	moveq	#4,d1
-	bsr	put_hexnum
-	bra.s	jumpzap9
+	clr.w	d5
+	move.b	(a2)+,d5		get string length
+	subq.w	#1,d5			for dbf
 
-jumps	bsr	check_jump_adrmode
-	bne.s	derr_zero
-	move.w	D2,D0
-	lsr.w	#6,D0
-	and.w	#3,d0
-	subq.w	#2,d0
-	bcs.s	derr_zero
-	add.w	#n_jsr,D0
-	bsr	put_instr_name	; JMP & JSR
-;%% no size
-	bsr	padd
-	bsr	NormEA
-jumpzap9
-	bra	dis9
-derr_zero
-	bra	diserr
-
-*** $0xxx ***
-handlezero
-	tst.w	d2
-	bne.s	nozero
-;#
-;# handle zero "padding words"
-;# these would normally be listed as ori.b #data,d0 -instructions
-;# and cause the disassembler to 'get out of sync'
-;#
-	move.w	(a4),d0
-	and.w	#$ff00,d0
-	beq.s	nozero
-	lea	zerotxt(pc),a1
-	bsr	putstring
-	bra.s	jumpzap9
-nozero	btst	#8,D2
-	bne	movep_etc
-	move.w	D2,D0
-	and.w	#$0E00,D0
-	beq.s	or_imm
-	cmp.w	#$0200,D0
-	beq.s	and_imm
-	cmp.w	#$0400,D0
-	beq.s	sub_imm
-	cmp.w	#$0600,D0
-	beq.s	add_imm
-	cmp.w	#$0800,D0
-	beq	bits_imm
-	cmp.w	#$0A00,D0
-	beq.s	eor_imm
-	cmp.w	#$0C00,D0
-	bne.s	derr_zero
-* cmpi *
-	moveq	#n_cmp,D0
-	bra.s	imm_com
-add_imm	moveq	#n_add,D0
-	bra.s	imm_com
-sub_imm	moveq	#n_sub,D0
-	bra.s	imm_com
-or_imm	moveq	#n_or,D0
-	bra.s	logic_imm
-and_imm	moveq	#n_and,D0
-	bra.s	logic_imm
-eor_imm	moveq	#n_eor,D0
-logic_imm
-	move.w	D2,D1
-	and.w	#$3F,D1
-	cmp.w	#$3C,D1
-	bne.s	imm_com
-	bsr	put_instr_name	;mode=SR or CCR
-	putchr	<'i'>
-	bsr	padd
-	move.w	opcode(a5),d0
-	and.w	#$c0,d0
-	beq.s	immccr
-	cmp.w	#$40,d0
-	bne.s	derr_imm
-	move.w	#WSIZE,size(a5)
-	bsr	Immediate
-	move.l	#',sr ',d0
-	bsr	PutLong
-	subq.l	#1,a3
-sxcd9	bra	dis9
-
-immccr	clr.w	size(a5)
-	bsr	Immediate
-	move.l	#',ccr',d0
-	bsr	PutLong
-	bra.s	sxcd9
-
-imm_com	bsr	put_instr_name
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	derr_imm
-	move.w	D2,D0
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	beq.s	derr_imm
-	bsr	check_dest_adrmode
-	bne.s	derr_imm
-	putchr	<'i'>
-	bsr	putsize
-	bsr	padd
-	bsr	Immediate
-	putchr	COMMA
-	bsr	NormEA
-	bra	dis9
-derr_imm
-	bra	diserr
-
-*** Bxxx #num,EA ***
-bits_imm
-	move.w	D2,D0
-	and.w	#$3F,D0
-	cmp.w	#$3B,D0
-	bhi.s	derr_imm
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	beq.s	derr_imm
-	move.w	D2,D0
-	lsr.w	#6,D0
-	and.w	#3,D0
-	beq.s	bits_imm_ok2
-	and.w	#$3F,D2
-	cmp.w	#$39,D2
-	bhi.s	derr_imm
-bits_imm_ok2
-	add.w	#n_btst,D0
-	bsr	put_instr_name
-	bsr	padd
-	bsr	DGetWord
-	putchr	<'#'>
+strloop	bsr.s	fmt_char
+	dbf	d5,strloop
 	moveq	#0,d0
-	move.w	D2,D0
-	bsr	put_signed_hexnum
-	putchr	COMMA
-; size byte or long, immediate mode not valid (no btst #imm,#imm)
-	bsr	NormEA
-	bra	dis9
+	bra.s	dis_end
 
-*** MOVEP, bit manipulations ***
-movep_etc
-	move.w	D2,D0
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	beq.s	move_p
-;#
-;# btst Dn,#data now displayed correctly
-;#
-*** Bxxx Dn,EA ***
-	cmp.w	#$083c,d2
-	beq.s	derr_imm
-	move.w	D2,D0
-	and.w	#$3F,D0
-	cmp.w	#$3c,D0
-	bhi.s	derr_imm
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	beq.s	derr_imm	data register direct not allowed
-	move.w	D2,D0
-	lsr.w	#6,D0
-	and.w	#3,D0
-	beq.s	bits_dreg_ok2
-	and.w	#$3F,D2
-	cmp.w	#$39,D2
-	bhi	diserr
-bits_dreg_ok2
-	add.w	#n_btst,D0
-	bsr	put_instr_name
-	clr.w	size(a5)	byte size (for btst Dn,#imm)
-	bsr	padd
-	bsr	putDreg9
-	putchr	COMMA
-	bsr	NormEA
-	bra	dis9
+special_routine
+	clr.w	d4
+	move.b	d6,d4
+	lsr.b	#SIZSHFT,d4
+	and.b	#3,d4
+	and.b	#EABITS,d6
 
-*** MOVEP ***
-move_p	moveq	#n_move,D0
-	bsr	put_instr_name
-	putchr	<'p'>
-	bsr	put_wl_size
-	bsr	padd
-	btst	#7,D2
-	beq.s	noregsource
-	bsr	putDreg9
-	putchr	COMMA
-noregsource
-	bsr	DGetWord
-	move.w	D2,D0
-	ext.l	d0
-	bsr	put_signed_hexnum	%%signed offset
-	putchr	<'('>
-	move.w	opcode(A5),D2
-	bsr	putAreg0
-	putchr	<')'>
-	btst	#7,D2
-	bne.s	noregdest
-	putchr	COMMA
-	bsr	putDreg9
-noregdest
-	bra	dis9
+	clr.w	d5
+	move.b	(a2)+,d5
+	subq.w	#3,d5
+	move.l	a2,d2
+	lea	2(a2),a2
 
-*** CMP & CMPM & EOR ***
-handle_11
-	btst	#8,D2
-	beq.s	compare
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	compare
-	and.w	#$38,D2
-	cmp.w	#$08,D2
-	beq.s	compmem
+01$	bsr.s	fmt_char
+	dbf	d5,01$
 
-*** EOR ***
-	move.w	opcode(a5),d2
-	and.w	#$3F,D2
-	cmp.w	#$39,D2
-	bhi	diserr
-	moveq	#n_eor,D0
-	bsr	put_instr_name
-	bsr	putsize
-	bsr	padd
-	bsr	putDreg9
-	putchr	COMMA
-	bsr	NormEA
-	bra	dis9
+	move.l	d2,a0
+	add.w	(a0),a0
+	jsr	(a0)
 
-*** CMPM ***
-compmem	moveq	#n_cmp,D0
-	bsr	put_instr_name
-	putchr	<'m'>
-	bsr	putsize
-	bsr	padd
-	putchr	<'('>
-	bsr	putAreg0
-	move.l	#')+,(',D0
-	bsr	PutLong
-	bsr	putAreg9
-	putchr	<')'>
-	putchr	<'+'>
-	bra.s	cmpzap9
+	moveq	#0,d0
 
-*** CMP ***
-compare	moveq	#n_cmp,D0
-	bsr	put_instr_name
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	bne.s	cmp1
-	putchr	<'a'>	;cmpa
-cmp1	bsr	putsize
-	cmp.b	#'b',-1(A3)
-	bne.s	cmp2
-	and.w	#$38,D2
-	cmp.w	#$08,D2
-	beq	diserr	;byte size not allowed if addr reg
-cmp2	bsr	padd
-	bsr	NormEA
-	putchr	COMMA
-	move.w	opcode(A5),D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	bne.s	datacmp
-	bsr	putAreg9
-	bra.s	cmpzap9
-datacmp	bsr	putDreg9
-cmpzap9	bra	dis9
-
-*** AND	& MUL & ABCD & EXG ***
-handle_12
-	move.w	D2,D0
-	and.w	#$0130,D0
-	cmp.w	#$0100,D0
-	bne.s	noexg
-	move.w	D2,D0
-	and.w	#$C0,D0
-	beq.s	noexg
-	cmp.w	#$C0,D0
-	beq.s	noexg
-	move.w	D2,D0
-	and.w	#$F8,D0
-	cmp.w	#$80,D0
-	beq.s	noexg
-	and.w	#$30,D0
-	bne.s	noexg
-
-*** EXG ***
-;#
-;# exg Dn,An is now fixed. there was an error in my documentation
-;# that reversed the address and data register numbers...
-;# thanks to John van Dijk for informing me about that bug.
-;#
-	moveq	#n_exg,D0
-	bsr	put_instr_name
-	bsr	padd
-	move.w	D2,D1
-	and.w	#$F8,D1
-	cmp.w	#$48,D1
-	beq.s	both_adr
-	cmp.w	#$40,d1
-	beq.s	both_data
-	bsr	putDreg9
-	putchr	COMMA
-	bsr	putAreg0
-	bra.s	dzujump9
-both_adr
-	bsr	putAreg0
-	putchr	COMMA
-	bsr	putAreg9
-	bra.s	dzujump9
-both_data
-	bsr	putDreg0
-	putchr	COMMA
-	bsr	putDreg9
-dzujump9
-	bra	dis9
-
-noexg	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	xmul1
-	moveq	#n_and,D0
-	bra.s	and_or
-xmul1	moveq	#n_mul,D0
-	bra.s	divmul
-
-*** OR & DIV & SBCD ***
-handle_eight	
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0	
-	bne.s	do_or
-	moveq	#n_div,D0	;disivion
-divmul	move.w	d2,d1
-	and.w	#$38,d1
-	cmp.w	#$08,d1		address register is not a valid source
-	beq	derr_abc	for division or multiplication
-	bsr	put_instr_name
-	btst	#8,D2
-	beq.s	unsigned_divm
-	moveq	#'s',D0
-	bra.s	divmul1
-unsigned_divm
-	moveq	#'u',D0
-divmul1	move.b	D0,(A3)+
-	bsr	padd
-	move.w	#WSIZE,size(a5)
-	bsr	NormEA
-	putchr	COMMA
-	bsr	putDreg9
-	bra	dis9
-do_or	moveq	#n_or,D0
-
-*** AND & OR **
-and_or	;instruction number in D0
-	move.w	D2,D1
-	and.w	#$01F0,D1
-	cmp.w	#$0100,D1
-	beq.s	bcd_oper
-	move.w	D2,D1
-	and.w	#$0138,D1
-	cmp.w	#$0100,D1
-	beq.s	derr_abc
-	bsr	put_instr_name
-	bsr	putsize
-	bsr	padd
-	btst	#8,D2
-	bne.s	regsource1
-	move.w	D2,D0	;AND/OR EA,Dn
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	beq.s	derr_abc
-	bsr	NormEA
-	putchr	COMMA
-	bsr	putDreg9
-	bra.s	ddzap9
-regsource1	;AND/OR Dn,EA
-	bsr	check_dest_adrmode
-	bne.s	derr_abc
-	bsr	putDreg9
-	putchr	COMMA
-	bsr	NormEA
-ddzap9	bra	dis9
-derr_abc
-	bra	diserr
-
-*** ABCD & SBCD ***
-bcd_oper
-	addq.w	#2,D0
-	bsr	put_instr_name
-ext_addsub
-	bsr	padd
-	btst	#3,D2
-	bne.s	mem_to_mem
-	bsr	putDreg0
-	putchr	COMMA
-	bsr	putDreg9
-	bra.s	dzap9
-mem_to_mem
-	putchr	<'-'>
-	putchr	<'('>
-	bsr	putAreg0
-	move.l	#'),-(',D0
-	bsr	PutLong
-	bsr	putAreg9
-	putchr	<')'>
-dzap9	bra	dis9
-
-*** MOVE ***
-movebyte
-	move.w	D2,D0
-	and.w	#$01C0,D0
-	cmp.w	#$40,D0
-	beq.s	derr_move
-	move.w	D2,D0
-	and.w	#$38,D0
-	cmp.w	#$08,D0	;An allowed if byte size
-	beq.s	derr_move
-movelong
-moveword
-	move.w	D2,D0
-	and.w	#$01C0,D0
-	cmp.w	#$01C0,D0
-	bne.s	move_ok1
-	move.w	D2,D0
-	and.w	#$0E00,D0
-	cmp.w	#$0400,D0
-	bcc.s	derr_move
-move_ok1
-	moveq	#n_move,D0
-	bsr	put_instr_name
-	and.w	#$01C0,D2
-	cmp.w	#$40,D2
-	bne.s	move1
-	putchr	<'a'>	;move address
-move1	bsr	putsize
-	bsr	padd
-	bsr	NormEA
-	putchr	COMMA
-	move.w	opcode(A5),D1
-	move.w	D1,D0
-	lsr.w	#8,D0
-	lsr.w	#1,D0
-	lsr.w	#6,D1
-	and.b	#7,D0
-	and.b	#7,D1
-	bsr	HandleEA
-	bra.s	d9jzump
-derr_move
-	bra	diserr
-
-*** MOVEQ ***
-movequick
-	btst	#8,D2
-	bne.s	derr_move
-	moveq	#n_move,D0
-	bsr	put_instr_name
-	putchr	<'q'>
-	bsr	padd
-	putchr	<'#'>
-	move.b	D2,D0
-	ext.w	d0
-	ext.l	d0
-	bsr	put_signed_hexnum	%%signed long value
-	putchr	COMMA
-	bsr	putDreg9
-d9jzump	bra	dis9
-
-*** BRANCH INSTRUCTIONS ***
-branch	tst.b	D2
-	beq.s	disp16bit
-	ext.w	D2
-	bra.s	bracom
-disp16bit
-	bsr	DGetWord
-bracom	putchr	<'b'>
-	bsr	putcond
-	move.w	opcode(A5),D0
-	tst.b	D0
-	beq.s	branch1
-	putchr	<'.'>
-	putchr	<'s'>
-branch1	bsr	padd
-	move.l	D2,D0
-	ext.l	D0
-	add.l	instrad(A5),D0
-	bsr	puthex_68		%% branch address
-	bra	dis9
-
-**** ADD & SUB ****
-subtract
-	moveq	#n_sub,D0
-	bra.s	addsubcom
-
-addinst	moveq	#n_add,D0
-
-addsubcom
-	bsr	put_instr_name
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	addsubadr
-	bsr	putsize
-	btst	#8,D2
-	bne.s	regsource
-	move.w	D2,D0
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	bne.s	add_sub_1	
-	move.w	D2,D0
-	and.w	#$C0,D0
-	beq	diserr
-add_sub_1
-	bsr	padd
-	bsr	NormEA
-	putchr	COMMA
-	bsr	putDreg9
-	bra.s	d9jmp
-ext_addsub1
-	move.b	-1(A3),(A3)
-	move.b	-2(A3),-1(A3)
-	move.b	#'x',-2(A3)
-	addq.l	#1,A3
-	bsr	padd
-	bra	ext_addsub
-regsource
-	move.w	D2,D1
-	and.w	#$38,D1
-	beq.s	ext_addsub1
-	cmp.w	#$08,D1
-	beq.s	ext_addsub1
-	bsr	padd
-	bsr	check_dest_adrmode
-	bne	diserr
-	bsr	putDreg9
-	putchr	COMMA
-	bsr	NormEA
-	bra.s	d9jmp
-
-addsubadr	;*** ADDA & SUBA ***
-	putchr	<'a'>
-	bsr	putsize
-	bsr	padd
-	bsr	NormEA
-	putchr	COMMA
-	bsr	putAreg9
-d9jmp	bra	dis9
-
-**** $5XXX ****
-handle_five
-	move.w	D2,D0
-	and.w	#$3F,D0
-	cmp.w	#$39,D0
-	bhi	diserr
-	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	bne.s	addsubquick
-	move.w	D2,D0
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	bne.s	SccInst
-
-*** DBcc (decrement, test condition and branch) instruction ***
-	bsr	DGetWord
-	move.w	D2,-(sp)
-	move.w	opcode(A5),D2
-	putchr	<'d'>
-	putchr	<'b'>
-	bsr	putcond
-	bsr	padd
-	bsr	putDreg0
-	putchr	COMMA
-	move.w	(sp)+,D0
-	ext.l	D0
-	add.l	instrad(A5),D0
-	bsr	puthex_68		%% branch address
-	bra	dis9
-
-*** Scc (Set according to condition) instruction ***
-SccInst	putchr	<'s'>
-	bsr	putcond
-;%%	clr.w	size(a5)	byte size
-	bsr	padd
-	bsr	NormEA
-	bra.s	d9jzwumps
-
-*** ADDQ, SUBQ ***
-addsubquick
-	btst	#8,D2
-	beq.s	addquick
-	moveq	#n_sub,D0
-	bra.s	adsubq2
-addquick
-	moveq	#n_add,D0
-
-adsubq2	bsr	put_instr_name
-	putchr	<'q'>
-	bsr	putsize
-	cmp.b	#'b',-1(A3)
-	bne.s	adsubqz1
-	move.w	opcode(A5),D0
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	beq.s	derr_sf
-adsubqz1
-	bsr	padd
-	bsr	putqnum
-	putchr	COMMA
-	bsr	NormEA
-	bra.s	d9jzwumps
-
-*** SHIFT INSTRUCTIONS ***
-derr_sf	bra.s	diserr
-
-shifts	move.w	D2,D0
-	and.w	#$C0,D0
-	cmp.w	#$C0,D0
-	beq.s	shiftmemory
-
-*** shift register ***
-	move.w	D2,D0
-	lsr.w	#3,D0
-	bsr	shiftinstruction
-	bsr	putsize
-	bsr.s	padd
-	btst	#5,D2
-	bne.s	cntreg
-	bsr	putqnum
-	bra.s	putdestreg
-cntreg	bsr	putDreg9
-putdestreg
-	putchr	COMMA
-	bsr	putDreg0
-d9jzwumps
-	bra.s	dis9
-shiftmemory
-	moveq	#11,d0
-	btst	d0,d2
-	bne.s	derr_sf
-	move.w	D2,D0
-	and.w	#$3F,D0
-	cmp.w	#$10,D0
-	bcs.s	derr_sf
-	cmp.w	#$39,D0
-	bhi.s	derr_sf
-	move.w	D2,D0
-	lsr.w	#8,D0
-	lsr.w	#1,D0
-	bsr.s	shiftinstruction
-;%%	move.w	#WSIZE,size(a5)
-	bsr.s	padd
-	bsr	NormEA
-	bra.s	dis9
-
-*** LINE-A & LINE-F unimplemented codes ***
-lineA	moveq	#'A',D3
-	bra.s	lines
-lineF	moveq	#'F',D3
-lines	lea	linenam(pc),A1
-	bsr.s	putstring
-	move.b	D3,(A3)+
-	bra.s	dis9a
-
-*** UNKNOWN OPCODE ***
-diserr	move.l	d6,a3
-	lea	errtx(pc),A1
-	bsr.s	putstring
-dis9a	moveq	#-1,d0
-	bra.s	dis9b
-dis9	moveq	#0,d0
-dis9b	move.l	d6,a1
-10$	cmp.l	A1,A2
-	bcc.s	11$
-	move.b	#SPACE,(A2)+
-	bra.s	10$
-11$	endline
-	rts		return code in d0: zero if valid instruction
-
-padd	lea	OutputBuffer+44(a5),a1
-01$	putchr	SPACE
-	cmp.l	A1,A3
-	bcs.s	01$
+dis_end	move.b	#LF,(a3)+
+	clr.b	(a3)
+	move.l	(sp)+,a0
+	movem.l	(sp)+,d2-d7/a2/a5-a6
 	rts
 
-*** DISPLAY INSTRUCTION NAME ***
-put_instr_name	;code in D0
-	add.w	D0,D0
-	lea	instradrs(pc),A1
-	add.w	D0,A1
-	add.w	(A1),A1
+fmt_char
+	moveq	#0,d0
+	move.b	(a2)+,d0
+	bmi.s	do_special
+	cmp.b	#TAB,d0
+	beq.s	do_tab
+	move.b	d0,(a3)+
+rt1	rts
+
+do_tab	move.l	4(sp),a0
+	addq.l	#8,a0
+01$	cmp.l	a0,a3
+	bcc.s	rt1
+	move.b	#SPACE,(a3)+
+	bra.s	01$
+
+do_special
+	cmp.b	#TOKSTART,d0
+	bcc.s	str_tok
+	and.b	#$7f,d0
+	add.w	d0,d0
+	lea	str_routines(pc,d0.w),a0
+	add.w	(a0),a0
+	jmp	(a0)
+
+str_tok	add.w	d0,d0
+	lea	instradrs-2*TOKSTART(pc),a0
+	add.w	d0,a0
+	add.w	(a0),a0
+	bra	put_str
+
+str_routines
+	rw	datar11,datar2,addrr11,addrr2
+	rw	effective_address
+	rw	size_specifier
+	rw	immediate_data
+	rw	immediate_quick,immediate_moveq
+	rw	sr_or_ccr
+	rw	shiftdir,regshifttype,memshifttype
+	rw	condcodes
+	rw	short_pc_offset,pc_offset
+	rw	immoffs,trapnum,bit_instr_type
+
+;
+; note: GetWord & GetLong do not modify d1
+;
+GetWord	movem.l	d1/a3,-(sp)
+	move.l	a5,a3
+	move.w	(a4)+,d0
+	move.w	d0,-(sp)
+	moveq	#4,d1
+	bsr	put_hexnum1
+	move.w	(sp)+,d0
+	move.b	#SPACE,(a3)+
+	move.l	a3,a5
+	movem.l	(sp)+,d1/a3
+	rts
+
+GetLong	movem.l	d1/a3,-(sp)
+	move.l	a5,a3
+	move.l	(a4)+,d0
+	move.l	d0,-(sp)
+	moveq	#8,d1
+	bsr	put_hexnum1
+	move.l	(sp)+,d0
+	move.b	#SPACE,(a3)+
+	move.l	a3,a5
+	movem.l	(sp)+,d1/a3
+	rts
+
+datar11	move.b	#'d',(a3)+
+num11	move.w	d7,d0
+	lsr.w	#8,d0
+	lsr.w	#1,d0
+num2	and.b	#7,d0
+nump	add.b	#'0',d0
+	move.b	d0,(a3)+
+	rts
+
+datar2	move.b	#'d',(a3)+
+	move.w	d7,d0
+	bra.s	num2
+
+addrr11	move.w	d7,d0
+	lsr.w	#8,d0
+	lsr.w	#1,d0
+	bra.s	ar01
+
+addrr2	move.w	d7,d0
+ar01	and.w	#7,d0
+	bra	ardirect
+
+immediate_quick
+	move.w	d7,d0
+	lsr.w	#8,d0
+	lsr.w	#1,d0
+	and.b	#7,d0
+	bne.s	01$
+	moveq	#8,d0
+01$	move.b	#'#',(a3)+
+	bra.s	nump
+
+size_specifier
+	tst.w	d4
+	beq.s	invalid
+	move.b	#'.',(a3)+
+	move.b	sizes-1(pc,d4.w),(a3)+
+	rts
+
+sizes	dc.b	'bwl'
+
+nothing_txt	dc.b	'nothing',0
+pc_txt		dc.b	'(pc',0
+zero_txt	dc.b	'dc.w',TAB,'$00',0
+
+	even
+
+invalid
+	move.l	d4,d0		restore stack pointer
+	move.l	d5,d1
+	swap	d1
+	move.w	d1,d0
+	move.l	d0,sp
+
+	move.l	d3,a3
+	moveq	#'?',d0
+	move.b	d0,(a3)+
+	move.b	d0,(a3)+
+	move.b	d0,(a3)+
+	move.l	a6,a4
+	move.l	d3,a0
+	moveq	#SPACE,d0
+	moveq	#18-1,d1
+01$	move.b	d0,-(a0)
+	dbf	d1,01$
+	moveq	#-1,d0
+	bra	dis_end
+
+immediate_data
+	move.b	#'#',(a3)+
+	move.w	d4,d0
+	add.w	d0,d0
+	jmp	immsizes(pc,d0.w)
+immsizes
+	bra.s	invalid
+	bra.s	imm_byte
+	bra.s	imm_word
+; imm_long
+	bsr	GetLong
+	bra	puthex_68
+imm_byte
+	bsr	GetWord
+	moveq	#2,d1
+	bra	put_hexnum
+imm_word
+	bsr	GetWord
+	moveq	#4,d1
+	bra	put_hexnum
+
+immoffs	bsr	GetWord
+sword	ext.l	d0
+	bra	put_signed_hexnum
+
+immediate_moveq		;%%signed number
+	move.b	#'#',(a3)+
+	move.w	d7,d0
+	ext.w	d0
+	bra.s	sword
+
+sr_or_ccr
+	tst.w	d4
+	beq	invalid
+	cmp.w	#3,d4
+	beq	invalid
+	cmp.w	#1,d4
+	beq.s	o_ccr
+	move.b	#'s',(a3)+
+	bra.s	o_sccr
+o_ccr	moveq	#'c',d0
+	move.b	d0,(a3)+
+	move.b	d0,(a3)+
+o_sccr	move.b	#'r',(a3)+
+	rts
+
+shiftdir
+	moveq	#'r',d0
+	btst	#8,d7
+	beq.s	01$
+	moveq	#'l',d0
+01$	move.b	d0,(a3)+
+	rts
+
+regshifttype
+	move.w	d7,d0
+	lsr.w	#3,d0
+	bra.s	shifttype
+memshifttype
+	move.w	d7,d0
+	lsr.w	#8,d0
+	lsr.w	#1,d0
+shifttype
+	and.w	#3,d0
+	add.w	d0,d0
+	lea	instradrs(pc),a0
+	add.w	d0,a0
+	add.w	(a0),a0
+01$	bra	put_str
+
+condcodes
+	move.w	d7,d1
+	lsr.w	#8,d1
+	and.w	#$0f,d1
+	cmp.w	#2,d1
+	bcc.s	02$
+	move.w	d7,d0
+	and.w	#$f000,d0
+	cmp.w	#$6000,d0
+	beq.s	02$
+	moveq	#'t',d0
+	tst.w	d1
+	beq.s	01$
+	moveq	#'f',d0
+01$	move.b	d0,(a3)+
+	rts
+02$	add.w	d1,d1
+	lea	ccodes(pc,d1.w),a0
+	move.b	(a0)+,(a3)+
+	move.b	(a0)+,(a3)+
+	rts
+
+ccodes	dc.b	'rasrhilscccsneeqvcvsplmigeltgtle'
+	dc.b	'hslo'
+	even
+
+short_pc_offset
+	move.b	d7,d0
+	ext.w	d0
+	ext.l	d0
+	add.l	a4,d0
+	bra.s	put_addr
+
+pc_offset
+	move.l	a4,d1
+	bsr	GetWord
+	ext.l	d0
+	add.l	d1,d0
+put_addr
+	bra	puthex_68
+
+trapnum	move.b	#'#',(a3)+
+	move.w	d7,d0
+	and.w	#$0f,d0
+	moveq	#2,d1
+	bra	put_hexnum
+
+bit_instr_type
+	move.w	d7,d0
+	lsr.w	#4,d0
+	and.w	#$0c,d0
+	lea	btypes(pc,d0.w),a0
+01$	bra	put_str
+
+btypes	dc.b	'tst',0,'chg',0,'clr',0,'set',0
+	even
+
+eacategories
+	dc.b	DATA!ALTER!NIMM			; 0 - data reg direct
+	dc.b	ALTER!NIMM			; 1 - address reg direct
+	dc.b	DATA!MEMORY!CONTROL!ALTER!NIMM	; 2 - address reg indirect
+	dc.b	DATA!MEMORY!ALTER!NIMM		; 3 - addr. reg. ind. ++
+	dc.b	DATA!MEMORY!ALTER!NIMM		; 4 - addr. reg. ind. --
+	dc.b	DATA!MEMORY!CONTROL!ALTER!NIMM	; 5 - addr. reg. ind. disp.
+	dc.b	DATA!MEMORY!CONTROL!ALTER!NIMM	; 6 - addr. reg. ind. index
+	dc.b	DATA!MEMORY!CONTROL!ALTER!NIMM	; 7 - absolute short
+	dc.b	DATA!MEMORY!CONTROL!ALTER!NIMM	; 8 - absolute long
+	dc.b	DATA!MEMORY!CONTROL!NIMM	; 9 - pc relative
+	dc.b	DATA!MEMORY!CONTROL!NIMM	;10 - pc relative index
+	dc.b	DATA!MEMORY			;11 - immediate
+	even
+
+effective_address
+	move.w	d7,d0
+	move.w	d7,d1
+	lsr.w	#3,d1
+;
+; mode in d1, reg in d0
+;
+handle_ea
+	and.w	#7,d0
+	and.w	#7,d1
+	movem.l	d0-d1,-(sp)
+	cmp.w	#7,d1
+	bcs.s	01$
+	add.w	d0,d1
+01$	cmp.b	#1,d1			address register ?
+	bne.s	02$
+	cmp.b	d1,d4			byte size ?
+	beq.s	03$
+02$	move.b	eacategories(pc,d1.w),d0
+	and.b	d6,d0
+	cmp.b	d6,d0
+	eor	#%100,ccr		reverse zero flag
+03$	movem.l	(sp)+,d0-d1		flags don't change
+	beq	invalid
+	add.w	d1,d1
+	jmp	eajumps1(pc,d1.w)
+eajumps1
+	bra.s	drdirect
+	bra.s	ardirect
+	bra.s	arindirect
+	bra.s	postincr
+	bra.s	predecr
+	bra.s	displ
+	bra.s	indx
+; handle 7-modes
+	add.w	d0,d0
+	jmp	eajumps2(pc,d0.w)
+
+drdirect
+	move.b	#'d',(a3)+
+	bra.s	putreg
+ardirect
+	cmp.w	#7,d0
+	beq.s	stackptr
+	move.b	#'a',(a3)+
+putreg	add.b	#'0',d0
+	move.b	d0,(a3)+
+	rts
+arindirect
+	move.b	#'(',(a3)+
+	bsr	ardirect
+	move.b	#')',(a3)+
+	rts
+stackptr
+	move.b	#'s',(a3)+
+	move.b	#'p',(a3)+
+	rts
+
+postincr
+	bsr	arindirect
+	move.b	#'+',(a3)+
+	rts
+predecr
+	move.b	#'-',(a3)+
+	bra.s	arindirect
+
+imm_br	bra	immediate_data
+
+eajumps2
+	bra.s	abs_short
+	bra.s	abs_long
+	bra.s	pcrel
+	bra.s	pcrel_indx
+	bra.s	imm_br
+	bra.s	invalid_br
+	nop
+invalid_br
+	bra	invalid
+
+displ	move.w	d0,-(sp)
+	bsr	GetWord
+	bsr	sword		;%% signed
+	move.w	(sp)+,d0
+	bra.s	arindirect
+
+indx	move.w	d0,-(sp)
+	bsr	GetWord
+	move.w	d0,d2
+	ext.w	d0
+	bsr	sword		;%% signed
+	move.w	(sp)+,d0
+	move.b	#'(',(a3)+
+	bsr	ardirect
+	move.b	#',',(a3)+
+	bsr.s	handle_index
+	move.b	#')',(a3)+
+	rts
+
+abs_short
+	bsr	GetWord		;%%%signed
+	bra	sword
+
+abs_long
+	bsr	GetLong
+	bra	put_addr
+
+pcrel	move.l	a4,d1
+	bsr	GetWord
+	ext.l	d0
+	add.l	d1,d0
+	bsr	put_addr
+	lea	pc_txt(pc),a0
+	bsr.s	put_str
+	bra.s	endpar
+
+pcrel_indx
+	move.l	a4,d1
+	bsr	GetWord
+	move.w	d0,d2
+	ext.w	d0
+	ext.l	d0
+	add.l	d1,d0
+	bsr	put_addr
+	lea	pc_txt(pc),a0
+	bsr.s	put_str
+	move.b	#',',(a3)+
+	bsr.s	handle_index
+endpar	move.b	#')',(a3)+
+	rts
+
+put_str	move.b	(a0)+,(a3)+
+	bne.s	put_str
+	subq.l	#1,a3
+	rts
+;
+; index word in d2
+;
+handle_index
+	move.w	d2,d0
+	lsr.w	#8,d0
+	lsr.w	#4,d0
+	and.w	#7,d0
+	tst.w	d2
+	bmi.s	01$
+	bsr	drdirect
+	bra.s	02$
+01$	bsr	ardirect
+02$	move.b	#'.',(a3)+
+	moveq	#'w',d0
+	btst	#11,d2
+	beq.s	03$
+	moveq	#'l',d0
+03$	move.b	d0,(a3)+
+	rts
+
+handle_move
+	moveq	#0,d6
+	bsr	effective_address
+	move.b	#',',(a3)+
+	moveq	#DATA!ALTER,d6
+	move.w	d7,d1
+	lsr.w	#6,d1
+	move.w	d1,d0
+	lsr.w	#3,d0
+	bra	handle_ea
+
+handle_movem
+	bsr	GetWord		get register list in d0
+
+	move.w	d7,d1
+	and.w	#$0038,d1	get addressing mode bits in d1 (mode field)
+
+	btst	#10,d7
+	bne.s	fromMemory
+
+	cmp.w	#$0018,d1
+	beq	invalid		movem regs,(An)+ is invalid
+
+	cmp.w	#$0020,d1	predecrement ?
+	bne.s	02$
+
+	move.w	d0,d1
+	move.w	#16-1,d5	reverse register list
+01$	roxr.w	#1,d1
+	roxl.w	#1,d0
+	dbf	d5,01$
+02$	bsr.s	put_reglist
+	move.b	#',',(a3)+
+	bra	effective_address
+
+fromMemory
+	cmp.w	#$0020,d1
+	beq	invalid		movem	-(An),regs is invalid
+
+	move.w	d0,d5
+	bsr	effective_address
+	move.b	#',',(a3)+
+	move.w	d5,d0
+; drop to put_reglist
+
+put_reglist
+	tst.l	d0
+	bne.s	reglist1
+	lea	nothing_txt(pc),a0
+	bra	put_str
+
+reglist1
+	movem.l	d3-d5,-(sp)
+	move.w	d0,d2
+	moveq	#0,d4		flag: registers found
+	moveq	#'d',d5		register type
+	bsr.s	regset
+	moveq	#'a',d5
+	bsr.s	regset
+	movem.l	(sp)+,d3-d5
+	rts
+regset	moveq	#0,d3		flag: in range
+	moveq	#0,d1		bit counter
+rloop1	lsr.w	#1,d2
+	bcc.s	nlist1
+	tst.w	d3
+	bne.s	inrange
+	cmp.w	#7,d1
+	beq.s	nostartrange
+	btst	d3,d2		d3 is zero if we got here...
+	beq.s	nostartrange
+	tst.w	d4
+	beq.s	strng1
+	move.b	#'/',(a3)+
+strng1	bsr.s	putd1reg
+	move.b	#'-',(a3)+
+	moveq	#-1,d3		now in range
+	bra.s	nlist1
+inrange	cmp.w	#7,d1
+	beq.s	endrange
+	btst	#0,d2
+	bne.s	nlist1
+endrange
+	bsr.s	putd1reg
+	moveq	#0,d3		not in range
+	moveq	#-1,d4		regs found
+	bra.s	nlist1
+nostartrange
+	tst.l	d4
+	beq.s	no_found
+	move.b	#'/',(a3)+
+no_found
+	bsr.s	putd1reg
+	moveq	#-1,d4
+nlist1	addq.w	#1,d1
+	cmp.w	#8,d1
+	bcs.s	rloop1
+	rts
+putd1reg
+	move.b	d5,(a3)+
+	move.b	d1,d0
+	and.b	#7,d0
+	add.b	#'0',d0
+	move.b	d0,(a3)+
+	rts
+
 
 *** STRING OUTPUT ***
 ;string pointer in A1
-putstring	move.b	(a1)+,(a3)+
+putstring
+	move.b	(a1)+,(a3)+
 	bne.s	putstring
 	subq.l	#1,a3
-	rts
-
-shiftinstruction
-	and.w	#3,D0
-	bsr.s	put_instr_name
-	btst	#8,D2
-	bne.s	01$
-	moveq	#'r',d0
-	bra.s	02$
-01$	moveq	#'l',d0
-02$	move.b	d0,(a3)+
-	rts
-
-putqnum	putchr	<'#'>
-	move.w	opcode(A5),D0
-	lsr.w	#8,D0
-	lsr.w	#1,D0
-	and.b	#7,D0
-	bne.s	putn1
-	moveq	#8,D0
-	bra.s	putn1
-
-putAreg0
-	move.w	opcode(a5),d0
-	bra.s	putacom
-
-putAreg9
-	move.w	opcode(a5),d0
-	lsr.w	#8,d0
-	lsr.w	#1,d0
-
-putacom	and.b	#7,d0
-	cmp.b	#7,d0
-	beq.s	stack_ptr
-	putchr	<'a'>
-	bra.s	putn1
-
-putDreg0
-	move.w	opcode(A5),D0
-	bra.s	putdcom
-
-putDreg9
-	move.w	opcode(A5),D0
-	lsr.w	#8,D0
-	lsr.w	#1,D0
-
-putdcom	putchr	<'d'>
-	and.b	#7,D0
-putn1	add.b	#'0',D0
-	move.b	D0,(A3)+
-	rts
-
-stack_ptr
-	putchr	<'s'>
-	putchr	<'p'>
-	rts
-
-put_wl_size	;size:word or long
-	move.w	opcode(A5),D0
-	btst	#6,D0
-	beq.s	wl_word
-	moveq	#'l',D0
-	moveq	#2,d1
-	bra.s	wl_com
-wl_word	moveq	#'w',D0
-	moveq	#1,d1
-wl_com	putchr	<'.'>
-	move.b	D0,(A3)+
-	move.w	d1,size(a5)
-	rts
-
-check_dest_adrmode ;returns false (not equal) if illegal mode for dest.
-;allowed modes Dn, (An), (An)+, -(An), disp(An), disp(An,Rx), absolute
-;note: An not allowed
-	move.w	opcode(A5),D0
-	and.w	#$3F,D0
-	cmp.w	#$39,D0
-	bhi.s	illegal_1
-	and.w	#$38,D0
-	cmp.w	#$08,D0
-	beq.s	illegal_1
-	moveq	#0,D0
-	rts
-illegal_1
-	moveq	#-1,D0
-	rts
-
-check_jump_adrmode ;(An),disp(An),disp(An,Rx),absolute,PC rel,PC rel(Rx)
-	move.w	opcode(A5),D0
-	and.w	#$3F,D0
-	cmp.w	#$3B,D0
-	bhi.s	illegal_1
-	and.w	#$38,D0
-	cmp.w	#$10,D0
-	beq.s	legal_1
-	cmp.w	#$28,D0
-	bcs.s	illegal_1
-legal_1	moveq	#0,D0
-	rts
-
-*** DISPLAY REGISTER LIST (for MOVEM) ***
-; this changes d2-d5
-RegisterList ;mask word in D2
-	move.w	opcode(A5),D0
-	btst	#10,D0
-	bne.s	normlist
-	and.w	#$38,D0
-	cmp.w	#$20,D0
-	bne.s	normlist
-	move.w	D2,D0
-	moveq	#15,D1
-bitloop	;reverse bit order
-	lsr.w	#1,D0
-	roxl.w	#1,D2
-	dbf	D1,bitloop
-normlist
-	moveq	#0,D4	;flag:registers found
-	moveq	#'d',D5	;register type
-	bsr.s	regset
-	moveq	#'a',D5
-
-regset	moveq	#0,D3	;flag:in range
-	moveq	#0,D1	;bit counter
-regloop1
-	lsr.w	#1,D2
-	bcc.s	nlist1
-	tst.l	D3
-	bne.s	inrange
-	cmp.w	#7,D1
-	beq.s	nostartrange
-	btst	#0,D2
-	beq.s	nostartrange
-;# removed this test 1989-08-27
-;#	tst.l	D3
-;#	bne.s	nostartrange	;already in range
-	tst.l	D4
-	beq.s	strng1
-	putchr	<'/'>
-strng1	bsr.s	putD1reg
-	putchr	<'-'>
-	moveq	#-1,D3	;now in range
-	bra.s	nlist1
-inrange	cmp.w	#7,D1
-	beq.s	endrange
-	btst	#0,D2
-	bne.s	nlist1
-endrange
-	bsr.s	putD1reg
-	moveq	#0,D3	;not in range
-	moveq	#-1,D4	;regs found
-	bra.s	nlist1
-nostartrange
-	tst.l	D4
-	beq.s	no_found
-	putchr	<'/'>
-no_found
-	bsr.s	putD1reg
-	moveq	#-1,D4
-nlist1	addq.w	#1,D1
-	cmp.w	#8,D1
-	bcs.s	regloop1
-	rts
-putD1reg
-	move.b	D5,(A3)+
-	move.b	D1,D0
-	and.b	#7,D0
-	add.b	#'0',D0
-	move.b	D0,(A3)+
-	rts
-
-*** put condition code ***
-* handles correctly bra, bsr & dbf, dbt & scf, sct
-putcond	move.w	opcode(A5),D0
-	move.w	D0,D1
-	lsr	#7,D0
-	and.w	#$1E,D0
-	and.w	#$F000,D1
-	cmp.w	#$6000,D1
-	beq.s	putcnd1
-	cmp.b	#2,D0
-	bhi.s	putcnd1
-	beq.s	condf
-	moveq	#'t',d0
-	bra.s	condtf
-condf	moveq	#'f',d0
-condtf	move.b	d0,(a3)+
-	rts
-putcnd1	lea	condcodes(pc),A1
-	add.w	D0,A1
-	move.b	(A1)+,(A3)+
-	move.b	(A1)+,(A3)+
-retu	rts
-
-*** OUTPUT NORMAL EFFECTIVE ADDRESS (mode=bits 5-3, reg=bits 2-0)
-NormEA:	move.w	opcode(A5),D0
-	move.w	D0,D1
-	and.w	#7,D0
-	lsr.w	#3,D1
-	and.w	#7,D1
-HandleEA	;D1 = mode, D0 = register
-	tst.b	D1
-	bne.s	no_zero
-	bra	putdcom		data register direct
-
-no_zero	cmp.b	#1,D1
-	bne.s	no_one
-	bra	putacom		address register direct
-
-no_one	cmp.b	#3,D1
-	bhi.s	more_than_three
-
-twocase	putchr	<'('>	;(An) & (An)+
-	bsr	putacom
-	putchr	<')'>
-	cmp.b	#3,D1
-	bne.s	Ej
-	putchr	<'+'>
-Ej	rts
-
-more_than_three
-	cmp.b	#4,D1
-	bne.s	no_four		;-(An)
-	putchr	<'-'>
-	bra.s	twocase
-
-no_four	cmp.b	#5,D1
-	bne.s	no_five
-	move.b	D0,-(sp)	;disp(An)
-	bsr	DGetWord
-	move.w	D2,D0
-	ext.l	d0
-	bsr	put_signed_hexnum	%%signed offset
-	move.b	(sp)+,D0
-	bra.s	twocase
-
-no_five	cmp.b	#6,D1
-	bne.s	must_be_seven
-	move.b	D0,-(sp)	;disp(An,index)
-	bsr	DGetWord
-	move.b	D2,D0
-	ext.w	d0
-	ext.l	d0
-	bsr	put_signed_hexnum	%%signed offset
-	putchr	<'('>
-	move.b	(sp)+,d0
-	bsr	putacom
-	putchr	COMMA
-	bsr	put_index
-	putchr	<')'>
-	rts
-
-must_be_seven
-	dbf	D0,no_abs_short		;jump if reg<>0
-	bsr	DGetWord
-	move.w	D2,D0
-	ext.l	d0
-	bra	put_signed_hexnum	;absolute short -- %%signed
-
-no_abs_short
-	dbf	D0,no_abs_long		;jump if reg<>1
-	bsr	DGetLong
-	move.l	D2,D0
-	bra	puthex_68		%%absolute long address
-
-no_abs_long
-	dbf	D0,no_pc_rel		;jump if reg<>2
-	bsr	DGetWord
-	move.w	D2,D0
-	ext.l	D0
-	add.l	A4,D0
-	subq.l	#2,D0
-	bsr	puthex_68		%%pc relative address
-	lea	pcnam(pc),A1
-	bra	putstring
-
-no_pc_rel
-	dbf	D0,no_pc_ind		;jump if reg<>3
-	bsr	DGetWord
-	move.b	D2,D0
-	ext.w	D0
-	ext.l	D0
-	add.l	A4,D0
-	subq.l	#2,D0			pc-relative with index
-	bsr	puthex_68		%%pc relative address
-	move.l	#'(pc,',d0
-	bsr	PutLong
-	bsr.s	put_index
-	putchr	<')'>
-	rts
-no_pc_ind
-	dbf	D0,illegal_mode
-Immediate
-	putchr	<'#'>
-	move.w	size(a5),d0
-	tst.w	d0
-	beq.s	bytesize
-	subq.w	#1,d0
-	beq.s	wordsize
-; longsize
-	bsr	DGetLong
-	move.l	d2,d0
-	bra	puthex_68
-wordsize
-	bsr	DGetWord
-	moveq	#4,d1
-	bra.s	immc
-bytesize
-	bsr	DGetWord
-	moveq	#2,d1
-immc	move.l	d2,d0
-	bra	put_hexnum
-
-illegal_mode
-	addq.l	#4,sp	;pop return address
-	bra	diserr
-
-put_index	;index byte in D2
-	move.w	D2,D0
-	lsr.w	#8,D0
-	lsr.w	#4,D0
-	tst.w	d2
-	bmi.s	adreg
-	bsr	putdcom
-	bra.s	Ind1
-adreg	bsr	putacom
-Ind1	putchr	<'.'>
-	btst	#11,D2
-	bne.s	IndLong
-	putchr	<'w'>
-	rts
-IndLong	putchr	<'l'>
-	rts
-
-get_size	;0=byte, 1=word, 2=long
-	move.w	opcode(A5),D0
-	move.w	D0,D1
-	and.w	#$C000,D0
-	bne.s	normsize1
-	move.w	D1,D0
-	and.w	#$3000,D0
-	beq.s	normsize1
-	cmp.w	#$1000,D0
-	beq.s	bytesize1
-	cmp.w	#$2000,D0
-	beq.s	longsize1
-	bra.s	wordsize1
-normsize1
-	move.w	d1,d0
-	lsr.w	#6,d0
-	and.w	#3,d0
-	cmp.w	#3,d0
-	bne.s	rsize_9
-	btst	#8,d1
-	bne.s	longsize1
-wordsize1
-	moveq	#1,d0
-	rts
-longsize1
-	moveq	#2,d0
-	rts
-bytesize1
-	moveq	#0,d0
-rsize_9	rts
-
-putsize	bsr	get_size
-	move.w	d0,size(a5)
-	putchr	<'.'>
-	move.b	sizch(pc,d0.w),(a3)+
-	rts
-
-sizch	dc.b	'bwl'
-	even
-
-*** GET WORD FOR DISASSEMBLER ***
-; result returned in d2
-DGetWord
-	move.w	(A4)+,D0
-	move.w	D0,D2
-	move.l	A3,-(sp)
-	move.l	A2,A3
-	moveq	#4,d1
-	bsr	put_hexnum1
-	move.l	A3,A2
-	move.l	(sp)+,A3
-	move.b	#SPACE,(A2)+
-	rts
-
-*** GET LONGWORD FOR DISASSEMBLER ***
-; result returned in d2
-DGetLong
-	move.l	(A4)+,D0
-	move.l	D0,D2
-	move.l	A3,-(sp)
-	move.l	A2,A3
-	bsr	phex1_8
-	move.l	A3,A2
-	move.l	(sp)+,A3
-	move.b	#SPACE,(A2)+
 	rts
 
 ;
@@ -4082,10 +3392,9 @@ assem1a0
 	bpl.s	assem1a1	;branch if not Ctrl-E
 *** disassemble at current address and put result in input buffer ***
 	move.l	Addr(A5),A4
-	bsr	disasmline
+	startline
+	bsr	disassemble
 	lea	InputBuffer(a5),a1
-	lea	OutputBuffer-InputBuffer(a1),a0
-	move.l	d6,a0
 	moveq	#LF,D0
 300$	move.b	(A0)+,(A1)+	copy instruction to input buffer
 	cmp.b	(A0),D0 	until LF found
@@ -4289,7 +3598,8 @@ assem9	bsr	skipspaces
 	lea	UpAndClearEol(pc),A0	;move cursor to previous line and clear the line
 	bsr	printstring_a0_window
 	move.l	EndAddr(A5),A4
-	bsr	disasmline
+	startline
+	bsr	disassemble
 	bsr	printstring_window
 dc_exit2
 	bra	assem1
@@ -4301,7 +3611,7 @@ check_cond
 	move.b	(A3)+,D0
 	lsl.w	#8,D0
 	move.b	(A3)+,D0
-	lea	condcodes(pc),A0
+	lea	ccodes(pc),A0
 	moveq	#0,D1
 chk_cond1
 	cmp.w	(A0)+,D0
@@ -5562,11 +4872,11 @@ exg_9	bra	one_word_instr
 ; result is returned in d2
 getreglist
 	clr.w	D2
-reglist1
+reglistx
 	bsr.s	getreg
 	bset	D1,D2
 	cmp.b	#'/',(A3)+
-	beq.s	reglist1
+	beq.s	reglistx
 	cmp.b	#'-',-1(A3)
 	bne.s	reglist9
 	move.w	D1,D7
@@ -5586,7 +4896,7 @@ regrange
 	cmp.w	D1,D7
 	bls.s	regrange
 reg_r1	cmp.b	#'/',(A3)+
-	beq.s	reglist1
+	beq.s	reglistx
 reglist9
 	subq.l	#1,A3
 	moveq	#0,D0
@@ -5808,14 +5118,15 @@ absolute_mode
 	move.w	D2,D1
 	ext.l	D1
 	cmp.l	D2,D1
-	beq.s	abs_short
+	beq.s	abs_short_mode
 	move.l	Addr(A5),A0
 	move.l	D2,(A0)+
 	move.l	A0,Addr(A5)
 	moveq	#7,D1
 	moveq	#1,D0
 	rts
-abs_short
+
+abs_short_mode
 	move.l	Addr(A5),A0
 	move.w	D2,(A0)+
 	move.l	A0,Addr(A5)
@@ -5883,7 +5194,8 @@ displayregs_d
 	move.l	D0,A4
 	tst.w	(a4)
 	beq.s	rr9
-	bsr	disasmline
+	startline
+	bsr	disassemble
 	tst.w	d0
 	bne.s	rr9
 	bsr	printstring
@@ -6433,7 +5745,8 @@ trap_dregs
 	bne.s	tr99
 	move.l	D0,Addr(A5)
 	move.l	D0,A4
-	bsr	disasmline
+	startline
+	bsr	disassemble
 	bsr	printstring
 tr99	bra	mainloop
 
@@ -6734,7 +6047,7 @@ key2	cmp.b	#'T',D0
 	bne.s	key3
 	move.w	#SHIFT_CURSOR_UP,D0
 	rts
-key3	cmp.b	#' ',D0
+key3	cmp.b	#SPACE,D0
 	bne.s	key8
 	bsr.s	GetChar
 	cmp.b	#'A',D0
@@ -7257,69 +6570,49 @@ helptext
 	VERSION
 	dc.b	') --',LF,LF
 	dc.b	'h',TAB,TAB,': help (this)',TAB
-	dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
+	dc.b	'| i',TAB,TAB,TAB,': some information...',LF
 	dc.b	'x',TAB,TAB,': exit',TAB,TAB
-	dc.b	'| ] addr length name',TAB,': save absolute',LF
+	dc.b	'| [ addr name',TAB,TAB,': load absolute',LF
 	dc.b	'o [name]',TAB,':redirect output'
-	dc.b	'| < addr dr block cnt',TAB,': read disk blocks',LF
+	dc.b	'| ] addr length name',TAB,': save absolute',LF
 	dc.b	'dir [name]',TAB,': directory',TAB
-	dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
+	dc.b	'| < addr dr block cnt',TAB,': read disk blocks',LF
 	dc.b	'cd [name]',TAB,': current dir',TAB
-	dc.b	'| \',TAB,TAB,TAB,': new CLI',LF
+	dc.b	'| > addr dr block cnt',TAB,': write disk blocks',LF
 	dc.b	'l name',TAB,TAB,': load segment',TAB
-	dc.b	'| ! addr len per [cnt]',TAB,': play digisound',LF
+	dc.b	'| \',TAB,TAB,TAB,': new CLI',LF
 	dc.b	'sl',TAB,TAB,': segment list',TAB
-	dc.b	'| = addr',TAB,TAB,': disk block checksum',LF
+	dc.b	'| ! addr len per [cnt]',TAB,': play digisound',LF
 	dc.b	'u',TAB,TAB,': unload segment'
-	dc.b	'| # addr',TAB,TAB,': bootblock checksum',LF
+	dc.b	'| = addr',TAB,TAB,': disk block checksum',LF
 	dc.b	'r [reg=num]',TAB,': set/show regs',TAB
-	dc.b	'| g [addr]',TAB,TAB,': execute (go)',LF
+	dc.b	'| # addr',TAB,TAB,': bootblock checksum',LF
 	dc.b	'a addr',TAB,TAB,': assemble',TAB
-	dc.b	'| j [addr]',TAB,TAB,': jump to subroutine',LF
+	dc.b	'| g [addr]',TAB,TAB,': execute (go)',LF
 	dc.b	'd addr1 addr2',TAB,': disassemble',TAB
-	dc.b	'| w [addr]',TAB,TAB,': single step (walk)',LF
+	dc.b	'| j [addr]',TAB,TAB,': jump to subroutine',LF
 	dc.b	'm addr1 addr2',TAB,': display memory'
-	dc.b	'| ( length',TAB,TAB,': allocate memory',LF
+	dc.b	'| w [addr]',TAB,TAB,': single step (walk)',LF
 	dc.b	': addr bytes',TAB,': modify memory',TAB
-	dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF
+	dc.b	'| ( length',TAB,TAB,': allocate memory',LF
 	dc.b	'b addr',TAB,TAB,': set breakpoint'
-	dc.b	'| ) addr/all',TAB,TAB,': free memory',LF
+	dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF
 	dc.b	'bl',TAB,TAB,': list brkpoints'
-	dc.b	'| sm',TAB,TAB,TAB,': show allocated mem',LF
+	dc.b	'| ) addr/all',TAB,TAB,': free memory',LF
 	dc.b	'br addr/all',TAB,':remove brkpoint'
-	dc.b	'| c addr1 addr2 dest',TAB,': compare memory',LF
+	dc.b	'| sm',TAB,TAB,TAB,': show allocated mem',LF
 	dc.b	'f addr1 addr2 bytes: fill mem',TAB
-	dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
+	dc.b	'| c addr1 addr2 dest',TAB,': compare memory',LF
 	dc.b	'@ [line]',TAB,': enter cmd line'
-	dc.b	'| h addr1 addr2 bytes',TAB,': hunt memory',LF
+	dc.b	'| t addr1 addr2 dest',TAB,': transfer memory',LF
 	dc.b	'ba [decnum]',TAB,': set/show base',TAB
-	dc.b	'| set [var=expr]',TAB,': set/show variables',LF
+	dc.b	'| h addr1 addr2 bytes',TAB,': hunt memory',LF
 	dc.b	'? [expr]',TAB,': calculator',TAB
-	dc.b	'| cv',TAB,TAB,TAB,': clear variables',LF
-	dc.b	'mi addr',TAB,TAB,': memory info'
-	dc.b	LF,0
+	dc.b	'| set [var=expr]',TAB,': set/show variables',LF
+	dc.b	'mi addr',TAB,TAB,': memory info',TAB
+	dc.b	'| cv',TAB,TAB,TAB,': clear variables',LF,0
 
-**** disassembler data ****
-	even
-disadrtabl
-	rw	handlezero	;0 -- immediate, bit manipulatios, movep
-	rw	movebyte	;1 -- move.b
-	rw	movelong	;2 -- move.l
-	rw	moveword	;3 -- move.w
-	rw	handlefour	;4 -- misc.
-	rw	handle_five	;5 -- addq & subq , DBcc, Scc
-	rw	branch		;6 -- branch instructions
-	rw	movequick	;7 -- moveq #x,Dn
-	rw	handle_eight 	;8 -- or, div, sbcd
-	rw	subtract	;9 -- sub & suba
-	rw	lineA		;10 Line-A -- unimplemented
-	rw	handle_11	;11 -- cmp, cmpm, eor
-	rw	handle_12	;12 -- and, mul, abcd, exg
-	rw	addinst		;13 -- add & adda
-	rw	shifts		;14 -- asl, asr, lsl, lsr, rol, ror, roxl, roxr
-	rw	lineF		;15 Line-F -- unimplemented
-
-condcodes	dc.b	'rasrhilscccsneeqvcvsplmigeltgtlehslo'
+;
 
 pcnam	dc.b	'(pc)',0	;program counter
 USPnam	dc.b	'usp',0		;user stack pointer for Move An,usp & Move usp,An
@@ -7378,10 +6671,13 @@ illegalnam	dc.b	'illegal',0
 instruction	macro
 		rw	\1nam
 n_\1		equ	InstrCount
+t_\1		equ	TokCount
 InstrCount	set	InstrCount+1
+TokCount	set	TokCount+1
 		endm
 
 InstrCount	set	0
+TokCount	set	TOKSTART
 
 instradrs
 	instruction	as		;0
@@ -7430,6 +6726,557 @@ instradrs
 	instruction	illegal		;43
 	dc.w	0	;end mark
 
+;
+; disassembler instruction code table
+;
+;
+; structure of the table
+;  dc.w mask,value  specifies what bit pattern identifies this instruction
+;  dc.b flags       addressing mode and size flags
+;  str <string>     instruction "format string" (or special case routine
+;		    address)
+;
+DisAsmTable
+; abcd Dn,Dn
+	dc.w	$f1f8,$c100
+	dc.b	BYTE
+	str	<t_abcd,TAB,DR2,',',DRB>
+	even
+; abcd -(An),-(An)
+	dc.w	$f1f8,$c108
+	dc.b	BYTE
+	str	<t_abcd,TAB,'-(',AR2,'),-(',ARB,')'>
+	even
+; sbcd Dn,Dn
+	dc.w	$f1f8,$8100
+	dc.b	BYTE
+	str	<t_sbcd,TAB,DR2,',',DRB>
+	even
+; sbcd -(An),-(An)
+	dc.w	$f1f8,$8108
+	dc.b	BYTE
+	str	<t_sbcd,TAB,'-(',AR2,'),-(',ARB,')'>
+	even
+; adda.w ea,An
+	dc.w	$f1c0,$d0c0
+	dc.b	WORD		; all addressing modes allowed
+	str	<t_add,'a.w',TAB,EA,',',ARB>
+	even
+; adda.l ea,An
+	dc.w	$f1c0,$d1c0
+	dc.b	LONG		; all addressing modes allowed
+	str	<t_add,'a.l',TAB,EA,',',ARB>
+	even
+; suba.w ea,An
+	dc.w	$f1c0,$90c0
+	dc.b	WORD		; all addressing modes allowed
+	str	<t_sub,'a.w',TAB,EA,',',ARB>
+	even
+; suba.l ea,An
+	dc.w	$f1c0,$91c0
+	dc.b	LONG		; all addressing modes allowed
+	str	<t_sub,'a.l',TAB,EA,',',ARB>
+	even
+; addx Dn,Dn
+	dc.w	$f138,$d100
+	dc.b	0
+	str	<t_add,'x',SZ,TAB,DR2,',',DRB>
+	even
+; addx -(An),-(An)
+	dc.w	$f138,$d108
+	dc.b	0
+	str	<t_add,'x',SZ,TAB,'-(',AR2,'),-(',ARB,')'>
+	even
+; subx Dn,Dn
+	dc.w	$f138,$9100
+	dc.b	0
+	str	<t_sub,'x',SZ,TAB,DR2,',',DRB>
+	even
+; subx -(An),-(An)
+	dc.w	$f138,$9108
+	dc.b	0
+	str	<t_sub,'x',SZ,TAB,'-(',AR2,'),-(',ARB,')'>
+	even
+; add ea,Dn
+	dc.w	$f100,$d000
+	dc.b	0	; all addressing modes are legal
+	str	<t_add,SZ,TAB,EA,',',DRB>
+	even
+; add Dn,ea
+	dc.w	$f100,$d100
+	dc.b	DATA!ALTER
+	str	<t_add,SZ,TAB,DRB,',',EA>
+	even
+; sub ea,Dn
+	dc.w	$f100,$9000
+	dc.b	0	; all addressing modes are legal
+	str	<t_sub,SZ,TAB,EA,',',DRB>
+	even
+; sub Dn,ea
+	dc.w	$f100,$9100
+	dc.b	DATA!ALTER
+	str	<t_sub,SZ,TAB,DRB,',',EA>
+	even
+; addi #data,ea
+	dc.w	$ff00,$0600
+	dc.b	DATA!ALTER
+	str	<t_add,'i',SZ,TAB,IMM,',',EA>
+	even
+; subi #data,ea
+	dc.w	$ff00,$0400
+	dc.b	DATA!ALTER
+	str	<t_sub,'i',SZ,TAB,IMM,',',EA>
+	even
+; Dbcc Dn,offs
+	dc.w	$f0f8,$50c8
+	dc.b	WORD
+	str	<'db',CC,TAB,DR2,',',OFFS>
+	even
+; Scc
+	dc.w	$f0c0,$50c0
+	dc.b	BYTE!DATA!ALTER
+	str	<'s',CC,TAB,EA>
+	even
+; addq #data,ea
+	dc.w	$f100,$5000
+	dc.b	ALTER
+	str	<t_add,'q',SZ,TAB,IMMQ,',',EA>
+	even
+; subq #data,ea
+	dc.w	$f100,$5100
+	dc.b	ALTER
+	str	<t_sub,'q',SZ,TAB,IMMQ,',',EA>
+	even
+; cmpa.w ea,An
+	dc.w	$f1c0,$b0c0
+	dc.b	WORD	; all addressing modes are legal
+	str	<t_cmp,'a.w',TAB,EA,',',ARB>
+	even
+; cmpa.l ea,An
+	dc.w	$f1c0,$b1c0
+	dc.b	LONG	; all addressing modes are legal
+	str	<t_cmp,'a.l',TAB,EA,',',ARB>
+	even
+; cmpm (An)+,(An)+
+	dc.w	$f138,$b108
+	dc.b	0
+	str	<t_cmp,'m',SZ,TAB,'(',AR2,')+,(',ARB,')+'>
+	even
+; cmp ea,Dn
+	dc.w	$f100,$b000
+	dc.b	0	; all addressing modes are legal
+	str	<t_cmp,SZ,TAB,EA,',',DRB>
+	even
+; cmpi #imm,ea
+	dc.w	$ff00,$0c00
+	dc.b	DATA!ALTER		;%%68020?
+	str	<t_cmp,'i',SZ,TAB,IMM,',',EA>
+	even
+; divs
+	dc.w	$f1c0,$81c0
+	dc.b	DATA!WORD
+	str	<t_div,'s',TAB,EA,',',DRB>
+	even
+; divu
+	dc.w	$f1c0,$80c0
+	dc.b	DATA!WORD
+	str	<t_div,'u',TAB,EA,',',DRB>
+	even
+; muls
+	dc.w	$f1c0,$c1c0
+	dc.b	DATA!WORD
+	str	<t_mul,'s',TAB,EA,',',DRB>
+	even
+; mulu
+	dc.w	$f1c0,$c0c0
+	dc.b	DATA!WORD
+	str	<t_mul,'u',TAB,EA,',',DRB>
+	even
+; exg Dn,Dn
+	dc.w	$f1f8,$c140
+	dc.b	0
+	str	<t_exg,TAB,DR2,',',DRB>
+	even
+;
+; my documentation has a bug here. thanks to John van Dijk for informing
+; me about it...
+;
+; exg Dn,An
+	dc.w	$f1f8,$c188
+	dc.b	LONG
+	str	<t_exg,TAB,DRB,',',AR2>
+	even
+; exg An,An
+	dc.w	$f1f8,$c148
+	dc.b	LONG
+	str	<t_exg,TAB,AR2,',',ARB>
+	even
+; and ea,Dn
+	dc.w	$f100,$c000
+	dc.b	DATA
+	str	<t_and,SZ,TAB,EA,',',DRB>
+	even
+; and Dn,ea
+	dc.w	$f100,$c100
+	dc.b	DATA!MEMORY!ALTER
+	str	<t_and,SZ,TAB,DRB,',',EA>
+	even
+; or ea,Dn
+	dc.w	$f100,$8000
+	dc.b	DATA
+	str	<t_or,SZ,TAB,EA,',',DRB>
+	even
+; or Dn,ea
+	dc.w	$f100,$8100
+	dc.b	DATA!MEMORY!ALTER
+	str	<t_or,SZ,TAB,DRB,',',EA>
+	even
+; eor Dn,ea
+	dc.w	$f100,$b100
+	dc.b	DATA!ALTER
+	str	<t_eor,SZ,TAB,DRB,',',EA>
+	even
+; andi #data,sr/ccr
+	dc.w	$ff3f,$023c
+	dc.b	0
+	str	<t_and,'i',TAB,IMM,',',SCCR>
+	even
+; ori #data,sr/ccr
+	dc.w	$ff3f,$003c
+	dc.b	0
+	str	<t_or,'i',TAB,IMM,',',SCCR>
+	even
+; eori #data,sr/ccr
+	dc.w	$ff3f,$0a3c
+	dc.b	0
+	str	<t_eor,'i',TAB,IMM,',',SCCR>
+	even
+; andi #data,ea
+	dc.w	$ff00,$0200
+	dc.b	DATA!ALTER
+	str	<t_and,'i',SZ,TAB,IMM,',',EA>
+	even
+; ori #data,ea
+	dc.w	$ff00,$0000
+	dc.b	DATA!ALTER
+	str	<t_or,'i',SZ,TAB,IMM,',',EA>
+	even
+; eori #data,ea
+	dc.w	$ff00,$0a00
+	dc.b	DATA!ALTER
+	str	<t_eor,'i',SZ,TAB,IMM,',',EA>
+	even
+; shift? ea
+	dc.w	$f8c0,$e0c0
+	dc.b	DATA!MEMORY!ALTER!WORD
+	str	<STP2,SD,TAB,EA>
+	even
+; shift? Dn,Dn
+	dc.w	$f020,$e020
+	dc.b	0
+	str	<STP1,SD,SZ,TAB,DRB,',',DR2>
+	even
+; shift? #imm,Dn
+	dc.w	$f020,$e000
+	dc.b	0
+	str	<STP1,SD,SZ,TAB,IMMQ,',',DR2>
+	even
+; Bcc addr
+	dc.w	$f0ff,$6000
+	dc.b	WORD
+	str	<'b',CC,TAB,OFFS>
+	even
+; Bcc.s addr
+	dc.w	$f000,$6000
+	dc.b	BYTE
+	str	<'b',CC,'.s',TAB,SOFFS>
+	even
+; movep.w offs(An),Dn
+	dc.w	$f1f8,$0108
+	dc.b	WORD
+	str	<t_move,'p.w',TAB,IMMOFFS,'(',AR2,'),',DRB>
+	even
+; movep.l offs(An),Dn
+	dc.w	$f1f8,$0148
+	dc.b	LONG
+	str	<t_move,'p.l',TAB,IMMOFFS,'(',AR2,'),',DRB>
+	even
+; movep.w Dn,offs(An)
+	dc.w	$f1f8,$0188
+	dc.b	WORD
+	str	<t_move,'p.w',TAB,DRB,',',IMMOFFS,'(',AR2,')'>
+	even
+; movep.l Dn,offs(An)
+	dc.w	$f1f8,$01c8
+	dc.b	LONG
+	str	<t_move,'p.l',TAB,DRB,',',IMMOFFS,'(',AR2,')'>
+	even
+;
+; btst has more legal addressing modes than other b??? instructions
+; %%note that even btst Dn,#imm is legal (with size of BYTE).
+;
+; btst Dn,ea
+	dc.w	$f1c0,$0100
+	dc.b	DATA!BYTE
+	str	<'b',BIT,TAB,DRB,',',EA>
+	even
+; btst #imm,ea
+	dc.w	$ffc0,$0800
+	dc.b	DATA!NIMM
+	str	<'b',BIT,TAB,'#',IMMOFFS,',',EA>
+	even
+; b??? Dn,ea
+	dc.w	$f100,$0100
+	dc.b	DATA!ALTER
+	str	<'b',BIT,TAB,DRB,',',EA>
+	even
+; b??? #imm,ea
+	dc.w	$ff00,$0800
+	dc.b	DATA!ALTER
+	str	<'b',BIT,TAB,'#',IMMOFFS,',',EA>
+	even
+; chk ea,Dn
+	dc.w	$f1c0,$4180
+	dc.b	DATA!WORD
+	str	<t_chk,TAB,EA,',',DRB>
+	even
+; clr ea
+	dc.w	$ff00,$4200
+	dc.b	DATA!ALTER
+	str	<t_clr,SZ,TAB,EA>
+	even
+; nbcd ea
+	dc.w	$ffc0,$4800
+	dc.b	DATA!ALTER!BYTE
+	str	<t_nbcd,TAB,EA>
+	even
+; ext.w Dn
+	dc.w	$fff8,$4880
+	dc.b	WORD
+	str	<t_ext,'.w',TAB,DR2>
+	even
+; ext.l Dn
+	dc.w	$fff8,$48c0
+	dc.b	LONG
+	str	<t_ext,'.l',TAB,DR2>
+	even
+; jmp ea
+	dc.w	$ffc0,$4ec0
+	dc.b	CONTROL
+	str	<t_jmp,TAB,EA>
+	even
+; jsr ea
+	dc.w	$ffc0,$4e80
+	dc.b	CONTROL
+	str	<t_jsr,TAB,EA>
+	even
+; lea ea,An
+	dc.w	$f1c0,$41c0
+	dc.b	CONTROL
+	str	<t_lea,TAB,EA,',',ARB>
+	even
+; link An,#imm
+	dc.w	$fff8,$4e50
+	dc.b	WORD
+	str	<t_link,TAB,AR2,',#',IMMOFFS>
+	even
+; unlk An
+	dc.w	$fff8,$4e58
+	dc.b	0
+	str	<t_unlk,TAB,AR2>
+	even
+; illegal
+	dc.w	$ffff,$4afc
+	dc.b	0
+	str	<t_illegal>
+	even
+; tas ea
+	dc.w	$ffc0,$4ac0
+	dc.b	DATA!ALTER!BYTE
+	str	<t_tas,TAB,EA>
+	even
+; move usp,An
+	dc.w	$fff8,$4e68
+	dc.b	LONG
+	str	<t_move,TAB,'usp,',AR2>
+	even
+; move An,usp
+	dc.w	$fff8,$4e60
+	dc.b	LONG
+	str	<t_move,TAB,AR2,',usp'>
+	even
+; movea.w ea,An
+	dc.w	$f1c0,$3040
+	dc.b	WORD
+	str	<t_move,'a.w',TAB,EA,',',ARB>
+	even
+; movea.l ea,An
+	dc.w	$f1c0,$2040
+	dc.b	LONG
+	str	<t_move,'a.l',TAB,EA,',',ARB>
+	even
+; move.b ea,ea
+	dc.w	$f000,$1000
+	dc.b	BYTE!SPECIAL_CASE
+	dc.b	6
+	rw	handle_move
+	dc.b	t_move,'.b',TAB
+	even
+; move.w ea,ea
+	dc.w	$f000,$3000
+	dc.b	WORD!SPECIAL_CASE
+	dc.b	6
+	rw	handle_move
+	dc.b	t_move,'.w',TAB
+	even
+; move.l ea,ea
+	dc.w	$f000,$2000
+	dc.b	LONG!SPECIAL_CASE
+	dc.b	6
+	rw	handle_move
+	dc.b	t_move,'.l',TAB
+	even
+; movem.w from memory
+	dc.w	$ffc0,$4c80
+	dc.b	MEMORY!NIMM!WORD!SPECIAL_CASE
+	dc.b	7
+	rw	handle_movem
+	dc.b	t_move,'m.w',TAB
+	even
+; movem.w to memory
+	dc.w	$ffc0,$4880
+	dc.b	MEMORY!ALTER!WORD!SPECIAL_CASE
+	dc.b	7
+	rw	handle_movem
+	dc.b	t_move,'m.w',TAB
+	even
+; movem.l from memory
+	dc.w	$ffc0,$4cc0
+	dc.b	MEMORY!NIMM!LONG!SPECIAL_CASE
+	dc.b	7
+	rw	handle_movem
+	dc.b	t_move,'m.l',TAB
+	even
+; movem.l to memory
+	dc.w	$ffc0,$48c0
+	dc.b	MEMORY!ALTER!LONG!SPECIAL_CASE
+	dc.b	7
+	rw	handle_movem
+	dc.b	t_move,'m.l',TAB
+	even
+; moveq #imm,Dn
+	dc.w	$f100,$7000
+	dc.b	LONG
+	str	<t_move,'q',TAB,IMVQ,',',DRB>
+	even
+; move ea,ccr
+	dc.w	$ffc0,$44c0
+	dc.b	DATA!BYTE
+	str	<t_move,TAB,EA,',ccr'>
+	even
+; move ea,SR
+	dc.w	$ffc0,$46c0
+	dc.b	DATA!WORD
+	str	<t_move,TAB,EA,',sr'>
+	even
+; move sr,ea
+	dc.w	$ffc0,$40c0
+	dc.b	DATA!ALTER!WORD
+	str	<t_move,TAB,'sr,',EA>
+	even
+; neg ea
+	dc.w	$ff00,$4400
+	dc.b	DATA!ALTER
+	str	<t_neg,SZ,TAB,EA>
+	even
+; negx ea
+	dc.w	$ff00,$4000
+	dc.b	DATA!ALTER
+	str	<t_neg,'x',SZ,TAB,EA>
+	even
+; not ea
+	dc.w	$ff00,$4600
+	dc.b	DATA!ALTER
+	str	<t_not,SZ,TAB,EA>
+	even
+; swap Dn
+	dc.w	$fff8,$4840
+	dc.b	0
+	str	<t_swap,TAB,DR2>
+	even
+; pea ea
+	dc.w	$ffc0,$4840
+	dc.b	CONTROL
+	str	<t_pea,TAB,EA>
+	even
+; reset
+	dc.w	$ffff,$4e70
+	dc.b	0
+	str	<t_reset>
+	even
+; nop
+	dc.w	$ffff,$4e71
+	dc.b	0
+	str	<t_nop>
+	even
+; stop
+	dc.w	$ffff,$4e72
+	dc.b	WORD
+	str	<t_stop,TAB,IMM>
+	even
+; rte
+	dc.w	$ffff,$4e73
+	dc.b	0
+	str	<t_rte>
+	even
+; rts
+	dc.w	$ffff,$4e75
+	dc.b	0
+	str	<t_rts>
+	even
+; trapv
+	dc.w	$ffff,$4e76
+	dc.b	0
+	str	<t_trap,'v'>
+	even
+; rtr
+	dc.w	$ffff,$4e77
+	dc.b	0
+	str	<t_rtr>
+	even
+; trap
+	dc.w	$fff0,$4e40
+	dc.b	0
+	str	<t_trap,TAB,TRAPN>
+	even
+; tst ea
+	dc.w	$ff00,$4a00
+	dc.b	DATA!ALTER	;%%68020?
+	str	<t_tst,SZ,TAB,EA>
+	even
+; line-a
+	dc.w	$f000,$a000
+	dc.b	0
+	str	<'line-a'>
+	even
+; line-f
+	dc.w	$f000,$f000
+	dc.b	0
+	str	<'line-f'>
+	even
+; end of table marker
+	dc.w	0,0		matches anything
+	dc.b	SPECIAL_CASE
+	dc.b	3
+	rw	invalid
+	dc.b	0
+
+; why don't asemblers warn if you put word data in odd address ???
+	even
+
+;
+; instruction jump table for assembler
+;
 instrjumps
 	rw	as_asm,ls_asm,rox_asm,rot_asm		;0-3
 	rw	move_asm,add_asm,sub_asm
@@ -7464,8 +7311,7 @@ infotext dc.b CLS,LF
 	dc.b	" This program can be freely distributed for non-commercial purposes.",LF
 	dc.b	" I hope you find this program useful, but if you find any bugs in this",LF
 	dc.b	" program, please let me know.",LF,LF
-	dc.b	" Read the 'mon.doc'-file for more information.",LF
-	dc.b	"  (My address is also there)",LF,0
+	dc.b	" Read the 'mon.doc'-file for more information. (My address is also there)",LF,0
 
 **** text data ****
 

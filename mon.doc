@@ -1,5 +1,5 @@
 
-                 Amiga Monitor 1.17 instructions
+                 Amiga Monitor 1.19 instructions
                  ===============================
 
   The monitor can be started both from CLI and from workbench. If you want
@@ -105,6 +105,11 @@
     ''''  -- this means one single quote
     'both',$0A,'text',10,'and','numbers'
 
+
+New features and bug fixes in version 1.18 & 1.19
+-------------------------------------------------
+ - disassembler now uses new routines. this makes the monitor
+   executable little smaller than 1.17
 
 New features and bug fixes in version 1.16 & 1.17
 -------------------------------------------------
@@ -486,7 +491,7 @@ x -- exit
  and exits the monitor.
 
 
-version 1.17 of the monitor (and this document) --> 1989-12-09
+version 1.19 of the monitor (and this document) --> 1989-12-21
 
  Timo Rossi
  Kellankoski			internet e-mail:
