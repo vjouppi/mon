@@ -38,6 +38,7 @@ disk_io.o:	disk_io.asm monitor.i mon_macros.i
 eval.o:		eval.asm monitor.i mon_macros.i
 execute.o:	execute.asm monitor.i mon_macros.i breakpoint.i
 mem_cmd.o:	mem_cmd.asm monitor.i mon_macros.i
+misc_cmd.o:	misc_cmd.asm monitor.i mon_macros.i
 mon_dos.o:	mon_dos.asm monitor.i mon_macros.i
 mon_io.o:	mon_io.asm monitor.i mon_macros.i
 mon_main.o:	mon_main.asm monitor.i mon_macros.i script.i mon_version.i

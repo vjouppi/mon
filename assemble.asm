@@ -103,23 +103,23 @@ FindInstrName	lea	instr_names(pc),a0
 try_branch	move.b	(a3)+,d0
 		call	tolower
 		cmp.b	#'b',d0
-		bne.s	try_Scc
+		bne	try_Scc
 		bsr	check_cond
 		tst.w	D1
-		bpl.s	branch_1
+		bpl.b	branch_1
 br_err		bra	generic_error
 
 branch_1	lsl.w	#8,D1
 		or.w	#$6000,D1
 		cmp.b	#'.',(A3)
-		bne.s	long_branch
+		bne.s	long16_branch
 		addq.l	#1,A3
 		move.b	(a3)+,d0
 		call	tolower
 		cmp.b	#'l',d0
-		beq.s	long_branch
+		beq.s	long32_branch
 		cmp.b	#'w',d0
-		beq.s	long_branch
+		beq.s	long16_branch
 		cmp.b	#'b',d0
 		beq.s	short_branch
 		cmp.b	#'s',d0
@@ -138,7 +138,7 @@ short_branch	call	GetExpr	;short branch
 		or.w	D1,D0
 		bra	one_word_instr
 
-long_branch	call	GetExpr
+long16_branch	call	GetExpr
 		sub.l	mon_CurrentAddr(a4),D0
 		subq.l	#2,D0
 		move.w	D0,D2
@@ -147,6 +147,16 @@ long_branch	call	GetExpr
 		bne	out_range_error
 		exg	D0,D1
 		bra	two_words_instr
+
+long32_branch	call	GetExpr
+		move.l	mon_CurrentAddr(a4),a0
+		sub.l	a0,d0
+		subq.l	#2,d0
+		or.w	#$ff,d1
+		move.w	d1,(a0)+
+		move.l	d0,(a0)+
+		move.l	a0,mon_CurrentAddr(a4)
+		bra	Assem_End
 
 try_Scc		cmp.b	#'s',d0
 		bne.s	try_DBcc

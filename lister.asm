@@ -381,20 +381,15 @@ task_name	move.l	LN_NAME(a0),d1
 2$		clr.b	(a3)+
 t_align		move.l	a3,d1
 		btst	#0,d1
-		beq.s	4$
+		beq.s	rts1
 		clr.b	(a3)+
-4$		rts
+rts1		rts
 
 ;
 ;
 		cmd	list_expansion
 
-		lea	expansion_name(pc),a1
-		moveq	#0,d0
-		lib	Exec,OpenLibrary
-		tst.l	d0
-		beq	list_exp_exit
-		move.l	d0,a6
+		getbase	Expansion
 		clra	a5
 
 		lea	list_exp_hdr(pc),a0
@@ -405,7 +400,7 @@ list_exp_loop	moveq	#-1,d0
 		move.l	a5,a0
 		lib	FindConfigDev
 		tst.l	d0
-		beq	list_exp_end
+		beq.b	rts1
 		move.l	d0,a5
 
 		lea	list_exp_fmt1(pc),a0
@@ -427,11 +422,6 @@ list_exp_loop	moveq	#-1,d0
 		call	printf
 		bra	list_exp_loop
 
-list_exp_end	move.l	a6,a1
-		lib	Exec,CloseLibrary
-
-list_exp_exit	rts
-
 ;
 ;
 task_hdr_txt	dc.b	'  Node   Type State Pri  Name',LF,0
@@ -446,7 +436,6 @@ port_list_fmt	dc.b	'%08lx  %3ld   %02lx    %s',LF,0
 res_hdr_txt	dc.b	'  Node     Name',LF,0
 res_list_fmt	dc.b	'%08lx   %s',LF,0
 
-expansion_name	dc.b	'expansion.library',0
 list_exp_hdr	dc.b	'ConfigDev  BoardAddr  Manuf. Prod. Size(KB) cd_Flags er_Flags',LF,0
 list_exp_fmt1	dc.b	'%08lx   %08lx  %5ld   %3ld   %6ld',0
 list_exp_fmt2	dc.b	'      %02lx      %02lx',LF,0

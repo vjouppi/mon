@@ -4,11 +4,15 @@
 
 ;
 ; include file for Amiga Monitor
-; version 1.59 -- 1993-05-05
+; version 1.60 -- 1993-06-06
 ; Copyright © 1993 by Timo Rossi
 ;
 		ifnd	EXEC_TYPES_I
 		include	"exec/types.i"
+		endc
+
+		ifnd	DOS_DOSEXTENS_I
+		include	"dos/dosextens.i"
 		endc
 
 		include	"mon_macros.i"
@@ -85,8 +89,9 @@ ILLEGAL_INSTR	equ	$4AFC	;illegal instruction (used by breakpoints)
 
 		STRUCTURE MonitorData,0
 ; first the long word variables
-		 APTR	_ExecBase
+		 APTR	_ExecBase	;Exec library base
 		 APTR	_DosBase	;DOS library base
+		 APTR	_ExpansionBase	;Expansion library base
 		 APTR	mon_WBenchMsg	;Workbench startup message pointer
 		 APTR	mon_Task	;pointer to TCB of monitor process
 		 LONG	mon_StackSize	;monitor stack size
@@ -138,6 +143,11 @@ ILLEGAL_INSTR	equ	$4AFC	;illegal instruction (used by breakpoints)
 ;
 		 APTR	mon_dis_StackStore
 		 APTR	mon_dis_Addr1
+;
+		 STRUCT	mon_FakeFH,fh_SIZEOF	;this must be longword aligned
+		 APTR	mon_OldFhBuf
+		 LONG	mon_OldPos
+		 LONG	mon_OldEnd
 
 ; the output buffer must be long word aligned
 		 STRUCT	mon_OutputBuf,LEN
@@ -172,7 +182,7 @@ mon_RegSP	equ	mon_AddrRegs+7*4
 ; Hmm.. I think that I put this check here for a good reason, but I can't
 ; remember what is was... probably a bug in assembler or something...
 ;
-		ifne	MonitorData_SIZE-$77a
+		ifne	MonitorData_SIZE-$7b6
 		fail	Panic! MonitorData wrong size!
 		endc
 
@@ -187,6 +197,7 @@ mon_RegSP	equ	mon_AddrRegs+7*4
 		BITDEF	MON,OWNWINDOW,4
 		BITDEF	MON,FIRSTCD,5
 		BITDEF	MON,TASKSET,6
+		BITDEF	MON,STARTUP,7
 
 ;
 ; Monitor option flags
@@ -196,5 +207,6 @@ mon_RegSP	equ	mon_AddrRegs+7*4
 		BITDEF	OPT,DUMBTERM,2
 		BITDEF	OPT,CMDECHO,3
 		BITDEF	OPT,STACKRESET,4
+		BITDEF	OPT,ERRORSTOP,5
 
-MON_NUM_OPTIONS	equ	5
+MON_NUM_OPTIONS	equ	6

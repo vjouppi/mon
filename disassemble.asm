@@ -58,6 +58,7 @@ OFFS	equ	$8f	; 16-bit pc-relative offset
 IMMOFFS	equ	$90	; immediate word constant, no '#'-sign
 TRAPN	equ	$91	; trap number
 BIT	equ	$92	; bit instruction type
+LOFFS	equ	$93	; 32-bit offset (68020+ long branches)
 
 ;
 ;*** DISASSEMBLE ****
@@ -72,10 +73,10 @@ disasmloop	move.l	a5,d0
 		call	put_label
 
 		startline
-		call.s	Disassemble
+		call.b	Disassemble
 		call	printstring
 		call	CheckEnd
-		bne.s	disasmloop
+		bne.b	disasmloop
 		move.l	a5,mon_CurrentAddr(a4)
 		rts
 
@@ -103,12 +104,12 @@ disasmloop	move.l	a5,d0
 
 		moveq	#SPACE,d0
 		btst	#OPTB_NARROWDIS,mon_Options(a4)
-		beq.s	00$
+		beq.b	00$
 
 		clr.l	mon_dis_Addr1(a4)
 		move.b	d0,(a3)+
 		move.b	d0,(a3)+
-		bra.s	10$
+		bra.b	10$
 
 00$		move.l	a3,a0
 		addq.l	#1,a0
@@ -126,10 +127,10 @@ disasmloop	move.l	a5,d0
 		bsr	GetWord			get opcode
 		move.l	a5,a6
 		move.w	d0,d7
-		bne.s	no_dcw
+		bne.b	no_dcw
 		move.w	(a5),d1
 		and.w	#$ff00,d1
-		beq.s	no_dcw
+		beq.b	no_dcw
 		lea	dcw_txt(pc),a0
 		bsr	put_str
 		moveq	#0,d0
@@ -139,7 +140,7 @@ disasmloop	move.l	a5,d0
 		bra	dis_end
 
 no_dcw		tst.l	mon_dis_Addr1(a4)
-		bne.s	03$
+		bne.b	03$
 
 		and.w	#$f000,d0
 		cmp.w	#$a000,d0
@@ -152,7 +153,7 @@ no_dcw		tst.l	mon_dis_Addr1(a4)
 instr_loop	move.w	d7,d0
 		and.w	(a2)+,d0
 		cmp.w	(a2)+,d0
-		beq.s	i_found
+		beq.b	i_found
 		moveq	#0,d1
 		move.b	1(a2),d1
 		move.l	a2,d0			get next table entry
@@ -160,16 +161,16 @@ instr_loop	move.w	d7,d0
 		addq.l	#3,d0
 		and.b	#$fe,d0
 		move.l	d0,a2
-		bra.s	instr_loop
+		bra.b	instr_loop
 
 i_found		move.b	(a2)+,d6		get flags
-		bmi.s	special_routine
+		bmi.b	special_routine
 
 		clr.w	d4			get size
 		move.b	d6,d4
 		lsr.b	#SIZSHFT,d4
 		and.b	#3,d4
-		bne.s	siz01
+		bne.b	siz01
 
 		move.b	d7,d4
 		lsr.b	#6,d4			get size from opcode bits 7-6
@@ -181,7 +182,7 @@ siz01		and.b	#EABITS,d6
 		move.b	(a2)+,d5		get string length
 		subq.w	#1,d5			for dbf
 
-strloop		bsr.s	fmt_char
+strloop		bsr.b	fmt_char
 		dbf	d5,strloop
 
 ;#
@@ -190,15 +191,15 @@ strloop		bsr.s	fmt_char
 ;# also ILLEGAL ($4afc) is not a valid instruction
 ;#
 		cmp.w	#ILLEGAL_INSTR,d7
-		beq.s	invalid_instr
+		beq.b	invalid_instr
 		and.w	#$f000,d7
 		cmp.w	#$a000,d7
-		beq.s	invalid_instr
+		beq.b	invalid_instr
 		cmp.w	#$f000,d7
-		bne.s	valid_instr
+		bne.b	valid_instr
 
 invalid_instr	moveq	#-1,d0
-		bra.s	dis_end
+		bra.b	dis_end
 
 special_routine	clr.w	d4
 		move.b	d6,d4
@@ -212,7 +213,7 @@ special_routine	clr.w	d4
 		move.l	a2,d2
 		lea	2(a2),a2
 
-01$		bsr.s	fmt_char
+01$		bsr.b	fmt_char
 		dbf	d5,01$
 
 		move.l	d2,a0
@@ -229,21 +230,21 @@ dis_end		move.b	#LF,(a3)+
 
 fmt_char	moveq	#0,d0
 		move.b	(a2)+,d0
-		bmi.s	do_special
+		bmi.b	do_special
 		cmp.b	#TAB,d0
-		beq.s	do_tab
+		beq.b	do_tab
 		move.b	d0,(a3)+
 rt1		rts
 
 do_tab		move.l	4(sp),a0
 		addq.l	#8,a0
 01$		cmp.l	a0,a3
-		bcc.s	rt1
+		bcc.b	rt1
 		move.b	#SPACE,(a3)+
-		bra.s	01$
+		bra.b	01$
 
 do_special	cmp.b	#TOKSTART,d0
-		bcc.s	str_tok
+		bcc.b	str_tok
 		and.b	#$7f,d0
 		add.w	d0,d0
 		lea	str_routines(pc,d0.w),a0
@@ -265,6 +266,7 @@ str_routines	rw	datar11,datar2,addrr11,addrr2
 		rw	condcodes
 		rw	short_pc_offset,pc_offset
 		rw	immoffs,trapnum,bit_instr_type
+		rw	long_pc_offset
 
 ;
 ; note: GetWord & GetLong do not modify d1
@@ -272,7 +274,7 @@ str_routines	rw	datar11,datar2,addrr11,addrr2
 GetWord		movem.l	d1/a3,-(sp)
 		move.w	(a5)+,d0
 		tst.l	mon_dis_Addr1(a4)
-		beq.s	getw_end
+		beq.b	getw_end
 		move.l	mon_dis_Addr1(a4),a3
 		move.w	d0,-(sp)
 		moveq	#4,d1
@@ -286,7 +288,7 @@ getw_end	movem.l	(sp)+,d1/a3
 GetLong		movem.l	d1/a3,-(sp)
 		move.l	(a5)+,d0
 		tst.l	mon_dis_Addr1(a4)
-		beq.s	01$
+		beq.b	01$
 		move.l	mon_dis_Addr1(a4),a3
 		move.l	d0,-(sp)
 		moveq	#8,d1
@@ -308,12 +310,12 @@ nump		add.b	#'0',d0
 
 datar2		move.b	#'d',(a3)+
 		move.w	d7,d0
-		bra.s	num2
+		bra.b	num2
 
 addrr11		move.w	d7,d0
 		lsr.w	#8,d0
 		lsr.w	#1,d0
-		bra.s	ar01
+		bra.b	ar01
 
 addrr2		move.w	d7,d0
 ar01		and.w	#7,d0
@@ -323,13 +325,13 @@ immediate_quick	move.w	d7,d0
 		lsr.w	#8,d0
 		lsr.w	#1,d0
 		and.b	#7,d0
-		bne.s	01$
+		bne.b	01$
 		moveq	#8,d0
 01$		move.b	#'#',(a3)+
-		bra.s	nump
+		bra.b	nump
 
 size_specifier	tst.w	d4
-		beq.s	invalid
+		beq.b	invalid
 		move.b	#'.',(a3)+
 		move.b	sizes-1(pc,d4.w),(a3)+
 		rts
@@ -347,7 +349,7 @@ invalid		move.l	mon_dis_StackStore(a4),sp	restore stack ptr
 		move.l	d3,a3
 
 		tst.l	mon_dis_Addr1(a4)
-		bne.s	00$
+		bne.b	00$
 
 		lea	dcw_txt(pc),a0
 		bsr	put_str
@@ -356,7 +358,7 @@ invalid		move.l	mon_dis_StackStore(a4),sp	restore stack ptr
 		moveq	#4,d1
 		call	put_hexnum
 		move.l	a6,a5
-		bra.s	02$
+		bra.b	02$
 
 00$		moveq	#'?',d0
 		move.b	d0,(a3)+
@@ -376,9 +378,9 @@ immediate_data	move.b	#'#',(a3)+
 		add.w	d0,d0
 		jmp	immsizes(pc,d0.w)
 
-immsizes	bra.s	invalid
-		bra.s	imm_byte
-		bra.s	imm_word
+immsizes	bra.b	invalid
+		bra.b	imm_byte
+		bra.b	imm_word
 ; imm_long
 		bsr	GetLong
 		move.b	#'$',(a3)+
@@ -400,7 +402,7 @@ immediate_moveq		;%%signed number
 		move.b	#'#',(a3)+
 		move.w	d7,d0
 		ext.w	d0
-		bra.s	sword
+		bra.b	sword
 
 sr_or_ccr	tst.w	d4
 		beq	invalid
@@ -466,7 +468,12 @@ short_pc_offset	move.b	d7,d0
 		ext.w	d0
 		ext.l	d0
 		add.l	a5,d0
-		bra.s	put_addr
+		bra.b	put_addr
+
+long_pc_offset	move.l	a5,d1
+		bsr	GetLong
+		add.l	d1,d0
+		bra.b	put_addr
 
 pc_offset	move.l	a5,d1
 		bsr	GetWord
@@ -648,7 +655,7 @@ displ		move.w	d0,-(sp)
 		tst.l	mon_HunkTypeTable(a4)
 		beq.s	8$
 
-		move.b	5(sp),d1
+		move.b	1(sp),d1	;fixed in 1.60, was 5(sp)
 		cmp.b	mon_RelBaseReg(a4),d1
 		bne.s	8$
 
@@ -1059,12 +1066,17 @@ DisAsmTable
 ; Bcc addr
 		dc.w	$f0ff,$6000
 		dc.b	S_WORD
-		str	<'b',CC,TAB,OFFS>
+		str	<'b',CC,'.w',TAB,OFFS>
 		even
-; Bcc.s addr
+; Bcc.l addr
+		dc.w	$f0ff,$60ff
+		dc.b	S_LONG
+		str	<'b',CC,'.l',TAB,LOFFS>
+		even
+; Bcc.b addr
 		dc.w	$f000,$6000
 		dc.b	S_BYTE
-		str	<'b',CC,'.s',TAB,SOFFS>
+		str	<'b',CC,'.b',TAB,SOFFS>
 		even
 ; movep.w offs(An),Dn
 		dc.w	$f1f8,$0108

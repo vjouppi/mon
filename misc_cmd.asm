@@ -13,6 +13,8 @@
 ;	set_cmdline
 ;
 
+		include	"offsets.i"
+
 		xref	generic_error
 		xref	odd_address_error
 
@@ -66,6 +68,35 @@ set_cmd_line	lea	mon_CmdLineBuf(a4),a1
 		sub.l	a2,a1
 		move.l	a1,mon_DataRegs(a4)		;set d0
 		move.l	a2,mon_AddrRegs(a4)		;set a0
+
+;
+; ReadArgs()-compatibility
+;
+		lib	Dos,Input
+		tst.l	d0
+		beq.b	2$
+
+		lsl.l	#2,d0
+		move.l	d0,a0
+		bra.b	3$
+
+2$		lea	mon_FakeFH(a4),a0
+		move.l	a0,d0
+		lsr.l	#2,d0
+		move.l	mon_Task(a4),a1
+		move.l	d0,pr_CIS(a1)
+
+3$		tst.l	mon_OldFhBuf(a4)
+		bne.b	4$
+		move.l	fh_Buf(a0),mon_OldFhBuf(a4)
+		move.l	fh_Pos(a0),mon_OldPos(a4)
+		move.l	fh_End(a0),mon_OldEnd(a4)
+
+4$		move.l	mon_AddrRegs(a4),d0
+		lsr.l	#2,d0
+		move.l	d0,fh_Buf(a0)
+		clr.l	fh_Pos(a0)
+		move.l	mon_DataRegs(a4),fh_End(a0)
 		rts
 
 ;
@@ -298,6 +329,7 @@ option_strings	dc.b	'Narrow disassembly',0
 		dc.b	'Dumb terminal',0
 		dc.b	'Echo commands',0
 		dc.b	'No auto stackreset',0
+		dc.b	'lib()/etc. errors return zero',0
 		dc.b	0
 
 		end

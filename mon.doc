@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.59 instructions
+                 Amiga Monitor v1.60 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -21,8 +21,8 @@
   startup message forever...but you can use IconX to start the monitor
   from workbench as a CLI process)
 
-  The monitor is re-entrant (pure) code and can be made resident
-  (for example, using the Workbench 1.3/2.0 resident command or ARP 1.3 ares)
+  The monitor is re-entrant (pure) code and can be made resident (for
+  example using the Workbench 1.3/2.0/3.0 resident command or ARP 1.3 ares)
 
 
   Command line arguments
@@ -207,30 +207,37 @@
   functions may become invalid any time if the library/device/task/port
   is expunged/removed from the system.
 
-  lib("libname.library")   --	returns base address of a named library or
-				zero if not found. note that this does not
-				try to load the library from disk, it
-				only searches ExecBase->LibList.
+  lib("libname.library")   --	returns base address of a named library.
+				note that this does not try to load
+				the library from disk, it only searches
+				ExecBase->LibList.
 
-  dev("devname.device")   --	returns base address of a named device or
-				zero if not found. note that this does not
-				try to load the device from disk, it
-				only searches ExecBase->DeviceList.
+  dev("devname.device")   --	returns base address of a named device.
+				note that this does not try to load
+				the device from disk, it only searches
+				ExecBase->DeviceList.
 
-  res("resname.resource") --	returns base address of a named resource or
-				zero if not found.
+  res("resname.resource") --	returns base address of a named resource.
 
-  task("taskname")	  --	returns pointer to named task or zero if
-				not found.
+  task("taskname")	  --	returns pointer to named task.
+
   task(number)		  --	returns pointer to CLI process with the
-				given number or zero if the CLI number
-				is not in use.
+				given number.
+
   task(0)		  --	returns pointer to current task (the CLI
 				process that runs the monitor)
 
   port("portname")	  --	returns pointer to the public message port
-				names "portname" or zero if no such port
-				can be found.
+				names "portname".
+
+  board(manufacturer,product)  --  returns base address of an autoconfig
+				board with the specified manufacturer and
+				product codes.
+
+  lib, dev, res, task and port-functions fail with error if the requested
+  library/device etc. is not found, unless option flag #6 is set. In that
+  case they return zero in error situations.
+
 
   Function names are not case sensitive.
 
@@ -353,8 +360,8 @@ m -- Display memory in hex and ASCII
   m <addr>            -- display 20 lines from <addr>
   m <addr> <end-addr> -- display from <addr> to <end-addr>
 
- If the memory display was started inside a hunk of currently loaded executable,
- it automatically stops at the end of that hunk.
+ If the memory display was started inside a hunk of currently loaded
+ executable, it automatically stops at the end of that hunk.
 
 mf -- Formatted memory display
  Usage:
@@ -380,10 +387,10 @@ mf -- Formatted memory display
   The escape sequences described in the `echo'-command entry
   can also be used in the format string.
 
-  Note1: words and longs that are displayed must be at even addresses. If the
-  current address os odd when a word or longword value is going to be displayed,
-  the address is incremented to the next even address and an asterisk is
-  printed as a warning to the user.
+  Note1: words and longs that are displayed must be at even addresses. If
+  the current address is odd when a word or longword value is going to be
+  displayed, the address is incremented to the next even address and
+  an asterisk is printed as a warning to the user.
 
   Note2: a space is required between this command and its arguments.
 
@@ -583,10 +590,10 @@ programs that use the internal BCPL library from the monitor.
   filename, anything after the filename is automatically used as the
   command line.
 
-  Note that the command line arguments set by this command (or monitor
-  command line) don't work with programs that use the AmigaDOS 2.0
-  ReadArgs() function. That function reads the command file from
-  the buffer of the standard input file handle.
+  The dos.library 2.0+ ReadArgs()-routine reads arguments from the standard
+  input filehandle buffer. Monitor version 1.60 sets the command line
+  so that it works with ReadArgs(). Older versions of the monitor didn't
+  support ReadArgs().
 
 
 l -- Load segment
@@ -623,9 +630,9 @@ sl -- Segment list
 
 rb -- set base address for address register relative symbols
  Usage:
-  rb addr  --    sets base address of a4-relative addressing to addr. typically
-                 this is in the beginning of the data hunk of a program with
-                 programs compiled with Lattice/SAS C.
+  rb addr  --    sets base address of a4-relative addressing to addr.
+		 typically this is in the beginning of the data hunk
+		 of a program with programs compiled with Lattice/SAS C.
   rb addr reg -- as above but allows selection of address register
                  other than a4.
   rb 0     --    removes the base address setting.
@@ -701,10 +708,10 @@ dev -- set/show current disk device
 
 =  -- Corrects a disk block checksum
  Usage:
-  = <addr> -- if there is a DOS-format disk block read into memory at <addr>,
- calculates the correct checksum for the block and stores it in the block.
- Displays old and new checksums. This command is useful if use use the
- monitor as a disk editor. Addr must be even.
+  = <addr> -- if there is a DOS-format disk block read into memory
+ at <addr>, calculates the correct checksum for the block and stores
+ it in the block. Displays old and new checksums. This command is useful
+ if use use the monitor as a disk editor. <addr> must be even.
 
  Extended usage: = <addr> <len> <offs>
  where <len> is block length to be checksummed and <offs> is the offset
@@ -717,10 +724,10 @@ dev -- set/show current disk device
 
 #  -- Corrects bootblock checksum
  Usage:
-  # <addr> -- if there is a disk bootblock (2 disk blocks, 1024 bytes) read
- into memory at <addr>, calculates a new checksum for the bootblock and stores
- it in the bootblock (in memory). Displays old and new checksums.
- Addr must be even.
+  # <addr> -- if there is a disk bootblock (2 disk blocks, 1024 bytes)
+ read into memory at <addr>, calculates a new checksum for the bootblock
+ and stores it in the bootblock (in memory). Displays old and new
+ checksums. <addr> must be even.
 
  Extended usage: # <addr> <len> <offs>
  where <len> is block length to be checksummed and <offs> is the offset
@@ -796,9 +803,10 @@ echo -- display text and/or numbers
   Usage:
     echo string | [$][expr] [string | [$][expr] ...]
 
-  Writes the string(s) given in the command to the monitor output window/file.
-  strings can be quoted with double quotes. Also, the `\'-character is used
-  as an escape character. The following escape sequences are available:
+  Writes the string(s) given in the command to the monitor output
+  window/file. Strings can be quoted with double quotes. Also,
+  the `\'-character can be used as an escape character. The following
+  escape sequences are available:
 
    \n -> newline/linefeed
    \r -> carriage return
@@ -858,7 +866,7 @@ quit -- quit executing a script and return to the previous script or
         keyboard input.
 
 goto label  --  go to a specified label in a script.
-        Labels must be in the beginning of a line, and begin with a period (.)
+        Labels must be in the beginning of a line and begin with a period (.)
         An optional colon can be in the end of the label name. The period
         and colon are not actually parts of the label name, so they are
         not included in the goto-command.
@@ -871,7 +879,7 @@ goto label  --  go to a specified label in a script.
 .foobar:	echo "This is the label `foobar'"
 
 if <expr> <command> -- conditional execution
-        Executes the single <command> only when expression <expr> is non-zero.
+        Executes the <command> only when expression <expr> is non-zero.
         More complex conditionals can be constructed by using if and goto
         together.
 
@@ -885,6 +893,17 @@ if counter <= _10 goto loop
 
 Version history:
 ----------------
+1.60 ->
+  - command line setting from monitor command line works again
+    (was broken in 1.59)
+  - lib/dev etc. now return zero on error only if option flag #6 is set,
+    otherwise they fail.
+  - added board()-function to the expression parser.
+  - disassembler now displays short branches as '.b' and 68000 long
+    branches as '.w'. It also understands 68020+ long branches (.l)
+  - now supports ReadArgs() command line parsing.
+  - rb-command now works properly
+
 1.59 ->
  - added 've'-command (list autoconfig devices)
  - 'no auto stackreset'-option flag and 'rs'-command to reset
@@ -979,7 +998,8 @@ Version history:
    in `m' command memory dump.
 
 1.38 ->
- - return from `j' or `g' commands with rts now works (was a major bug in 1.37)
+ - return from `j' or `g' commands with rts now works
+   (was a major bug in 1.37)
  - input routine no longer acts strangely if shift-cursor-down
    or ESC-cursor/function/help is pressed.
  - command line automatically set if file name given on the monitor command
@@ -1121,10 +1141,10 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.59 Copyright © 1987-1993 by Timo Rossi. The monitor
+  Amiga Monitor v1.60 is Copyright © 1987-1993 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 `patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lha-archive `mon159.lha'.
+way of distribution is the lha-archive `mon160.lha'.
 
   Permission is given to Fred Fish to distribute this program
 on his `Fish disks'.

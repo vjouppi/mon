@@ -10,6 +10,7 @@
 		include "exec/memory.i"
 		include "exec/execbase.i"
 		include "libraries/dosextens.i"
+		include	"libraries/configvars.i"
 		include "offsets.i"
 		list
 
@@ -23,6 +24,9 @@
 
 		xref	expression_error
 		xref	odd_address_error
+
+		xref	expansion_name		;from lister.asm
+
 ;
 ;
 ; The expression evaluation routines
@@ -565,7 +569,7 @@ r_execlist	call	skipspaces
 		lea	0(a6,d1.w),a0	;to preserve all registers
 		lib	FindName
 		lib	Permit
-		bra.s	no_more_args
+		bra.b	r_error_zero
 
 ;
 ; find a task by name or CLI number (or find current task)
@@ -590,7 +594,7 @@ r_task		call	skipspaces
 		bhi	expression_error
 		lsl.l	#2,d0
 		move.l	0(a0,d0.l),d0
-		beq	no_more_args
+		beq	r_error_2
 		moveq	#pr_MsgPort,d1
 		sub.l	d1,d0
 		bra	no_more_args
@@ -600,7 +604,13 @@ r_taskname	call	GetName
 		beq	expression_error
 r_ftask		move.l	d0,a1
 		lib	Exec,FindTask
-		bra	no_more_args
+
+r_error_zero	tst.l	d0
+		bne.b	no_more_args
+
+r_error_2	btst	#OPTB_ERRORSTOP,mon_Options(a4)
+		beq	expression_error
+		bra.b	no_more_args
 
 r_brk		bsr	get_first_arg
 		call	find_brk_num
@@ -609,15 +619,28 @@ r_brk		bsr	get_first_arg
 		beq	expression_error
 		bra	no_more_args
 
+r_board		bsr.b	get_first_arg
+		move.l	d0,-(sp)
+		bsr.b	get_arg
+		move.l	d0,d1
+		move.l	(sp)+,d0
+		clra	a0
+		lib	Expansion,FindConfigDev
+		tst.l	d0
+		beq.b	r_error_2
+		move.l	d0,a0
+		move.l	cd_BoardAddr(a0),d0
+		bra.b	no_more_args
+
 get_first_arg	call	skipspaces
 		cmp.b	#'(',(a3)+
 		bne	expression_error		;left parenhesis expected
 		call	JUMP,GetExpr
 
-;get_arg	call	skipspaces
-;		cmp.b	#',',(a3)+
-;		bne	expression_error		;comma expected
-;		call	JUMP,GetExpr
+get_arg		call	skipspaces
+		cmp.b	#',',(a3)+
+		bne	expression_error		;comma expected
+		call	JUMP,GetExpr
 
 no_more_args	;D0 not changed!
 		call	skipspaces
@@ -738,6 +761,7 @@ tokfuncs	rw	r_hunk
 		rw	r_task
 		rw	r_port
 		rw	r_brk
+		rw	r_board
 
 tokentable	dc.b	'hunk',0
 		dc.b	'hlen',0
@@ -754,6 +778,7 @@ tokentable	dc.b	'hunk',0
 		dc.b	'task',0
 		dc.b	'port',0
 		dc.b	'brk',0
+		dc.b	'board',0
 		dc.b	0
 
 		end

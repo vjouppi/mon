@@ -39,6 +39,7 @@
 * v1.57 ->	     1993-03-16+   *
 * v1.58 ->	     1993-04-04    *
 * v1.59 ->	     1993-05-05..  *
+* v1.60 ->	     1993-06-06..  *
 ************************************
 
 ;
@@ -513,4 +514,18 @@
 ;		- added "don't reset stack" option flag
 ;		  and rs-command to reset stack
 ;		- now does a console task trick in '\'-command
+;
+; 1993-06-06 --> 1.60
+;		- command line from monitor command line works again (bug in 1.59)
+;		- lib()/dev() etc. default is now failure if library/device/etc
+;		  not found. This can be changed with an option flag.
+;		- added board()-function to the expression parser
+;		- disassembler now displays short branches as '.b' and 68000
+;		  long branches as '.w'. It also understands 68020+ long
+;		  branches (32bit offset, .l). Assembler also understands
+;		  32-bit branches.
+;		- command line arguments now also work with ReadArgs(),
+;		  but the method used may be be completely legal...
+;		- showing base register relative displacements
+;		  as symbols now works.
 ;

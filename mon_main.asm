@@ -95,9 +95,16 @@ main		move.l	#MonitorData_SIZE,d0
 		move.l	a5,mon_Task(a4)
 		move.l	sp,mon_StackPtr(a4)
 
+		or.b	#MONF_STARTUP!MONF_FIRSTCD,mon_Flags(a4)
 		moveq	#-1,d0
 		move.l	d0,mon_OrigCD(a4)
-		bset	#MONB_FIRSTCD,mon_Flags(a4)
+
+		lea	expansion_name(pc),a1
+		moveq	#ONE_POINT_TWO,d0
+		lib	OpenLibrary
+		move.l	d0,_ExpansionBase(a4)
+		beq	exit9a
+
 *
 * OPEN DOS LIBRARY
 *
@@ -391,6 +398,8 @@ set_tc		move.l	A1,TC_TRAPCODE(A0)		;and set a new one
 		call	loadseg1
 
 check_initial_script
+		bclr	#MONB_STARTUP,mon_Flags(a4)
+
 		move.l	mon_InitialScriptName(a4),d0
 		beq.s	mainloop
 
@@ -580,7 +589,33 @@ list_cmd_loop	startline
 
 cleanexit	move.l	mon_StackPtr(a4),sp
 
-		move.l	mon_WinFile(a4),d0
+;
+; remove file handle buffer if it points to mon_CmdLineBuf
+;
+		lib	Dos,Input
+		tst.l	d0
+		beq.b	00$
+		lsl.l	#2,d0
+		move.l	d0,a0
+		move.l	fh_Buf(a0),d0
+		lsl.l	#2,d0
+		lea	mon_CmdLineBuf(a4),a1
+		cmp.l	a1,d0
+		bne.b	00$
+		move.l	mon_OldFhBuf(a4),fh_Buf(a0)
+		move.l	mon_OldPos(a4),fh_Pos(a0)
+		move.l	mon_OldEnd(a4),fh_End(a0)
+;
+; and remove the file handle if it is the monitor fake file handle
+;
+		lea	mon_FakeFH(a4),a1
+		cmp.l	a0,a1
+		bne.b	00$
+
+		move.l	mon_Task(a4),a0
+		clr.l	pr_CIS(a0)
+
+00$		move.l	mon_WinFile(a4),d0
 		beq.s	01$
 		moveq	#0,d1
 		call	SetConMode
@@ -632,7 +667,10 @@ cleanexit	move.l	mon_StackPtr(a4),sp
 06$		move.l	a6,a1
 		lib	Exec,CloseLibrary	close dos library
 
-exit9		move.l	mon_WBenchMsg(a4),D3	started from workbench??
+exit9		move.l	_ExpansionBase(a4),a1
+		lib	CloseLibrary
+
+exit9a		move.l	mon_WBenchMsg(a4),D3	started from workbench??
 
 		move.l	a4,a1
 		move.l	#MonitorData_SIZE,d0
@@ -874,6 +912,7 @@ info_text	dc.b LF
 dos_name	dc.b	'dos.library',0
 intuition_name	dc.b	'intuition.library',0
 trackdisk_name	dc.b	'trackdisk.device',0
+expansion_name	dc.b	'expansion.library',0
 
 version_string	dc.b	0,'$VER: '
 version_msg	dc.b	'Amiga Monitor v'
