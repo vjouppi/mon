@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.55 instructions
+                 Amiga Monitor v1.56 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -64,9 +64,9 @@
   Option flags
   ------------
 
-  Commands 'opt +n' and 'opt -n' where 'n' is a number between 1 and 3
-  can be used to set and reset monitor option flags. Currently three
-  flags is implemented:
+  Commands 'opt +n' and 'opt -n' where 'n' is a number between 1 and 4
+  can be used to set and reset monitor option flags. Currently four
+  flags are implemented:
 
    - flag #1
       Switches on the narrow disassembly output mode
@@ -93,7 +93,7 @@
   This includes a hexadecimal 'flag value' that can be used on
   the command line with the '-o' option to set initial flags when the
   monitor is started (That flag value is simply a bit map of the option
-  flags, option#1 is bit#0).
+  flags, option #1 is bit #0).
 
 
   Input line editing and command line history
@@ -104,7 +104,7 @@
   del to delete the character under the cursor. You can use the up/down
   cursor keys to get the old command lines (the monitor remembers 10 last
   command lines). Shift-cursor-up gets the last command and enters it
-  automatically (you need not to press <CR>). In assembler mode you can
+  automatically (you don't need to press <CR>). In assembler mode you can
   press Ctrl-E to edit the assembler instruction currently stored in that
   address.
 
@@ -353,15 +353,20 @@ mf -- Formatted memory display
   This command displays memory in user-specified format. The format string
   can contain normal text that is printed directly and c-printf-style
   format specifiers. The following format specifiers are currently supported:
-    %b  -- display hex byte
-    %w  -- display hex word
-    %l  -- display hex longword
-    %db -- display decimal byte
-    %dw -- display decimal word
-    %dl -- display decimal longword
-    %a  -- display current address (in hex)
-  Also, the escape sequences described in the 'echo'-command entry
-  can be used in the format string.
+    %b  -- hex byte
+    %w  -- hex word
+    %l  -- hex longword
+    %db -- decimal byte
+    %dw -- decimal word
+    %dl -- decimal longword
+    %a  -- current address (in hex)
+    %c  -- ASCII character (printable ones only, others show as '.')
+    %s  -- string (longword pointer to a NUL-terminated string)
+    %x  -- BCPL string (longword pointer to a string with length byte)
+           (non-printable characters in strings are printed as '.'
+            Strings longer than 100 characters are truncated)
+  The escape sequences described in the 'echo'-command entry
+  can also be used in the format string.
 
   Note1: words and longs that are displayed must be at even addresses. If the
   current address os odd when a word or longword value is going to be displayed,
@@ -563,6 +568,11 @@ programs that use the internal BCPL library from the monitor.
   that you are running from the monitor. If you start the monitor with a
   filename, anything after the filename is automatically used as the
   command line.
+
+  Note that the command line arguments set by this command (or monitor
+  command line) don't work with programs that use the AmigaDOS 2.0
+  ReadArgs() function. That function reads the command file from
+  the buffer of the standard input file handle.
 
 
 l -- Load segment
@@ -850,6 +860,11 @@ if counter <= _10 goto loop
 
 Version history:
 ----------------
+1.56 ->
+ - memorydisplay stops at end of hunk (disassembly already did that)
+ - memory allocation error now stops script execution
+ - added %s and %x formats to the mf-command
+
 1.55 ->
  - uses TC_TrapData instead of TC_UserData again...
  - now the '(' command cannot allocate negative amounts of memory...
@@ -1066,10 +1081,10 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.55 Copyright © 1987-1992 by Timo Rossi. The monitor
+  Amiga Monitor v1.56 Copyright © 1987-1993 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lharc-archive 'mon155.lzh'.
+way of distribution is the lha-archive 'mon156.lha'.
 
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.
@@ -1077,7 +1092,7 @@ his 'Fish disks'.
 Send suggestions, bug reports etc. to:
 
   Timo Rossi
-  Kellankoski      or  Mattilankatu 40 A 4            E-mail:
-  44300 Konnevesi      40600 Jyväskylä             trossi@jyu.fi
-  FINLAND              FINLAND
+  Mattilankatu 40 A 4                E-mail:
+  40600 Jyväskylä                 trossi@jyu.fi
+  FINLAND
 

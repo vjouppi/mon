@@ -166,6 +166,7 @@ num_A1		swap	d6
 		call	PutLong
 		putchr	<':'>
 		putchr	SPACE
+		putchr	SPACE
 		tst.b	d3
 		beq.s	170$
 		move.b	d3,(a3)+

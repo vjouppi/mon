@@ -248,12 +248,16 @@ open_win	lea	window_fmt(pc),a0
 		call	puts_stdout
 		bra	cleanexit
 
-own_win_open	move.l	d0,d1
+own_win_open
+
+	ifd	SET_CONSOLE_TASK
+		move.l	d0,d1
 		lsl.l	#2,d1
 		move.l	d1,a1
 		move.l	mon_Task(a4),a0
 		move.l	pr_ConsoleTask(a0),mon_OrigConTask(a4)
 		move.l	fh_Type(a1),pr_ConsoleTask(a0)
+	endc
 
 win_open	move.l	D0,mon_OutputFile(a4) 	;default output is monitor window
 
@@ -550,8 +554,12 @@ cleanexit	move.l	mon_StackPtr(a4),sp
 
 04$		btst	#MONB_OWNWINDOW,mon_Flags(a4)
 		beq.s	05$
+
+	ifd	SET_CONSOLE_TASK
 		move.l	mon_Task(a4),a0
 		move.l	mon_OrigConTask(a4),pr_ConsoleTask(a4)
+	endc
+
 		move.l	mon_WinFile(a4),D1
 		beq.s	05$
 		lib	Close			close window file
@@ -790,7 +798,7 @@ info_text	dc.b LF
 		VERSION
 		dc.b	')',LF
 		dc.b	TAB,TAB,'---------------------------',LF
-		dc.b	TAB,'   Copyright 1987-1992 by Timo Rossi',LF,LF
+		dc.b	TAB,'   Copyright 1987-1993 by Timo Rossi',LF,LF
 		dc.b	'   This is a machine code monitor/debugger for the Amiga.',LF
 		dc.b	' Pressing the HELP-key displays a list of commands.',LF,LF
 		dc.b	' Note1: Some of the assembler instructions require the',LF

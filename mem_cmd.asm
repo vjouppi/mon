@@ -23,6 +23,7 @@
 		xref	monitor_code_start
 		xref	monitor_code_end
 		xref	mainloop
+		xref	error_com
 
 		xref	help
 		xref	generic_error
@@ -134,7 +135,8 @@ alloc_display	move.l	a0,d0
 
 alloc_failed		;error 'allocation failed'
 		lea	allocfail_txt(pc),A0
-		call	JUMP,printstring_a0_window
+		call	printstring_a0_window
+		bra	error_com
 
 *** ALLOCATE ABSOLUTE ***
 		cmd	alloc_abs
@@ -559,7 +561,7 @@ dec_num		move.l	d2,-(sp)
 		call	put_number
 		move.l	(sp)+,d2
 		clr.b	(a3)
-		call	JUMP,printstring
+		bra.b	p_prt2
 
 p_byte		startline
 		moveq	#0,d0
@@ -584,11 +586,58 @@ h_com		cmp.b	#10,d5
 		beq.s	dec_num
 		call	put_hexnum
 		clr.b	(a3)
-		call	JUMP,printstring
+		bra.b	p_prt2
 
 p_addr		startline
 		move.l	a5,d0
 		bra.s	h8_com
+
+p_char		move.b	(a5)+,d0
+		call	to_printable
+		call	JUMP,ChrOut
+
+p_null		lea	null_txt(pc),a0
+		call	JUMP,printstring_a0
+
+;
+; NUL-terminated string
+;
+p_string	bsr.b	p_align
+		move.l	(a5)+,d2
+		beq.b	p_null
+; length limit 128
+		startline
+		move.l	d2,a1
+		moveq	#100-1,d1
+1$		move.b	(a1)+,d0
+		beq.s	p_prt1
+		call	to_printable
+		move.b	d0,(a3)+
+		dbf	d1,1$
+p_prt1		clr.b	(a3)
+p_prt2		call	JUMP,printstring
+
+;
+; BCPL string
+;
+p_bstr		bsr	p_align
+		move.l	(a5)+,d2
+		beq.b	p_null
+		startline
+		lsl.l	#2,d2
+		move.l	d2,a1
+		moveq	#0,d1
+		move.b	(a1)+,d1
+		cmp.b	#100,d1
+		bcs.b	3$
+		moveq	#100,d1
+		bra.b	3$
+
+2$		move.b	(a1)+,d0
+		call	to_printable
+		move.b	d0,(a3)+
+3$		dbf	d1,2$
+		bra.b	p_prt1
 
 ;
 ; formatted memory display
@@ -604,6 +653,9 @@ p_addr		startline
 ;  %dl -  decimal long
 ;  %a  -  hex address
 ;  %da -  decimal address
+;  %c  -  (printable) ASCII character
+;  %s  -  string (longword pointer to nul-terminated string)
+;  %x  -  BCPL string
 ;
 		cmd	fmt_memdisplay
 
@@ -693,7 +745,7 @@ p_percent	emit	'%'
 p_putstr	move.l	a2,d3
 		sub.l	d2,d3
 		beq.s	p_rts1
-		move.l	mon_OutputFile(a4),d1
+p_write		move.l	mon_OutputFile(a4),d1
 		jlib	Dos,Write
 
 ;
@@ -703,11 +755,14 @@ p_jumps		rw	p_byte
 		rw	p_word
 		rw	p_long
 		rw	p_addr
+		rw	p_char
+		rw	p_string
+		rw	p_bstr
 		rw	p_percent
 ;
 ; format characters for mf-command
 ;
-p_chars		dc.b	'bwla%',0
+p_chars		dc.b	'bwlacsx%',0
 		ds.w	0
 
 ;
@@ -737,5 +792,7 @@ inhunk_fmt	dc.b	'(in hunk %ld, offset $%lx)',LF,0
 minfo_var_fmt	dc.b	' = %1.50s',LF,0
 
 alloc_fmt	dc.b	'Allocated from $%08lx to $%08lx',LF,0
+
+null_txt	dc.b	'<NULL>',0
 
 		end

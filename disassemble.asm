@@ -68,22 +68,6 @@ BIT	equ	$92	; bit instruction type
 		bclr	#0,mon_CurrentAddr+3(a4)
 		move.l	mon_CurrentAddr(a4),a5
 
-		move.l	a5,a0
-		call	find_hunk_addr
-		tst.l	d0
-		beq.s	disasmloop
-
-		move.l	d0,a0
-		add.l	-4(a0),a0
-		subq.l	#5,a0
-
-		tst.l	mon_EndAddr(a4)
-		beq.s	1$
-		cmp.l	mon_EndAddr(a4),a0
-		bcc.s	disasmloop
-
-1$		move.l	a0,mon_EndAddr(a4)
-
 disasmloop	move.l	a5,d0
 		call	put_label
 

@@ -142,28 +142,45 @@ brk_1		movem.l	(sp)+,D2/a6
 		moveq	#1,d0	;EndAddr zero means that none is used...
 1$		move.l	D0,mon_EndAddr(a4)
 		moveq	#0,D7
-		rts
+
+CheckEndAddr	move.l	mon_CurrentAddr(a4),a0
+		call	find_hunk_addr
+		tst.l	d0
+		beq.s	3$
+
+		move.l	d0,a0
+		add.l	-4(a0),a0
+		subq.l	#5,a0
+
+		tst.l	mon_EndAddr(a4)
+		beq.s	2$
+		cmp.l	mon_EndAddr(a4),a0
+		bcc.s	3$
+
+2$		move.l	a0,mon_EndAddr(a4)
+
+3$		rts
 
 param9		clr.l	mon_EndAddr(a4)
 		moveq	#20,D7
 		move.l	mon_OutputFile(a4),d0
 		cmp.l	mon_WinFile(a4),d0
-		bne.s	09$
+		bne.s	CheckEndAddr
 ;
 ; get the number of text lines that will fit in the window
 ; from the console device unit structure
 ;
 		move.l	mon_ConsoleUnit(a4),d0
-		beq.s	09$
+		beq.s	CheckEndAddr
 
 		move.l	d0,a0
 		move.w	cu_YMax(a0),d7
 		subq.w	#2,d7
 		moveq	#1,d0
 		cmp.w	d0,d7
-		bcc.s	09$
+		bcc.s	CheckEndAddr
 		move.w	d0,d7
-09$		rts
+		bra.s	CheckEndAddr
 
 ;
 ;**** CHECK IF WE SHOULD STOP MEMDISPLAY OR DISASSEMBLE ****

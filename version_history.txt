@@ -35,6 +35,7 @@
 * v1.50 ->           1991-12-01    *
 * ...				   *
 * v1.55 ->	     1992-07-04    *
+* v1.56 ->	     1993-02-06	   *
 ************************************
 
 ;
@@ -474,7 +475,7 @@
 ; 1991-12-??(23)/1992-01-05 --> 1.54
 ;		- poke, pokew, pokel
 ;
-; 1992-03-10 -- > 1.55b
+; 1992-03-10 -- > 1.55(b)
 ;		- Now uses TC_TRAPDATA instead of TC_UserData.
 ; 1992-03-31 -- - Now can't allocate negative amounts of memory...
 ; 1992-06-17 --	- Now understands 's' and 'b' as short branch
@@ -482,4 +483,16 @@
 ; 1992-07-04 -- - Now properly frees hunk type table in 'u' command.
 ;		  Now 640x200 default window size in NTSC machine works.
 ;
-
+;
+; 1992-07-26 --> 1.56(b)
+;		- now stops memory display at end of a hunk (disassembler
+;		  already did that).
+;		- memalloc error now stops scripts
+;		- mf-command now has %s and %x format options for
+;		  C-strings and BSTRs
+;		- fixed a bug in breakpoint listing routine (count is a word)
+;
+; ?? remove/make optional pr_ConsoleTask setting ?? -- ifd ...
+; ?? tc_TrapData/tc_UserData? user-selectable ??
+; ?? convert all singly linked list stuff to use exec lists
+;

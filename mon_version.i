@@ -6,12 +6,12 @@
 BETA		equ	0	;special 'Beta version' flag
 
 VERSION		macro
-		dc.b	'1.55'
+		dc.b	'1.56'
 		ifne	BETA
 		dc.b	'b'
 		endc
 		endm
 
 DATE		macro
-		dc.b	'1992-07-04'
+		dc.b	'1993-02-06'
 		endm

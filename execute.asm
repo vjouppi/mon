@@ -170,7 +170,7 @@ break_list_loop	tst.l	d4
 		move.l	d3,d0
 		move.l	brk_Address(a5),D1
 		moveq	#0,d2
-		move.l	brk_Count(a5),d2
+		move.w	brk_Count(a5),d2
 		lea	brk_fmt(pc),a0
 		call	printf
 		call	CheckKeys
