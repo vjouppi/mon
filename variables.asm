@@ -360,6 +360,8 @@ cv_end		moveq	#LF,d0
 ; check if there is a symbol with the given value, if true, display symbol name
 ; used to add labels in the disassembly listing.
 ;
+; returns z flag set if label not found, z flag clear if label found
+;
 		pub	put_label
 
 		tst.l	mon_HunkTypeTable(a4)
@@ -373,6 +375,7 @@ cv_end		moveq	#LF,d0
 		move.l	a0,d0
 		lea	label_fmt(pc),a0
 		call	printf
+		moveq	#1,d0
 putlabel_end	rts
 
 ;

@@ -1,9 +1,9 @@
 
-                 Amiga Monitor v1.61 instructions
+                 Amiga Monitor v1.64 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
-  The first version was created over 3 years ago, and many of the
+  The first version was created many years ago, and many of the
   features and commands of the monitor were made similar to those
   of the monitors available for the Commodore 64. However, because
   the Amiga is a quite different machine many new commands and
@@ -24,6 +24,10 @@
   The monitor is re-entrant (pure) code and can be made resident (for
   example using the Workbench 1.3/2.0/3.0 resident command or ARP 1.3 ares)
 
+  The monitor works with 68000, 68020, 68030 and 68040 processors.
+  However, the assembler/disassembler only understand 68000 instructions.
+  Operating system version 2.04 or later is required for reliable operation
+  with the 68040 CPU.
 
   Command line arguments
   ----------------------
@@ -890,6 +894,17 @@ if counter <= _10 goto loop
 
 Version history:
 ----------------
+1.64 ->
+  - now works again on OS 1.3. there was
+    a bug in version checking...
+
+1.63 ->
+  - now should properly count labels when displaying
+    disassembly one screen at a time.
+
+1.62 ->
+  - fixed a problem with breakpoints on 68040 machines
+
 1.61 ->
   - breakpoint list shows counts correctly.
   - better error messages with b and br commands.
@@ -1142,12 +1157,13 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.61 is Copyright © 1987-1993 by Timo Rossi. The monitor
+  Amiga Monitor v1.64 is Copyright © 1987-1993 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 `patchtrace'-program should be included in the distribution.
 
   Permission is given to Fred Fish to distribute this program
-on his `Fish disks'.
+on his `Fish disks'. It can also be distributed on CD-ROM freeware
+collections, such as the AmiNet CDROM.
 
 Send suggestions, bug reports etc. to:
 

@@ -534,3 +534,9 @@
 ; 1993-06-26 --> 1.61
 ;		- breakpoint listing lists counts correctly
 ;
+; .... 1.62 & 1.63 ....
+;
+; 1993-09-27 --> 1.64
+;		- fixed a bug in flush_stdout (was testing version as long,
+;		  failed on 1.3)
+;

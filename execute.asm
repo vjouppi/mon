@@ -1,6 +1,10 @@
 ;
 ; execute.asm
 ;
+
+;
+; 20.7.93 - added a CacheClearU call in breakpoint handling execption routine
+;
 		nolist
 		include "exec/types.i"
 		include "exec/memory.i"
@@ -480,10 +484,18 @@ trapreturn	;Note! We are in supervisor mode!
 		move.l	brk_Address(a4),a0
 		move.w	(a0),brk_Content(a4)
 		move.w	#ILLEGAL_INSTR,(a0)
+
 ;
 ; it might be a good idea to try to flush the cache here...
 ;
-		movem.l	(sp)+,d0/a0/a4/a6
+		cmp.w	#36,LIB_VERSION(a6)
+		bcs.s	1$
+
+		movem.l	d1/a1,-(sp)
+		lib	CacheClearU
+		movem.l	(sp)+,d1/a1
+
+1$		movem.l	(sp)+,d0/a0/a4/a6
 		addq.l	#4,sp			remove exception # from stack
 		bclr	#7,(sp)			clear trace bit
 		rte				continue at full speed
@@ -759,9 +771,10 @@ mloop_j		rts
 
 ;
 ; flush 2.0+ buffered output to standard output
+; fixed 27.9.93 (was testing the version as long...)
 ;
 flush_stdout	getbase	Dos
-		cmp.l	#36,LIB_VERSION(a6)
+		cmp.w	#36,LIB_VERSION(a6)
 		bcs.b	flsh_stdout_done
 		lib	Output
 		move.l	d0,d1

@@ -71,13 +71,19 @@ LOFFS	equ	$93	; 32-bit offset (68020+ long branches)
 
 disasmloop	move.l	a5,d0
 		call	put_label
+		beq.b	dis1
+		tst.l	d7
+		bne.b	dis1
+		subq.l	#1,d7
+		beq.b	dis9
 
-		startline
+dis1		startline
 		call.b	Disassemble
 		call	printstring
 		call	CheckEnd
 		bne.b	disasmloop
-		move.l	a5,mon_CurrentAddr(a4)
+
+dis9		move.l	a5,mon_CurrentAddr(a4)
 		rts
 
 
