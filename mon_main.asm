@@ -306,15 +306,15 @@ win_com		move.l	d0,mon_WinFile(a4)
 *** JUMP HERE AFTER EXECUTION OF A COMMAND ***
 mainloop	move.l	mon_StackPtr(a4),sp	;restore stack pointer
 
-		moveq	#0,D0		;clear CTRL-C/D/E/F flags
-		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
-		lib	Exec,SetSignal
-
 		lea	main_prompt(pc),A0
 		call	printstring_a0_window	;display prompt
 
 		moveq	#0,D0
 		call	GetInput
+
+		moveq	#0,D0		;clear CTRL-C/D/E/F flags
+		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
+		lib	Exec,SetSignal
 
 		tst.b	(A3)
 		bne.s	execute_command
@@ -625,7 +625,7 @@ help_text	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'| e [addr]',TAB,TAB,': execute one instr.',LF
 		dc.b	'br addr/#n/all',TAB,':remove brkpoint'
 		dc.b	'| q [addr]',TAB,TAB,': quicktrace',LF
-		dc.b	'f adr1 adr2 bytes: fill mem',TAB
+		dc.b	'f adr1 adr2 bytes: fill memory',TAB
 		dc.b	'| ( length',TAB,TAB,': allocate memory',LF
 		dc.b	'@ [line]',TAB,': enter cmd line'
 		dc.b	'| & addr length',TAB,TAB,': allocate absolute',LF

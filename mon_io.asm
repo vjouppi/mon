@@ -15,8 +15,19 @@
 ;	printstring_a0_window,puts_stdout,fmtstring
 ;	ChrOutWin,ChrOut,GetKey,GetInput
 ;
+		forward	fmtstring
 
 		xdef	UpAndClearEol
+
+*** SOME SPECIAL KEY CODES (returned by GetKey)
+CURSOR_UP		equ	$0100
+CURSOR_DOWN		equ	$0200
+CURSOR_RIGHT		equ	$0300
+CURSOR_LEFT		equ	$0400
+SHIFT_CURSOR_UP		equ	$0500
+SHIFT_CURSOR_DOWN	equ	$0600
+SHIFT_CURSOR_LEFT	equ	$0700
+SHIFT_CURSOR_RIGHT	equ	$0800
 
 ;
 ; output routines
@@ -24,7 +35,7 @@
 
 		pub	printf
 
-		bsr.s	fmtstring_routine	;;;;
+		call.s	fmtstring
 ; fall to printstring
 		pub	printstring
 
@@ -64,7 +75,7 @@ print_loop	move.l	a2,d2
 
 		pub	printf_window
 
-		bsr.s	fmtstring_routine	;;;;
+		call.s	fmtstring
 
 		pub	printstring_window
 

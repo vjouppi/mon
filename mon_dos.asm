@@ -77,7 +77,7 @@ dir_display_entry
 dir_error	lib	IoErr
 dir_error1	tst.l	D0
 		beq.s	dir_end
-		bsr	DOSErr
+		bsr	DosErr
 		bra.s	dir_end
 
 dir_show_free_blocks
@@ -111,16 +111,6 @@ printf_file	move.l	fib_Size(a5),d1
 		lea	file_fmt(pc),a0
 printf_dirfile	call	printf
 		call	JUMP,CheckKeys
-
-*** PRINT DOS ERROR NUMBER ***
-DOSErr		;error number in D0
-		cmp.l	#ERROR_OBJECT_NOT_FOUND,d0
-		beq.s	01$
-		lea	dos_error_fmt(pc),a0
-		call	JUMP,printf_window
-
-01$		lea	not_found_txt(pc),a0
-		call	JUMP,printstring_a0_window
 
 **** LOAD SEGMENT ****
 		cmd	loadseg
@@ -172,27 +162,31 @@ DOSErr		;error number in D0
 		call	printf
 
 		tst.b	d5
-		beq.s	04$
+		beq.s	ret_01
 
 		move.l	d4,a0
-		call	load_symbols
-
-04$		bra.s	mjump
+		call	JUMP,load_symbols
 
 oldseg		;message 'unload old segment first'
 		lea	unload_old_txt(pc),A0
-		call	printstring_a0_window
-		bra.s	mjump
+		call	JUMP,printstring_a0_window
 
 segerr		;come here if LoadSeg failed
-		lib	IoErr
-		bsr	DOSErr
-mjump		rts
+DosIoErr	lib	IoErr
+
+*** PRINT DOS ERROR NUMBER ***
+DosErr		;error number in D0
+		cmp.l	#ERROR_OBJECT_NOT_FOUND,d0
+		beq.s	dos_err205
+		lea	dos_error_fmt(pc),a0
+		call	JUMP,printf_window
+
+dos_err205	lea	not_found_txt(pc),a0
+		call	JUMP,printstring_a0_window
 
 nosegerr	;error 'no segment loaded'
 		lea	no_segment_txt(pc),A0
-		call	printstring_a0_window
-		bra.s	mjump
+		call	JUMP,printstring_a0_window
 
 **** UNLOAD SEGMENT ****
 		cmd	unloadseg
@@ -202,23 +196,25 @@ nosegerr	;error 'no segment loaded'
 
 		pub	unload_seg
 
+		clr.l	mon_NumHunks(a4)
+		st	mon_RelBaseReg(a4)
 		move.l	mon_SegList(a4),d1
-		beq.s	2$
+		beq.s	ret_01
+
 		lib	Dos,UnLoadSeg
 		clr.l	mon_SegList(a4)	;remember to clear the seglist pointer
 
 		move.l	mon_HunkTypeTable(a4),d1
-		beq.s	1$
+		beq.s	clr_hunkvars
 		move.l	d1,a1
 		move.l	mon_NumHunks(a4),d0
-		lsl.l	#2,d0
+		lsl.l	#(2+1),d0		;2*4 bytes/hunk
 		lib	Exec,FreeMem
 		clr.l	mon_HunkTypeTable(a4)
 
-1$		call	clear_hunk_vars
-		clr.l	mon_NumHunks(a4)
-2$		st	mon_RelBaseReg(a4)
-		rts
+clr_hunkvars	call	JUMP,clear_hunk_vars
+
+ret_01		rts
 
 **** SEGMENT LIST ****
 		cmd	showseglist
@@ -229,9 +225,9 @@ nosegerr	;error 'no segment loaded'
 		lea	seghead_txt(pc),A0
 		call	printstring_a0
 
-		move.l	mon_HunkTypeTable(a4),a3
+		move.l	mon_HunkTypeTable(a4),a5
 		moveq	#0,d5
-		move.l	a3,d0
+		move.l	a5,d0
 		beq.s	1$
 
 		lea	type_txt(pc),a0
@@ -250,37 +246,73 @@ segloop		lsl.l	#2,d4		;BPTR->APTR
 		subq.l	#1,d2
 		move.l	d5,d0
 		lea	seglist_fmt(pc),a0
-		call	printf
+		call	fmtstring
 
-		move.l	a3,d0
-		beq.s	1$
-		move.l	(a3)+,d0
+		lea	mon_OutputBuf(a4),a3
+1$		tst.b	(a3)+
+		bne.s	1$
+		subq.l	#1,a3
+
+		move.l	a5,d0
+		beq.s	seglist_endline
+
+		moveq	#SPACE,d1
+		move.b	d1,(a3)+
+		move.b	d1,(a3)+
+
+		move.l	(a5)+,d0
 		and.l	#$3fffffff,d0
-		sub.l	#$3e9,d0
-		bcs.s	1$
+		sub.l	#$3e9,d0		;HUNK_CODE
+		bcs.s	hunk_err
 		moveq	#2,d1
 		cmp.l	d1,d0
-		bhi.s	1$
-		lsl.l	#2,d0
-		move.b	-4(a3),d1
-		lsr.b	#4,d1
-		eor.b	#$0c,d1
-		lea	chipfast_txt(pc),a0
-		add.l	a0,d1
+		bhi.s	hunk_err
 		lea	hunktypes_txt(pc),a0
-		add.l	a0,d0
-		lea	htype_fmt(pc),a0
-		call	printf
+		call	getnth
+		move.l	a0,a1
+		call	putstring
 
-1$		emit LF
+		moveq	#0,d0
+		move.b	-4(a5),d0
+		lsr.b	#6,d0
+		subq.b	#1,d0
+		bmi.s	2$
+
+		putchr	SPACE
+		lea	chipfast_txt(pc),a0
+		call	getnth
+		move.l	a0,a1
+		call	putstring
+
+2$		move.l	-4(a2),d0
+		subq.l	#8,d0		;d0 := allocated hunk length
+		move.l	d0,d2
+		sub.l	(a5)+,d2
+		beq.s	seglist_endline
+		sub.l	d2,d0
+
+		putchr	SPACE
+		putchr	'('
+		call	put_decimal_number
+		putchr	'/'
+		move.l	d2,d0
+		call	put_decimal_number
+		putchr	')'
+		bra.s	seglist_endline
+
+hunk_err	lea	err1_txt(pc),a1
+		call	putstring
+
+seglist_endline	endline
+		call	printstring
 
 		addq.l	#1,d5
 		move.l	(A2),D4		;get next segment pointer
 		call	CheckKeys
-		bne.s	mjump2
+		bne.s	3$
 		tst.l	D4
-		bne.s	segloop
-mjump2		rts
+		bne	segloop
+3$		rts
 
 ;
 ; return hunk start address (actually addr of pointer to next hunk)
@@ -333,9 +365,7 @@ mjump2		rts
 		lib	Dos,Open
 		move.l	D0,D7
 		bne.s	abs_save_1
-
-dos_err		lib	IoErr
-		bra	DOSErr
+		bra	DosIoErr
 
 abs_save_1	move.l	D7,D1
 		move.l	a5,D2
@@ -357,16 +387,21 @@ abs_save_1	move.l	D7,D1
 		move.l	#MODE_OLDFILE,D2
 		lib	Dos,Open	;open file
 		move.l	D0,D7
-		beq.s	dos_err
+		beq	DosIoErr
 		move.l	D7,D1
 		move.l	a5,D2
-		move.l	#$7FFFFFFF,D3	;MaxInt (the file can't be longer than this)
-		lib	Read		;read from file, until EOF, return actual length
+
+		moveq	#-1,d3
+		lsr.l	#1,d3	;d3 := $7fffffff
+				;MaxInt (the file can't be longer than this)
+		lib	Read	;read from file, until EOF, return actual length
 		tst.l	D0
 		ble.s	abs_load_1
+
 		move.l	a5,D5
 		move.l	D0,D6
 		call	showrange
+
 abs_load_1	move.l	D7,D1
 		jlib	Close	;close the file
 
@@ -399,15 +434,14 @@ redir1		call	skipspaces
 		move.l	d0,mon_OutputFile(a4)
 		moveq	#0,d2
 		moveq	#OFFSET_END,d3
-		lib	Seek
-		rts
+		jlib	Seek
 
 redir_no_oldfile
 		move.l	d3,d1
 		move.l	#MODE_NEWFILE,D2
 		lib	Open	;open redirection file
 		tst.l	D0
-		beq	dos_err
+		beq	DosIoErr
 
 		move.l	D0,mon_OutputFile(a4)
 redir9		rts
@@ -444,8 +478,8 @@ redir9		rts
 
 		lib	Dos,DeleteFile
 		tst.l	D0
-		beq	dos_err
-		rts
+		beq	DosIoErr
+rts_01		rts
 
 *** CHANGE CURRENT DIRECTORY (CD) ***
 		cmd	current_dir
@@ -457,25 +491,23 @@ redir9		rts
 
 		moveq	#SHARED_LOCK,D2
 		lib	Lock
-		tst.l	D0
-		beq	dos_err
 		move.l	D0,D1
+		beq	DosIoErr
 
 cd_2		lib	CurrentDir
 		bclr	#MONB_FIRSTCD,mon_Flags(a4)
-		bne.s	cd_3
+		bne.s	rts_01
 		move.l	D0,D1
-		lib	UnLock	;unlock previous current directory
+		jlib	UnLock	;unlock previous current directory
 
-cd_3		rts
-
-
+;
+;
 unload_old_txt	dc.b	'Unload old segment first',LF,0
 seg_addr_fmt	dc.b	'%ld hunk%s at '
 		dc.b	'$%08lx',LF,0
 s_txt		dc.b	's, first hunk'
 null_txt	dc.b	0
-dos_error_fmt	dc.b	'DOS error %ld',LF,0
+dos_error_fmt	dc.b	'Dos error %ld',LF,0
 
 file_fmt	dc.b	'%-24.30s %5ld',LF,0
 dir_fmt		dc.b	'%-24.30s (dir)',LF,0
@@ -485,13 +517,17 @@ freeblocks_fmt	dc.b	'%ld Blocks free.',LF,0
 NewShellCom	dc.b	'NewShell',0
 NewCLICom	dc.b	'NewCLI',0
 
-hunktypes_txt	dc.b	'codedatabss '
-chipfast_txt	dc.b	'????fastchip',0
-htype_fmt	dc.b	'   %4.4s %1.4s',0
+hunktypes_txt	dc.b	'code',0
+		dc.b	'data',0
+		dc.b	'bss',0
+
+chipfast_txt	dc.b	'chip',0
+		dc.b	'fast',0
+err1_txt	dc.b	'???',0
 
 seghead_txt	dc.b	'Segment list:',LF
 		dc.b	'  #   startloc   endloc    length',0
-type_txt	dc.b	'   type',0
+type_txt	dc.b	'  type',0
 
 seglist_fmt	dc.b	'%3ld  $%08lx  $%08lx %7ld',0
 

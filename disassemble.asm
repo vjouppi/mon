@@ -2,12 +2,6 @@
 ; Monitor Disassembly module
 ;
 ;
-		nolist
-		include "exec/types.i"
-		include "exec/tasks.i"
-		include "exec/execbase.i"
-		list
-
 		include	"monitor.i"
 		include "variables.i"
 		include	"instructions.i"
@@ -19,6 +13,8 @@
 ;
 ; And the command routine 'disassem'
 ;
+
+		forward	Disassemble
 
 		xdef	instr_names
 		xdef	ccodes
@@ -117,41 +113,40 @@ disasmloop	move.l	a5,d0
 ;
 		pub	Disassemble
 
-		movem.l	d2-d7/a2/a4/a6,-(sp)
+		movem.l	d2-d7/a2/a6,-(sp)
 
 		move.l	a5,d0
 		call	puthex68
 
+		moveq	#SPACE,d0
 		btst	#OPTB_NARROWDIS,mon_Options(a4)
 		beq.s	00$
 
-		clra	a4
-		move.b	#SPACE,(a3)+
-		move.b	#SPACE,(a3)+
+		clr.l	mon_dis_Addr1(a4)
+		move.b	d0,(a3)+
+		move.b	d0,(a3)+
 		bra.s	10$
 
-00$		move.l	a3,a4
-		addq.l	#1,a4
-		moveq	#SPACE,d0
+00$		move.l	a3,a0
+		addq.l	#1,a0
+		move.l	a0,mon_dis_Addr1(a4)
 		moveq	#24-1,d1
 01$		move.b	d0,(a3)+
 		dbf	d1,01$
 10$		move.l	a3,-(sp)
 
-; store stack pointer in high words of d4 and d5
-		move.l	sp,d4
-		move.w	d4,d5
-		swap	d5
+; store stack pointer
+		move.l	sp,mon_dis_StackStore(a4)
 
 		move.l	a3,d3
 
 		bsr	GetWord			get opcode
 		move.l	a5,a6
 		move.w	d0,d7
-		bne.s	02$
+		bne.s	no_dcw
 		move.w	(a5),d1
 		and.w	#$ff00,d1
-		beq.s	02$
+		beq.s	no_dcw
 		lea	dcw_txt(pc),a0
 		bsr	put_str
 		moveq	#0,d0
@@ -160,7 +155,7 @@ disasmloop	move.l	a5,d0
 		moveq	#-1,d0
 		bra	dis_end
 
-02$		move.l	a4,d1
+no_dcw		tst.l	mon_dis_Addr1(a4)
 		bne.s	03$
 
 		and.w	#$f000,d0
@@ -246,7 +241,7 @@ valid_instr	moveq	#0,d0
 dis_end		move.b	#LF,(a3)+
 		clr.b	(a3)
 		move.l	(sp)+,a0
-		movem.l	(sp)+,d2-d7/a2/a4/a6
+		movem.l	(sp)+,d2-d7/a2/a6
 		rts
 
 fmt_char	moveq	#0,d0
@@ -293,29 +288,29 @@ str_routines	rw	datar11,datar2,addrr11,addrr2
 ;
 GetWord		movem.l	d1/a3,-(sp)
 		move.w	(a5)+,d0
-		move.l	a4,d1
-		beq.s	01$
-		move.l	a4,a3
+		tst.l	mon_dis_Addr1(a4)
+		beq.s	getw_end
+		move.l	mon_dis_Addr1(a4),a3
 		move.w	d0,-(sp)
 		moveq	#4,d1
 		call	put_hexnum1
 		move.w	(sp)+,d0
 		move.b	#SPACE,(a3)+
-		move.l	a3,a4
-01$		movem.l	(sp)+,d1/a3
+		move.l	a3,mon_dis_Addr1(a4)
+getw_end	movem.l	(sp)+,d1/a3
 		rts
 
 GetLong		movem.l	d1/a3,-(sp)
 		move.l	(a5)+,d0
-		move.l	a4,d1
+		tst.l	mon_dis_Addr1(a4)
 		beq.s	01$
-		move.l	a4,a3
+		move.l	mon_dis_Addr1(a4),a3
 		move.l	d0,-(sp)
 		moveq	#8,d1
 		call	put_hexnum1
 		move.l	(sp)+,d0
 		move.b	#SPACE,(a3)+
-		move.l	a3,a4
+		move.l	a3,mon_dis_Addr1(a4)
 01$		movem.l	(sp)+,d1/a3
 		rts
 
@@ -364,17 +359,13 @@ dcw_txt		dc.b	'dc.w    ',0
 
 		even
 
-invalid		move.l	d4,d0		restore stack pointer
-		move.l	d5,d1
-		swap	d1
-		move.w	d1,d0
-		move.l	d0,sp
+invalid		move.l	mon_dis_StackStore(a4),sp	restore stack ptr
 
 		move.l	d3,a3
 
-		move.l	a4,d1
+		tst.l	mon_dis_Addr1(a4)
 		bne.s	00$
-		
+
 		lea	dcw_txt(pc),a0
 		bsr	put_str
 		moveq	#0,d0
@@ -499,13 +490,7 @@ pc_offset	move.l	a5,d1
 		ext.l	d0
 		add.l	d1,d0
 
-put_addr	move.l	a4,-(sp)
-
-		move.l	_ExecBase,a4
-		move.l	ThisTask(a4),a4
-		move.l	TC_Userdata(a4),a4
-
-		tst.l	mon_HunkTypeTable(a4)
+put_addr	tst.l	mon_HunkTypeTable(a4)
 		beq.s	put_adr1a
 		move.l	d0,-(sp)
 		call	find_var_value
@@ -523,14 +508,11 @@ put_addr	move.l	a4,-(sp)
 		move.b	#'$',(a3)+
 		call	puthex68a
 		move.b	#']',(a3)+
-		move.l	(sp)+,a4
 		rts
 
 put_adr1	move.l	(sp)+,d0
 put_adr1a	move.b	#'$',(a3)+
-		call	puthex68a
-		move.l	(sp)+,a4
-		rts
+		call	JUMP,puthex68a
 
 trapnum		move.b	#'#',(a3)+
 		move.w	d7,d0
@@ -612,8 +594,7 @@ putreg		add.b	#'0',d0
 
 arindirect	move.b	#'(',(a3)+
 		bsr	ardirect
-		move.b	#')',(a3)+
-		rts
+		bra	endpar
 
 stackptr	move.b	#'s',(a3)+
 		move.b	#'p',(a3)+
@@ -647,8 +628,7 @@ indx		move.w	d0,-(sp)
 		bsr	ardirect
 		move.b	#',',(a3)+
 		bsr	handle_index
-		move.b	#')',(a3)+
-		rts
+		bra	endpar
 
 abs_short	bsr	GetWord		;%%%signed
 		bra	sword
@@ -662,7 +642,7 @@ pcrel		move.l	a5,d1
 		add.l	d1,d0
 		bsr	put_addr
 		lea	pc_txt(pc),a0
-		bsr	put_str
+		bsr.s	put_str
 		bra.s	endpar
 
 pcrel_indx	move.l	a5,d1
@@ -681,11 +661,6 @@ endpar		move.b	#')',(a3)+
 
 displ		move.w	d0,-(sp)
 		bsr	GetWord
-
-		move.l	a4,-(sp)
-		move.l	_ExecBase,a4
-		move.l	ThisTask(a4),a4
-		move.l	TC_Userdata(a4),a4
 
 		tst.l	mon_HunkTypeTable(a4)
 		beq.s	8$
@@ -711,13 +686,11 @@ displ		move.w	d0,-(sp)
 		move.w	-2(a5),d0
 		bsr	sword
 		move.b	#']',(a3)+
-		move.l	(sp)+,a4
 		bra.s	9$
 
 7$		move.w	-2(a5),d0
 
-8$		move.l	(sp)+,a4
-		bsr	sword		;%% signed
+8$		bsr	sword		;%% signed
 9$		move.w	(sp)+,d0
 		bra	arindirect
 ;

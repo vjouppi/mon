@@ -16,12 +16,14 @@
 ; This module defines the following public subroutines:
 ;
 ;	tolower,isalnum,isalpha,to_printable,skipspaces,getnth,find_name
-;	putstring,PutLong,mgetw,MyCreatePort,MyDeletePort,MyCreateIO
-;	MyDeleteIO,FindConUnit,SetConMode,sendpacket,GetName
-;	put_signed_hexnum,put_hexnum,put_hexnum1,PutNum
-;	puthex8,puthex68,puthex68a
+;	putstring,PutLong,mgetw,CreatePort,DeletePort,CreateIOReq,DeleteIO
+;	FindConUnit,SetConMode,sendpacket,GetName
+;	put_signed_hexnum,put_hexnum,put_hexnum1,put_number
+;	puthex8,puthex68,puthex68a,put_decimal_number
 ;
 
+		forward	put_number
+		forward	put_hexnum1
 ;
 ; Convert char in D0 to lower case ***
 ;
@@ -191,24 +193,23 @@ nth1		tst.b	(a0)+
 ;*** CREATE MESSAGE PORT ***
 ;* no name, priority 0
 ;
-		pub	MyCreatePort
+		pub	CreatePort
 
 		movem.l	D2/A6,-(sp)
 		moveq	#-1,D0
 		lib	Exec,AllocSignal
-		moveq	#-1,D1
-		cmp.l	D0,D1
-		beq.s	CrepFail
 		move.l	D0,D2
+		bmi.s	crport_fail
 		moveq	#MP_SIZE,D0
 		move.l	#MEMF_PUBLIC!MEMF_CLEAR,D1
 		lib	AllocMem
 		tst.l	D0
-		bne.s	Crep1
+		bne.s	crport_mem_ok
 		move.b	D2,D0
 		lib	FreeSignal
-		bra.s	CrepFail
-Crep1		move.l	D0,A0
+		bra.s	crport_fail
+
+crport_mem_ok	move.l	D0,A0
 ;#
 ;# no need to call FindTask here...get the pointer from mon_Task-variable
 ;# changed in version 1.22  1990-01-06
@@ -216,14 +217,17 @@ Crep1		move.l	D0,A0
 		move.l	mon_Task(a4),MP_SIGTASK(A0)
 		move.b	D2,MP_SIGBIT(A0)
 		move.b	#NT_MSGPORT,LN_TYPE(A0)
-; PA_SIGNAL is zero...
-;#		move.b	#PA_SIGNAL,MP_FLAGS(A0)
+
+		ifne	PA_SIGNAL
+		move.b	#PA_SIGNAL,MP_FLAGS(A0)
+		endc
+
 		lea	MP_MSGLIST(A0),A0
 		NEWLIST	A0
-		bra.s	Crep9
+		bra.s	crport_end
 
-CrepFail	moveq	#0,D0
-Crep9		movem.l	(sp)+,D2/A6	;port addr in D0 or zero if failed
+crport_fail	moveq	#0,D0
+crport_end	movem.l	(sp)+,D2/A6	;port addr in D0 or zero if failed
 		rts
 
 ;
@@ -231,15 +235,19 @@ Crep9		movem.l	(sp)+,D2/A6	;port addr in D0 or zero if failed
 ; no name (not a public port)
 ;port addr in A1
 ;
-		pub	MyDeletePort
+		pub	DeletePort
+
 		movem.l	A2/A6,-(sp)
+
 		moveq	#0,D0
 		move.b	MP_SIGBIT(A1),D0
 		move.l	A1,A2
 		lib	Exec,FreeSignal
+
 		move.l	A2,A1
 		moveq	#MP_SIZE,D0
 		lib	FreeMem
+
 		movem.l	(sp)+,A2/A6
 		rts
 
@@ -247,29 +255,31 @@ Crep9		movem.l	(sp)+,D2/A6	;port addr in D0 or zero if failed
 ;*** CREATE IO REQUEST ***
 ;port addr in A1, size in D0
 ;
-		pub	MyCreateIO
+		pub	CreateIOReq
+
 		movem.l	D0/A1/a6,-(sp)
 		move.l	#MEMF_PUBLIC!MEMF_CLEAR,D1
 		lib	Exec,AllocMem
 		movem.l	(sp)+,D1/A1/a6
 		tst.l	D0
-		beq.s	CreIO9	;no memory
+		beq.s	cr_ioreq_end	;no memory
+
 		move.l	D0,A0
 		move.l	A1,MN_REPLYPORT(A0)
 		move.b	#NT_MESSAGE,LN_TYPE(A0)
 		move.w	D1,MN_LENGTH(A0)
-CreIO9		rts
+
+cr_ioreq_end	rts
 
 ;
 ;*** DELETE IO REQUEST ***
 ;IoRequest In A1
 ;
-		pub	MyDeleteIO
+		pub	DeleteIOReq
+
 		moveq	#0,D0
 		move.w	MN_LENGTH(A1),D0
-		move.l	a6,-(sp)
-		lib	Exec,FreeMem
-		move.l	(sp)+,a6
+		slib	Exec,FreeMem
 		rts
 
 ;
@@ -469,12 +479,12 @@ phex1_68	move.l	d0,d1
 		and.w	#$ff00,d1
 		bne.s	phex1_8
 		moveq	#6,d1
-		bra.s	put_hexnum1_routine
+		call.s	JUMP,put_hexnum1
 
 		pub	puthex8
 
 phex1_8		moveq	#8,d1
-		bra.s	put_hexnum1_routine
+		call.s	JUMP,put_hexnum1
 ;
 ; put a signed hexnum in buffer pointed by a3
 ;
@@ -525,12 +535,22 @@ shex1		moveq	#-2,d1
 		movem.l	(sp)+,d2-d3
 		rts
 
+		pub	put_decimal_number
+
+		move.l	d2,-(sp)
+		moveq	#-1,d1
+		moveq	#10,d2
+		call.s	put_number
+		move.l	(sp)+,d2
+		rts
+
+		pub	put_number
+
 ;
 ; number output routine d0:number d1:length d2:base
 ;
-		pub	PutNum
+another_dummy_label_here_to_separate_blocks_with_identical_local_labels
 
-another_dummy_label_here	;_to_separate_blocks_with_identical_local_labels
 		movem.l	D2-d4,-(sp)
 		move.w	d1,d4
 		move.w	d2,d3

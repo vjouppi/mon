@@ -10,6 +10,8 @@
 		include	"monitor.i"
 		include "variables.i"
 
+		forward	find_var_value
+
 ;
 ; This module defines the following command routines:
 ;
@@ -20,6 +22,8 @@
 ;	clear_all_variables,clear_hunk_vars,find_variable
 ;	set_variable,put_label
 ;
+
+		forward	set_variable
 
 		xref	generic_error
 		xref	out_memory_error
@@ -43,7 +47,7 @@ clrvarloop	tst.l	d2
 		bra.s	clrvarloop
 
 cleared_vars	clr.l	mon_VarList(a4)
-		rts
+rts_01		rts
 
 ; 
 ; clear all hunk-associated variables. called from 'u'-command
@@ -55,7 +59,7 @@ cleared_vars	clr.l	mon_VarList(a4)
 		move.l	(a2),d2
 
 clrhvarloop	tst.l	d2
-		beq.s	cleared_hvars
+		beq.s	rts_01
 		move.l	d2,a1
 		tst.w	var_HunkNum(a1)
 		bmi.s	no_clrvar
@@ -73,8 +77,6 @@ clrhvarloop	tst.l	d2
 no_clrvar	move.l	d2,a2
 		move.l	(a1),d2
 		bra.s	clrhvarloop
-
-cleared_hvars	rts
 
 ;
 ; set [var=expr]
@@ -121,25 +123,25 @@ xvar_end	rts
 ;
 set_var_cmd	move.b	(a3),d0
 		cmp.b	#'@',d0
-		beq.s	00$
+		beq.s	set_var1
 		cmp.b	#'.',d0
-		beq.s	00$
+		beq.s	set_var1
 		call	isalpha
 		bcc	generic_error
 
-00$		move.l	a3,a5
+set_var1	move.l	a3,a5
 		addq.l	#1,a3
 
 ;
 ; variable names can contain '.' and '$'
 ;
-01$		move.b	(a3)+,d0
+scan_var_name	move.b	(a3)+,d0
 		cmp.b	#'.',d0
-		beq.s	01$
+		beq.s	scan_var_name
 		cmp.b	#'$',d0
-		beq.s	01$
+		beq.s	scan_var_name
 		call	isalnum
-		bcs.s	01$
+		bcs.s	scan_var_name
 
 		subq.l	#1,a3
 		move.l	a3,a2
@@ -347,17 +349,17 @@ cv_end		moveq	#LF,d0
 		pub	put_label
 
 		tst.l	mon_HunkTypeTable(a4)
-		beq.s	1$
+		beq.s	putlabel_end
 
 		call.s	find_var_value
 		tst.l	d0
-		beq.s	1$
+		beq.s	putlabel_end
 		move.l	d0,a0
 		lea	var_Name(a0),a0
 		move.l	a0,d0
 		lea	label_fmt(pc),a0
 		call	printf
-1$		rts
+putlabel_end	rts
 
 ;
 ; find variable with a given value (and non-$ffff hunknum)

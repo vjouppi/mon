@@ -13,7 +13,6 @@
 ;
 
 		xref	generic_error
-		xref	mainloop
 
 ;
 ; display/change default number base
@@ -32,37 +31,34 @@
 		cmp.b	d1,d0
 		bhi.s	base_err
 		move.b	d0,mon_DefNumBase(a4)
-mloop_bx	bra	mainloop
+		rts
 
 base_err	bra	generic_error
 
 showbase	moveq	#0,d0
 		move.b	mon_DefNumBase(a4),d0
 		lea	base_fmt(pc),a0
-		call	printf_window
-		bra.s	mloop_bx
+		call	JUMP,printf_window
 
 *** enter command line ***
 		cmd	cmdline
 
 		tst.b	(a3)
-		bne.s	01$
+		bne.s	set_cmd_line
 		lea	cmdline_prompt(pc),a0
 		call	printstring_a0_window
 		moveq	#0,d0
 		call	GetInput
-01$		call.s	set_cmdline
-		bra	mainloop
 
 ;
 ; copy string from input buffer to command line & set d0 & a0
 ;
 		pub	set_cmdline
 
-		lea	mon_CmdLineBuf(a4),a1
+set_cmd_line	lea	mon_CmdLineBuf(a4),a1
 		move.l	a1,a2
-02$		move.b	(a3)+,(a1)+
-		bne.s	02$
+1$		move.b	(a3)+,(a1)+
+		bne.s	1$
 		move.b	#LF,-1(a1)
 		clr.b	(a1)
 		sub.l	a2,a1
@@ -107,15 +103,14 @@ showbase	moveq	#0,d0
 		addq.l	#4,a3
 		move.l	a3,a0
 		moveq	#4-1,d1
-2$		move.b	d5,d0
+numdisp_loop	move.b	d5,d0
 		call	to_printable
 		move.b	d0,-(a0)
 		lsr.l	#8,d5
-		dbf	d1,2$
+		dbf	d1,numdisp_loop
 		move.b	#'''',(a3)+
 		endline
-		call	printstring
-		bra	mainloop
+		call	JUMP,printstring
 
 ;print number in one base (both signed & unsigned if negative)
 ;d4:high contains number of digits or $ffff, d4:low contains numeric base
@@ -141,7 +136,7 @@ num_A1		swap	d6
 		move.w	d4,d2
 		move.l	d4,d1
 		swap	d1
-		call	PutNum
+		call	put_number
 		endline
 		call	printstring
 		tst.l	D5
@@ -165,9 +160,9 @@ num_A1		swap	d6
 180$		move.w	d4,d2
 		move.l	d4,d1
 		swap	d1
-		call	PutNum
+		call	put_number
 		endline
-		call	printstring
+		call	JUMP,printstring
 num_A2		rts
 
 ;
@@ -186,17 +181,17 @@ num_A2		rts
 		call	GetExpr
 		subq.w	#1,d0
 		bclr	d0,mon_Options(a4)
-		bra.s	opt_9
+		rts
 
 add_option	call	GetExpr
 		subq.w	#1,d0
 		bset	d0,mon_Options(a4)
-		bra.s	opt_9
+		rts
 
 show_options	moveq	#0,d3
 		lea	option_strings(pc),a2
 
-0$		lea	off_txt(pc),a1
+showopt_loop	lea	off_txt(pc),a1
 		btst	d3,mon_Options(a4)
 		beq.s	1$
 		addq.l	#on_txt-off_txt,a1
@@ -207,17 +202,15 @@ show_options	moveq	#0,d3
 		lea	option_fmt(pc),a0
 		call	printf
 		addq.w	#1,d3
-2$		tst.b	(a2)+
-		bne.s	2$
+skip_opt_str	tst.b	(a2)+
+		bne.s	skip_opt_str
 		tst.b	(a2)
-		bne	0$
+		bne	showopt_loop
 
 		moveq	#0,d0
 		move.b	mon_Options(a4),d0
 		lea	optvalue_fmt(pc),a0
-		call	printf
-
-opt_9		bra	mainloop
+		call	JUMP,printf
 
 sign_txt	dc.b	'unsigned',0
 base_fmt	dc.b	'Base is %ld',LF,0

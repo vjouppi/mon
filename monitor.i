@@ -157,8 +157,23 @@ cmd		macro
 ;
 pub		macro
 \1_routine	equ	*
-		xdef	\1_routine
+		ifnd	\1_routine_flag
+		  xdef	\1_routine
+\1_routine_flag	  set	1
+		endc
 		endm
+
+;
+; this macro must be used if a public routine is used in the same
+; source file as it has been defined before the definition.
+;
+forward		macro	;public_routine_name
+		ifnd	\1_routine_flag
+		xdef	\1_routine
+\1_routine_flag	  set	1
+		endc
+		endm
+
 ;
 ; call a public routine
 ;
@@ -167,24 +182,30 @@ pub		macro
 ;
 call		macro
 		ifnc	'\1','JUMP'
-		  ifnd	\1_routine
+		  ifnd	\1_routine_flag
 		     xref  \1_routine
+\1_routine_flag	     set   1
 		  endc
-		  bsr.\0 \1_routine
+		  ifc '\0',''
+		    bsr \1_routine
+		  endc
+		  ifnc '\0',''
+		    bsr.\0 \1_routine
+		  endc
 		endc
 		ifc	'\1','JUMP'
-		  ifnd	\2_routine
+		  ifnd	\2_routine_flag
 		    xref  \2_routine
+\2_routine_flag     set   1
 		  endc
-		  bra.\0 \2_routine
+		  ifc '\0',''
+		    bra \2_routine
+		  endc
+		  ifnc '\0',''
+		    bra.\0 \2_routine
+		  endc
 		endc
 		endm
-
-; definitions of the instruction size variable
-BSIZE		equ	0
-WSIZE		equ	1
-LSIZE		equ	2
-
 
 ; some common ASCII control characters
 BS		equ	8
@@ -205,17 +226,6 @@ CtrlX	equ	24	;control-x, clear input line
 
 SPACE	equ	32
 COMMA	equ	','
-
-*** SOME SPECIAL KEY CODES (returned by GetKey)
-CURSOR_UP		equ	$0100
-CURSOR_DOWN		equ	$0200
-CURSOR_RIGHT		equ	$0300
-CURSOR_LEFT		equ	$0400
-SHIFT_CURSOR_UP		equ	$0500
-SHIFT_CURSOR_DOWN	equ	$0600
-SHIFT_CURSOR_LEFT	equ	$0700
-SHIFT_CURSOR_RIGHT	equ	$0800
-
 
 LEN		equ	128	;length of input & output buffers
 NLINES		equ	10	;number of lines of command line history
@@ -275,6 +285,12 @@ ILLEGAL_INSTR	equ	$4AFC	;illegal instruction (used by breakpoints)
 		 APTR	mon_GoBreakPtr	;address of skipped brkpoint struct
 
 		 APTR	mon_RelBaseAddr	;address pointed by a4 or other base reg
+;
+; the following two variables are for the disassemble routine
+; (to avoid some kludges...)
+;
+		 APTR	mon_dis_StackStore
+		 APTR	mon_dis_Addr1
 
 ; the output buffer must be long word aligned
 		 STRUCT	mon_OutputBuf,LEN
@@ -306,11 +322,8 @@ mon_RegSP	equ	mon_AddrRegs+7*4
 					;-1 if not in use
 		LABEL MonitorData_SIZE
 
-;
-; safety check
-;
-		ifne	MonitorData_SIZE-$762
-		FAIL	Panic! MonitorData wrong size!
+		ifne	MonitorData_SIZE-$76a
+		fail	Panic! MonitorData wrong size!
 		endc
 
 ;
@@ -331,4 +344,4 @@ mon_RegSP	equ	mon_AddrRegs+7*4
 		BITDEF	OPT,NARROWDIS,0
 		BITDEF	OPT,EXTPRTCHR,1
 		BITDEF	OPT,DUMBTERM,2
-
+MON_NUM_OPTIONS	equ	3

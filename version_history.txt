@@ -32,6 +32,7 @@
 * v1.45 ->           1991-11-10    *
 * v1.47 ->	     1991-11-21    *
 * v1.49 ->	     1991-11-29    *
+* v1.50 ->           1991-12-01    *
 ************************************
 
 ;
@@ -442,4 +443,16 @@ lm;		  and trap numbers.
 ;		- disassembly automatically stops at hunk end
 ;		- CD/exit now should't leave any extra locks unlocked
 ;
-
+;  1991-11-30/12-01 --> 1.50
+;		- mf-command requires space after command, else it it
+;		  is actually m-command (easier to do memory dump with
+;		  kickstart rom addresses)
+;		- HunkTypeTable also contains hunk lengths from actual hunk data
+;		  used to display info about split data/bss hunks
+;		- CtrlC/other signals are cleared in main loop after GetInput
+;		- miscellaneous source reorganization
+;
+;  1991-12-02	--> 1.51
+;		- added one lsl.l #2,d0 in loadsym.asm -- without that it
+;		  displayed bss hunks split in a strange way...
+;

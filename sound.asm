@@ -34,23 +34,28 @@
 		btst	#0,D0
 		bne	generic_error
 		move.l	D0,D6
+
 		call	GetExpr	;period (speed)
 		move.w	D0,D7
+
 		move.w	#1,d4
 		call	skipspaces
 		tst.b	(a3)
 		beq.s	00$
 		call	GetExpr		;# of cycles, defaults to zero (loop)
 		move.w	d0,d4
-00$		call	MyCreatePort
+
+00$		call	CreatePort
 		move.l	d0,d2
 		beq	digi9
+
 		move.l	D0,A1
 		moveq	#ioa_SIZEOF,D0
-		call	MyCreateIO
+		call	CreateIOReq
 		tst.l	D0
 		beq	digi8
 		move.l	D0,A2
+
 		move.b	#127,LN_PRI(A2)	;maximum priority (so nobody can steal the channel)
 		lea	allocmap(pc),A0	;channel allocation map (any channel)
 		move.l	A0,ioa_Data(A2)
@@ -70,15 +75,12 @@
 		move.w	#64,ioa_Volume(A2)	;maximum volume
 		move.b	#ADIOF_PERVOL,IO_FLAGS(A2) ;flag to set the volume & period
 		move.w	#CMD_WRITE,IO_COMMAND(A2)	;audio output=CMD_WRITE
+
 		move.l	A2,A1
 		BEGINIO	;can't use SendIO, because it clears the ADIO_PERVOL flag
 		lea	playing_txt(pc),A0
 		call	printstring_a0_window		;message: 'press Ctrl-C...'
-		moveq	#0,D0
-		move.l	#SIGBREAKF_CTRL_C,d2
-		move.l	d2,d1
-		lib	SetSignal	;clear CTRL-C signal
-		move.l	d2,d0
+		move.l	#SIGBREAKF_CTRL_C,d0
 		move.l	MN_REPLYPORT(a2),a0
 		move.b	MP_SIGBIT(a0),d3
 		bset	d3,d0			wait until the sound finishes or
@@ -89,11 +91,13 @@
 		lib	WaitIO
 		move.l	A2,A1
 		lib	CloseDevice
+
 digi7		move.l	MN_REPLYPORT(a2),d2
 		move.l	A2,A1
-		call	MyDeleteIO
+		call	DeleteIOReq
+
 digi8		move.l	d2,A1
-		call	MyDeletePort
+		call	DeletePort
 digi9		rts
 
 digi_openerr	lea	audio_open_error_txt(pc),a0
@@ -103,8 +107,8 @@ digi_openerr	lea	audio_open_error_txt(pc),a0
 audiodev_name	dc.b	'audio.device',0
 allocmap	dc.b	1,8,2,4
 
-playing_txt	dc.b	'Press Ctrl-C to stop...',LF,0
+playing_txt	dc.b	'Playing... press Ctrl-C to stop',LF,0
 audio_open_error_txt
-		dc.b	'Audio open failed',LF,0
+		dc.b	'Audio open/alloc failed',LF,0
 
 		end

@@ -169,7 +169,7 @@ alloc_failed		;error 'allocation failed'
 		call	tolower
 		cmp.b	d1,d0
 		bne.s	free_norm
-		bra	free_all_mem_routine
+		call	JUMP,free_all_mem
 
 free_norm	call	GetExpr
 		subq.l	#8,D0
@@ -253,32 +253,33 @@ do_free		move.l	4(A1),D0
 		move.b	#SPACE,(a3)+
 
 		move.l	a5,d0
-		bne.s	100$
+		bne.s	in_memlist
 		lea	not_memlist_txt(pc),a1
 		call	putstring
-		bra.s	104$
+		bra.s	minfo_end_first_line
 
-100$		btst	#MEMB_CHIP,MH_ATTRIBUTES+1(a5)
-		beq.s	101$
+in_memlist	btst	#MEMB_CHIP,MH_ATTRIBUTES+1(a5)
+		beq.s	no_chip
 		move.l	#'chip',d0
 		call	PutLong
 		move.b	#SPACE,(a3)+
 
-101$		btst	#MEMB_FAST,MH_ATTRIBUTES+1(a5)
-		beq.s	102$
+no_chip		btst	#MEMB_FAST,MH_ATTRIBUTES+1(a5)
+		beq.s	no_fast
 		move.l	#'fast',d0
 		call	PutLong
 		move.b	#SPACE,(a3)+
 
-102$		tst.l	d2
-		beq.s	103$
+no_fast		tst.l	d2
+		beq.s	alloc_show
 		move.l	#'not ',d0
 		call	PutLong
 
-103$		lea	allocated_txt(pc),a1
+alloc_show	lea	allocated_txt(pc),a1
 		call	putstring
 
-104$		clr.b	(a3)
+minfo_end_first_line
+		clr.b	(a3)
 		call	printstring
 
 ;
@@ -511,12 +512,12 @@ disploop	startline
 		putchr	SPACE
 		moveq	#16/4-1,D2
 
-01$		call	mgetw
+disp_hex_loop	call	mgetw
 		swap	d0
 		call	mgetw
 		call	puthex8
 		putchr	SPACE
-		dbf	D2,01$
+		dbf	D2,disp_hex_loop
 
 		sub.w	#16,a5
 		putchr	SPACE
@@ -525,10 +526,10 @@ disploop	startline
 		putchr	<''''>
 100$		moveq	#16-1,D2
 
-02$		move.b	(a5)+,D0	;printable codes are $20-$7F and $A0-$FF
+disp_asc_loop	move.b	(a5)+,D0	;printable codes are $20-$7F and $A0-$FF
 		call	to_printable
 		move.b	D0,(A3)+
-		dbf	D2,02$
+		dbf	D2,disp_asc_loop
 
 		tst.b	d6
 		bmi.s	101$
@@ -539,7 +540,8 @@ disploop	startline
 		bne.s	disploop
 
 		move.l	a5,mon_CurrentAddr(a4)
-		bra	mainloop
+		rts
+
 ;
 ; subroutines for 'mf' command
 ;
@@ -553,7 +555,7 @@ p_align_end	rts
 dec_num		move.l	d2,-(sp)
 		move.l	d5,d2
 		moveq	#-1,d1
-		call	PutNum
+		call	put_number
 		move.l	(sp)+,d2
 		clr.b	(a3)
 		call	JUMP,printstring
@@ -574,6 +576,7 @@ p_word		startline
 p_long		startline
 		bsr.s	p_align
 		move.l	(a5)+,d0
+
 h8_com		moveq	#8,d1
 
 h_com		cmp.b	#10,d5
@@ -605,7 +608,12 @@ p_addr		startline
 ;
 		cmd	fmt_memdisplay
 
-		clr.l	mon_EndAddr(a4)
+		cmp.b	#' ',(a1)
+		beq.s	0$
+		subq.l	#1,a3
+		bra	display_memory
+
+0$		clr.l	mon_EndAddr(a4)
 		call	skipspaces
 		cmp.b	#'"',(a3)
 		beq.s	get_fmtstring
@@ -622,6 +630,9 @@ p_addr		startline
 
 get_fmtstring	call	GetName
 		move.l	d0,d7
+		move.l	d0,a0
+		tst.b	(a0)
+		beq	generic_error
 
 		move.l	mon_CurrentAddr(a4),a5
 
@@ -660,7 +671,7 @@ fmt_memdisp_loop
 		lea	p_jumps-2(pc,a0.w),a0
 		add.w	(a0),a0
 		jsr	(a0)
-		jmp	fmt_memdisp_loop
+		bra	fmt_memdisp_loop
 
 p_esc		move.b	(a2)+,d0
 		beq.s	p_end
@@ -677,36 +688,38 @@ p_str		bsr.s	p_putstr
 p_end_test	tst.b	-1(a2)
 		bne.s	fmt_memdisp_loop
 
-p_end		move.l	a5,mon_CurrentAddr(a4)
+p_end		cmp.l	mon_CurrentAddr(a4),a5
+		beq	generic_error
+		move.l	a5,mon_CurrentAddr(a4)
 		bsr.s	p_putstr
 		emit	LF
 		call	CheckKeys
-		bne.s	p_main
-		cmp.w	#0,a5
-		beq.s	p_main
+		bne.s	p_rts1
+
 		cmp.l	mon_EndAddr(a4),a5
 		bls	fmt_memdisp_next
-
-p_main		bra	mainloop
+p_rts1		rts
 
 p_percent	emit	'%'
 		bra	fmt_memdisp_loop
 
 p_putstr	move.l	a2,d3
 		sub.l	d2,d3
-		beq.s	1$
+		beq.s	p_rts1
 		move.l	mon_OutputFile(a4),d1
-		lib	Dos,Write
-1$		rts
+		jlib	Dos,Write
 
 ;
+; format character routines for mf-command
 ;
 p_jumps		rw	p_byte
 		rw	p_word
 		rw	p_long
 		rw	p_addr
 		rw	p_percent
-
+;
+; format characters for mf-command
+;
 p_chars		dc.b	'bwla%',0
 		ds.w	0
 
@@ -717,8 +730,7 @@ p_chars		dc.b	'bwla%',0
 
 		call	GetExpr
 		move.l	D0,A0
-		call	GetString
-		bra	mainloop
+		call	JUMP,GetString
 ;
 ;
 comp_hunt_fmt	dc.b	'%08lx ',0

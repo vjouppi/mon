@@ -37,7 +37,6 @@ HUNK_OVERLAY	equ	1013
 ;
 		STRUCTURE LSymData,0
 		 STRUCT	lsym_Buffer,256+4
-		 LONG	lsym_NumHunks
 		LABEL LSymData_SIZE
 
 ;
@@ -57,7 +56,7 @@ HUNK_OVERLAY	equ	1013
 		move.l	d0,a5
 
 		move.l	mon_NumHunks(a4),d0
-		lsl.l	#2,d0
+		lsl.l	#(2+1),d0		;allocate 2*4*NumHunks bytes
 		move.l	#MEMF_CLEAR,d1
 		lib	AllocMem
 		move.l	d0,mon_HunkTypeTable(a4)
@@ -76,25 +75,24 @@ HUNK_OVERLAY	equ	1013
 
 		bsr	lsym_GetLong
 		tst.l	d0
-		bne	lsym_fmt_err	;reslibs not supported...
+		bne	lsym_fmt_err		;reslibs not supported...
 
-		bsr	lsym_GetLong	;table size
+		bsr	lsym_GetLong		;table size
 		move.l	d0,a2
-		bsr	lsym_GetLong	;first hunk #
+		bsr	lsym_GetLong		;first hunk #
 		tst.l	d0
-		bne	lsym_fmt_err	;error if not zero
-		bsr	lsym_GetLong	;last hunk #
+		bne	lsym_fmt_err		;error if not zero
+		bsr	lsym_GetLong		;last hunk #
 		addq.l	#1,d0
 		cmp.l	a2,d0
 		bne	overlay_err
-
-		move.l	d0,lsym_NumHunks(a5)
-		beq	lsym_fmt_err	;...
-		lsl.l	#2,d0	;-># of longwords
+		cmp.l	mon_NumHunks(a4),d0
+		bne	lsym_fmt_err		;wrong number of hunks
+		lsl.l	#2,d0			;-># of longwords
 		bsr	lsym_Skip
 
-		moveq	#0,d7		;hunk counter
-		moveq	#0,d4		;symbol counter
+		moveq	#0,d7			;hunk counter
+		moveq	#0,d4			;symbol counter
 		move.l	mon_SegList(a4),d5
 		lsl.l	#2,d5
 
@@ -112,20 +110,25 @@ no_code		cmp.l	#HUNK_DATA,d0
 
 skip_n		bsr	lsym_GetLong
 		lsl.l	#2,d0
-		bsr	lsym_Skip
+		move.l	d0,(a3)+
+skip_n1		bsr	lsym_Skip
 		bra.s	lsym_hunkloop
 
 no_data		cmp.l	#HUNK_BSS,d0
 		bne.s	no_bss
 		move.l	d1,(a3)+
-
 		bsr	lsym_GetLong	;skip bss length
+		lsl.l	#2,d0
+		move.l	d0,(a3)+
 		bra.s	lsym_hunkloop
 
 no_bss		cmp.l	#HUNK_DEBUG,d0
-		beq.s	skip_n
+		bne.s	no_debug
+		bsr	lsym_GetLong
+		lsl.l	#2,d0
+		bra.s	 skip_n1
 
-		cmp.l	#HUNK_OVERLAY,d0
+no_debug	cmp.l	#HUNK_OVERLAY,d0
 		beq	overlay_err
 
 		cmp.l	#HUNK_END,d0
@@ -137,7 +140,7 @@ no_bss		cmp.l	#HUNK_DEBUG,d0
 		beq	lsym_end
 
 		addq.l	#1,d7
-		cmp.l	lsym_NumHunks(a5),d7
+		cmp.l	mon_NumHunks(a4),d7
 		bcs.s	lsym_hunkloop
 		bra	lsym_end
 

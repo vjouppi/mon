@@ -59,12 +59,12 @@ disk_rw		call	GetExpr
 		tst.l	d0
 		beq	out_memory_error
 		move.l	d0,a5
-		call	MyCreatePort
+		call	CreatePort
 		move.l	D0,D6
 		beq	disk_io_9	;branch if CreatePort failed
 		move.l	D0,A1
 		moveq	#IOSTD_SIZE,D0
-		call	MyCreateIO
+		call	CreateIOReq
 		tst.l	D0
 		beq	disk_io_8	;branch if CreateIO failed
 		move.l	D0,A2
@@ -148,16 +148,17 @@ disk_io_err	;Print TrackDisk error number
 		bra.s	02$
 
 01$		cmp.b	#TDERR_WriteProt,d0
-		bne.s	03$
+		bne.s	td_numeric_error
 
 		lea	writeprot_txt(pc),a0
 
 02$		call	printstring_a0_window
-		bra.s	99$
+		bra.s	td_end_line
 
-03$		lea	td_errfmt(pc),a0
+td_numeric_error
+		lea	td_errfmt(pc),a0
 		call	printf_window
-99$		emitwin	LF
+td_end_line	emitwin	LF
 
 disk_io_5	;stop drive motor
 		move.w	#TD_MOTOR,IO_COMMAND(A2)
@@ -178,10 +179,10 @@ opendev_fail	lea	opendev_fail_fmt(pc),a0
 
 disk_io_7	move.l	MN_REPLYPORT(a2),d6
 		move.l	A2,A1
-		call	MyDeleteIO
+		call	DeleteIOReq
 
 disk_io_8	move.l	D6,A1
-		call	MyDeletePort
+		call	DeletePort
 
 disk_io_9	move.l	a5,a1
 		move.l	#DISKBLOCKSIZE,d0

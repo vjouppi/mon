@@ -272,13 +272,13 @@ ex_var		move.l	a3,a0			;variable?
 ;
 ; variable names can contain '$' and '.'
 ;
-01$		move.b	(a0)+,d0
+scan_var_name	move.b	(a0)+,d0
 		cmp.b	#'.',d0
-		beq.s	01$
+		beq.s	scan_var_name
 		cmp.b	#'$',d0
-		beq.s	01$
+		beq.s	scan_var_name
 		call	isalnum
-		bcs.s	01$
+		bcs.s	scan_var_name
 		subq.l	#1,a0
 
 		move.b	(a0),d0
@@ -405,14 +405,8 @@ r_hend		bsr.s	gethunk
 		subq.l	#5,d0
 		bra	no_more_args
 
-r_nhunks	moveq	#0,d0
-		move.l	mon_SegList(a4),d1
-01$		lsl.l	#2,d1
-		beq.s	g_rts
-		move.l	d1,a0
-		move.l	(a0),d1
-		addq.l	#1,d0
-		bra.s	01$
+r_nhunks	move.l	mon_NumHunks(a4),d0
+		rts
 
 gethunk		bsr	get_first_arg
 		move.l	mon_SegList(a4),d1

@@ -17,6 +17,11 @@
 		xref	out_range_error
 		xref	addrmode_error
 
+; definitions of the instruction size variable
+BSIZE		equ	0
+WSIZE		equ	1
+LSIZE		equ	2
+
 *** ASSEMBLE ***
 * command format:
 * a       :assembles at the current address, asks instruction
@@ -72,11 +77,11 @@ Assem_GetInput	call	GetInput
 
 Assemble_NoCtrlE
 		move.b	(a3),d0
-		beq.s	2$
+		beq.s	rts_01
 		call	tolower
 		cmp.b	#'x',d0
 		bne.s	FindInstrName
-2$		rts
+rts_01		rts
 
 FindInstrName	lea	instr_names(pc),a0
 		call	find_name
@@ -93,8 +98,8 @@ FindInstrName	lea	instr_names(pc),a0
 		add.w	(A0),A0
 		jmp	(A0)
 
-	;if instruction not found in table, it can be
-	;a branch, DBcc, Scc or dc.?
+;if instruction not found in table, it can be
+;a branch, DBcc, Scc or dc.?
 try_branch	move.b	(a3)+,d0
 		call	tolower
 		cmp.b	#'b',d0
@@ -1301,7 +1306,7 @@ ext_asm		bsr	GetSize
 		move.w	d1,d0
 		or.w	D2,D0
 		or.w	#$4800,D0
-		bra	one_word_instr
+		bra.s	one_word_instr
 
 *** NBCD ***
 nbcd_asm	addq.l	#2,mon_CurrentAddr(a4)

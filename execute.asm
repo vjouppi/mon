@@ -27,7 +27,7 @@ _LVOCacheClearU	equ	-$27c
 ;
 ;	find_brk_num,remove_all_breaks
 ;
-
+		forward	find_brk_num
 
 		xdef	trapreturn
 		xdef	returncode
@@ -90,7 +90,7 @@ brk_err		bra	generic_error
 ;
 		cmd	remove_break
 
-break_remove	call	skipspaces
+		call	skipspaces
 		move.b	(a3),d0
 		call	tolower
 		cmp.b	#'#',d0
@@ -104,7 +104,7 @@ break_remove	call	skipspaces
 		move.b	2(a3),d0
 		call	tolower
 		cmp.b	#'l',d0
-		beq	remove_all_breaks_routine
+		beq	rem_all_breaks
 
 break_rem1	call	GetExpr
 		bsr	find_break
@@ -114,6 +114,7 @@ do_remove_brk	move.l	A1,D0
 		bne.s	no_remove_from_start_of_list
 		move.l	(A0),mon_BreakList(a4)
 		bra.s	break_remove_1
+
 no_remove_from_start_of_list
 		move.l	(A0),(A1)
 break_remove_1	move.l	A0,A1
@@ -128,10 +129,8 @@ rembrk_num	addq.l	#1,a3
 		call.s	find_brk_num
 		moveq	#-1,d1
 		cmp.l	d1,d0
-		beq	brk_err
+		beq.s	brk_err
 		bra.s	do_remove_brk
-
-
 ;
 ; params: breakpoint number in d0, returns breakpoint address or -1
 ;
@@ -211,7 +210,7 @@ break_found	moveq	#0,D0
 		pub	remove_all_breaks
 * executed before exit of when the 'br all' command is given
 ; this changes d2 and a6
-		getbase	Exec
+rem_all_breaks	getbase	Exec
 		move.l	mon_BreakList(a4),D2
 
 all_breaks_loop	tst.l	D2

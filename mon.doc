@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.49 instructions
+                 Amiga Monitor v1.51 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -335,10 +335,12 @@ mf -- Formatted memory display
     %a  -- display current address (in hex)
   Also, \n can be used to print a line feed.
 
-  Note2: words and longs that are displayed must be at even addresses. If the
+  Note1: words and longs that are displayed must be at even addresses. If the
   current address os odd when a word or longword value is going to be displayed,
   the address is incremented to the next even address and an asterisk is
   printed as a warning to the user.
+
+  Note2: a space is required between this command and its arguments.
 
 : -- Modify memory
  Usage:
@@ -562,7 +564,7 @@ sl -- Segment list
   sl -- displays the starting & ending addresses and length of each hunk
   of the currently loaded file. If the 'l +' command has been used to
   load the file, also the type of each hunk is displayed (including chip/fast
-  memory types).
+  memory types and data/bss byte counts of split data/bss hunks).
 
 rb -- set base address for address register relative symbols
  Usage:
@@ -730,6 +732,15 @@ x -- Exit
 
 Version history:
 ----------------
+1.51 ->
+ - no longer lists bss hunks as split in strange ways (one lsl.l #2,d0 was
+   missing in version 1.50)
+
+1.50 ->
+ - now mf-command requires space after command, else -> m fxxxx
+ - show seglist displays info about split data/bss hunks
+ - internal source reorganization
+
 1.49 ->
  - hunk type display also shows chip/fast
  - some changes in symbol handling
@@ -920,10 +931,10 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.48 Copyright © 1987-1991 by Timo Rossi. The monitor
+  Amiga Monitor v1.51 Copyright © 1987-1991 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lharc-archive 'mon148.lzh'.
+way of distribution is the lharc-archive 'mon151.lzh'.
 
   Special Permission is given to Fred Fish to distribute this program on
 his 'Fish disks'.
