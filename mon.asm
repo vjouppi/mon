@@ -1,4 +1,4 @@
-************************************
+\************************************
 *                                  *
 *   Amiga machine code monitor     *
 * Timo Rossi  1987-1988-1989-1990  *
@@ -22,6 +22,8 @@
 * v1.29 -> last mod. 1990-08-07	   *
 * v1.30 -> last mod. 1990-08-22	   *
 * v1.31 -> last mod. 1990-11-02	   *
+* v1.32 -> last mod. 1990-12-06	   *
+* v1.34 -> last mod. 1990-12-07	   *
 ************************************
 
 ;DEBUG	set	1
@@ -250,7 +252,7 @@
 ;   1989-12-21 --> v1.19
 ;		- disassembler now prints the dollar signs that were missing
 ;		  in previous version in immediate word/byte operands
-;		  and trap numbers.
+lm;		  and trap numbers.
 ;
 ;   1989-12-31 --> v1.20
 ;		- '[register]'-syntax added to the expression parser
@@ -369,6 +371,24 @@
 ;		  now the address in the assemble-command in always rounded
 ;		  to an even address.
 ;
+;   1990-12-06 --> v1.32
+;		- now works with CLI window, can also be used on
+;		  a serial terminal. Opens window if started with 'run'
+;		  or window dimension options are given on the
+;		  command line.
+;
+;   1990-12-07 --> v1.33
+;		- digisound now plays the sound only once if repeatcount
+;		  is not given. also correctly uses AbortIO()/WaitIO()
+;		  (ConMan RAW:-mode and AUX:-handler do not seem to
+;		  send SIGBREAKF_CTRL_C signals, so aborting the audio
+;		  output may be difficult...)
+;		- added option flags.
+;
+;   1990-12-08 --> v1.34
+;		- now checks BREAK status also with SIGBREAKF_CTRL_C
+;		  for compatablity with the GMC screen handler.
+;
 
 		include	'exec/types.i'
 		include	'include.i'
@@ -378,7 +398,7 @@
 
 *** This macro is an easy way to update the version number ***
 VERSION		macro
-		dc.b	'1.31'
+		dc.b	'1.34'
 		endm
 
 *** macro to display a single character ***
@@ -491,7 +511,6 @@ ILLEGAL		equ	$4AFC	;illegal instruction (used by breakpoints)
 
 		 APTR	Addr		;current address
 		 APTR	EndAddr		;for disassembler & memdisplay
-		 APTR	instrad		;instruction address for disassembler
 
 		 APTR	StackHigh	;high limit of stack used
 					;by g- and j-commands
@@ -529,6 +548,8 @@ RegSP		equ	AddrRegs+7*4
 		 UWORD	inpspecial	;input special mode for GetInput
 		 UBYTE	flags		;flags, see below for bitdefs...
 		 UBYTE	defbase		;current default number base for input
+		 UBYTE	MonOptions	;option flags
+		 UBYTE	__PadByte__
 		LABEL MonitorData_SIZE
 
 ;
@@ -539,6 +560,12 @@ RegSP		equ	AddrRegs+7*4
 		BITDEF	MON,BRKSKIP,1
 		BITDEF	MON,TMPBRK,2
 		BITDEF	MON,QTRACE,3
+		BITDEF	MON,OWNWINDOW,4
+
+;
+; Monitor option flags
+;
+		BITDEF	OPT,NARROWDIS,1
 
 ;
 ; equates for disassembler routine
@@ -679,71 +706,60 @@ cmdline_done
 ; set default number base, currently hex....
 ;
 		move.b	#16,defbase(a4)
-;
-; Find the width and height of workbench screen before opening the window
-; so this program works ok with NTSC & PAL & LACEWB & MoreRows etc..
-; (how about A2024 or ECS superhires mode with kickstart 1.4???)
-;
-		lea	intuname(pc),A1
-		moveq	#33,D0		  version 33: kickstart 1.2 or later
-		lib	OpenLibrary
-		tst.l	D0
-		beq	exit8
-		move.l	d0,a6
 
-		lea	OutputBuf(a4),a0
-		lea	20(a0),a2
-		clra	a1
-		moveq	#sc_Height+2,d0		enough length to get width and height
-		moveq	#WBENCHSCREEN,d1
-		lib	GetScreenData
-		move.l	d0,d2		  	save result
-
-		move.l	a6,a1
-		lib	Exec,CloseLibrary
-		tst.l	d2
-		beq	exit8
-
-		lea	OutputBuf(a4),a0
-		movem.w	sc_Width(a0),d1-d2	this sign-extends to long
 		moveq	#0,d0
+		moveq	#0,d1
+		move.w	d4,d1
+		bmi.s	win_1
+		moveq	#0,d2
+		move.w	d5,d2
+		bpl.s	open_win
 
-		cmp.w	#640,d1
-		bcs.s	199$
-		move.w	#640,d1
-;#
-;# this causes the monitor to open a full-height window on a NTSC display
-;#
-199$		cmp.w	#200,d2
-		bls.s	200$
-		sub.w	#16,d2
-		addq.w	#5,d0
-;
-; use user-specified window dimensions if they exist
-;
-200$		tst.l	d4
-		bmi.s	201$
-		move.l	d4,d0
-201$		tst.l	d5
-		bmi.s	202$
-		move.l	d5,d1
-202$
-;
-; window "filename" is created using RawDoFmt in the output buffer
-;
-		lea	windowfmt(pc),a0
+win_1		lib	Dos,Input
+		move.l	d0,WinFile(a4)
+		beq.s	open_win1
+		move.l	d0,d1
+		lib	IsInteractive
+		tst.l	d0
+		beq.s	open_win1
+		move.l	WinFile(a4),d0
+		bra.s	win_com
+
+nogfx_win	moveq	#0,d0
+		move.l	#200,d2
+		bra.s	open_win2
+
+open_win1	lea	gfxname(pc),a1
+		moveq	#33,d0			;1.2
+		lib	Exec,OpenLibrary
+		tst.l	d0
+		beq.s	nogfx_win
+		move.l	d0,a1
+		moveq	#0,d2
+		move.w	gb_NormalDisplayRows(a1),d2
+		lib	CloseLibrary
+
+		moveq	#0,d0
+		cmp.w	#200,d2
+		bcs.s	open_win2
+
+		moveq	#8,d0
+		sub.w	#18,d2	
+
+open_win2	move.w	#640,d1
+
+open_win	lea	windowfmt(pc),a0
 		bsr	fmtstring
 
+		bset	#MONB_OWNWINDOW,flags(a4)
 		lea	OutputBuf(a4),a0
 		move.l	a0,d1
 		move.l	#MODE_OLDFILE,D2
 		lib	Dos,Open		open the window
-		move.l	D0,WinFile(a4)
-		bne.s	01$
-		lea	win_openerr_txt(pc),a0
-		bsr	puts_stdout
-		bra	exit8
-01$		move.l	D0,OutputFile(a4) 	;default output is monitor window
+
+win_com		move.l	d0,WinFile(a4)
+		beq	exit5
+		move.l	D0,OutputFile(a4) 	;default output is monitor window
 
 ;
 ; set the the task trap code and data pointers
@@ -769,11 +785,25 @@ cmdline_done
 		lsr.l	#2,d1			infodataptr APTR->BPTR
 		bsr	sendpacket
 		tst.l	d0
+		beq	01$
+
+		move.l	OutputBuf+id_InUse(a4),d0	console IORequest ptr
+		beq.s	01$
+		move.l	d0,a0
+		move.l	IO_UNIT(a0),ConsoleUnit(a4)
+		;; set stdout to raw mode
+
+01$		move.l	WinFile(a4),a0
+		add.l	a0,a0
+		add.l	a0,a0
+		move.l	fh_Type(a0),a0
+		move.l	#ACTION_SCREEN_MODE,d0
+		moveq	#-1,d1		;Arg1
+		bsr	sendpacket
+		tst.l	d0
 		beq	exit
 
-		lea	OutputBuf(a4),a0
-		move.l	id_InUse(a0),a0		console IORequest ptr
-		move.l	IO_UNIT(a0),ConsoleUnit(a4)
+		;;;;;;;
 
 ;
 ; set default disk device name ("trackdisk.device")
@@ -806,10 +836,12 @@ cmdline_done
 ;; setting pc is error...
 ;;
 ;;		moveq	#-1,d0
-;;		move.l	d0,RegPC(a4)
+;;		move.l d0,RegPC(a4)
 
+		lea	cls_str(pc),a0
+		bsr	printstring_a0_window
 		lea	welcometxt(pc),A0
-		bsr	printstring_a0_window		;display welcome message
+		bsr	printstring_a0_window ;display welcome message
 
 ; this is for error handling...and for the return from the trap routine...
 		move.l	sp,StackPtr(a4)
@@ -821,15 +853,16 @@ cmdline_done
 mainloop	move.l	StackPtr(a4),sp		;restore stack pointer
 		bclr	#MONB_QTRACE,flags(a4)
 
-		moveq	#0,D0		;clear CTRL-C/D/E/F flags
-		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
-		lib	Exec,SetSignal
-
 		lea	main_prompt(pc),A0
 		bsr	printstring_a0_window	;display prompt
 
 		moveq	#0,D0
 		bsr	GetInput
+
+		moveq	#0,D0		;clear CTRL-C/D/E/F flags
+		move.l	#SIGBREAKF_CTRL_C!SIGBREAKF_CTRL_D!SIGBREAKF_CTRL_E!SIGBREAKF_CTRL_F,D1
+		lib	Exec,SetSignal
+
 		move.b	(A3)+,D0
 		bne.s	ml1
 
@@ -860,21 +893,33 @@ errcom		bsr	printstring_a0_window
 		bra.s	mainloop
 
 *** THE HELP COMMAND ***
-help		lea	helptext(pc),A0
+help		lea	cls_str(pc),a0
+		bsr	printstring_a0
+		lea	helptext(pc),A0
 hinfo		bsr	printstring_a0
 		bra.s	mainloop
 
 *** INFO ***
-info		lea	infotext(pc),A0
+info		lea	cls_str(pc),a0
+		bsr	printstring_a0
+		lea	infotext(pc),A0
 		bra.s	hinfo
 
 *** EXIT FROM MONITOR ***
+exit0		move.l	WinFile(a4),a0	;set console back to normal mode
+		add.l	a0,a0
+		add.l	a0,a0
+		move.l	fh_Type(a0),a0
+		move.l	#ACTION_SCREEN_MODE,d0
+		moveq	#0,d1
+		bsr	sendpacket
+
 exit		move.l	MyTask(a4),A0
 		move.l	OldTrapCode(a4),TC_TRAPCODE(A0)	 ;restore old TrapCode
 		move.l	OldUserData(a4),TC_Userdata(a0)	 ; and UserData
 		move.l	OldRetAddr(a4),pr_ReturnAddr(a0) ; and ReturnAddr
 
-		bsr	FreeAllMem		free all memory allocated by commands & and (
+exit5		bsr	FreeAllMem		free all memory allocated by commands & and (
 		bsr	remove_all_breaks	remove all breakpoints (free memory)
 		bsr	clear_all_variables
 		getbase	Dos
@@ -887,7 +932,12 @@ exit7		move.l	OutputFile(a4),D1	if output is redirected, close output file
 		beq.s	exit7a
 		lib	Close
 
-exit7a		move.l	WinFile(a4),D1
+exit7a		btst	#MONB_OWNWINDOW,flags(a4)
+		beq.s	exit8
+
+		move.l	WinFile(a4),D1
+		beq.s	exit8
+
 		lib	Close			close window file
 
 exit8		getbase	Dos,a1
@@ -1530,13 +1580,39 @@ abs_load	bsr	get_expr
 		ble.s	abs_load_1
 		move.l	a5,D5
 		move.l	D0,D6
-		bsr.s	showrange
+		bsr	showrange
 abs_load_1	move.l	D7,D1
 		lib	Close	;close the file
-jmp_mainloop_2a	bra.s	jmp_mainloop_2
+jmp_mainloop_2a	bra	mainloop
+
+do_options	addq.l	#2,a3
+		bsr	skipspaces
+		move.b	(a3)+,d0
+		cmp.b	#'+',d0
+		beq.s	add_option
+		cmp.b	#'-',d0
+		bne	error
+; remove option
+		bsr	get_expr
+		bclr	d0,MonOptions(a4)
+		bra.s	jmp_mainloop_2a
+
+add_option	bsr	get_expr
+		bset	d0,MonOptions(a4)
+		bra.s	jmp_mainloop_2a
+
 
 *** REDIRECT OUTPUT ***
-redirect	getbase	Dos
+redirect	move.b	(a3),d0
+		bsr	tolower
+		cmp.b	#'p',d0
+		bne.s	do_redirect
+		move.b	1(a3),d0
+		bsr	tolower
+		cmp.b	#'t',d0
+		beq.s	do_options
+
+do_redirect	getbase	Dos
 		move.l	OutputFile(a4),D1	;is output currently redirected
 		cmp.l	WinFile(a4),D1
 		beq.s	redir1
@@ -1777,7 +1853,7 @@ digisound	bsr	get_expr
 		move.l	D0,D6
 		bsr	get_expr	;period (speed)
 		move.w	D0,D7
-		clr.w	size(a4)
+		move.w	#1,size(a4)
 		bsr	skipspaces
 		tst.b	(a3)
 		beq.s	00$
@@ -1824,11 +1900,11 @@ digisound	bsr	get_expr
 		move.b	MP_SIGBIT(a0),d3
 		bset	d3,d0			wait until the sound finishes or
 		lib	Wait			user presses Ctrl-C
-		btst	d3,d0
-		beq.s	01$
 		move.l	a2,a1
-		lib	Remove		remove the message from the port
-01$		move.l	A2,A1
+		lib	AbortIO
+		move.l	a2,a1
+		lib	WaitIO
+		move.l	A2,A1
 		lib	CloseDevice
 digi7		move.l	MN_REPLYPORT(a2),d2
 		move.l	A2,A1
@@ -1984,7 +2060,8 @@ memcomp		move.b	(a3),d0
 		bne.s	no_cls
 
 *** THE CLS COMMAND ***
-		emitwin	FF	;Clear the Screen
+		lea	cls_str(pc),a0
+		bsr	printstring_a0_window
 		bra.s	jmp_mainloop_3
 
 **** COMPARE MEMORY ****
@@ -2025,10 +2102,12 @@ comp99		emit	LF
 ; find out how many addresses can be printed on one line
 ; in the c and h commands
 ;
-get_n_per_line	moveq	#0,d6
-		move.l	ConsoleUnit(a4),a0
+get_n_per_line	moveq	#80,d6
+		move.l	ConsoleUnit(a4),d0
+		beq.s	01$
+		move.l	d0,a0
 		move.w	cu_XMax(a0),d6
-		divu	#9,d6
+01$		divu	#9,d6
 		bne.s	09$
 		moveq	#1,d6
 09$		rts
@@ -2097,8 +2176,20 @@ huntfilltrf2	bra	mainloop
 memhunt		bsr	skipspaces
 		tst.b	(a3)
 		beq	help
+		move.b	(a3),d0
+		bsr	tolower
+		cmp.b	#'e',d0
+		bne.s	01$
+		move.b	1(a3),d0
+		bsr	tolower
+		cmp.b	#'l',d0
+		bne.s	01$
+		move.b	2(a3),d0
+		bsr	tolower
+		cmp.b	#'p',d0
+		beq	help
 
-		bsr	get_n_per_line
+01$		bsr	get_n_per_line
 		move.w	d6,D7
 		bsr	get_expr
 		move.l	D0,-(sp)
@@ -2163,14 +2254,22 @@ hunt99		emit	LF
 		bra	mainloop
 
 **** WAIT IF SPACE PRESSED, BREAK IF CTRL-C (status non-zero) ****
-CheckKeys	move.l	WinFile(a4),D1
-		movem.l	D2/a6,-(sp)
+CheckKeys	movem.l	D2/a6,-(sp)
+;#
+;# check for SIGBREAK... also... GMC does not seem to pass 
+;#
+		moveq	#0,d0
+		moveq	#0,d1
+		lib	Exec,SetSignal
+		btst	#SIGBREAKB_CTRL_C,d0
+		bne.s	break
+
 ;#
 ;# is timeout zero really safe?...I have found no problems yet...
 ;#
+		move.l	WinFile(a4),D1
 		moveq	#0,D2		;timeout=0
 		lib	Dos,WaitForChar
-		movem.l	(sp)+,D2/a6
 		tst.l	D0
 		beq.s	nobreak		;branch if no key pressed
 		bsr	GetKey
@@ -2188,8 +2287,9 @@ nospc		cmp.w	#CtrlC,D0
 break		lea	break_txt(pc),A0	;message '*** break ***'
 		bsr	printstring_a0_window
 		moveq	#-1,D0
-		rts
+		bra.s	ck_9
 nobreak		moveq	#0,D0
+ck_9		movem.l	(sp)+,D2/a6
 		rts
 
 **** PARAMETERS FOR DISPLAY AND DISASSEMBLE ****
@@ -2216,7 +2316,10 @@ param9		moveq	#20,D7
 ; get the number of text lines that will fit in the window
 ; from the console device unit structure
 ;
-		move.l	ConsoleUnit(a4),a0
+		move.l	ConsoleUnit(a4),d0
+		beq.s	09$
+
+		move.l	d0,a0
 		move.w	cu_YMax(a0),d7
 		subq.w	#2,d7
 		moveq	#1,d0
@@ -2293,13 +2396,21 @@ disassemble	movem.l	d2-d7/a2/a4/a6,-(sp)
 		move.l	a5,d0
 		bsr	puthex1_68
 
-		move.l	a3,a4
+		btst	#OPTB_NARROWDIS,MonOptions(a4)
+		beq.s	00$
+
+		clra	a4
+		move.b	#SPACE,(a3)+
+		move.b	#SPACE,(a3)+
+		bra.s	10$
+
+00$		move.l	a3,a4
 		addq.l	#1,a4
 		moveq	#SPACE,d0
 		moveq	#24-1,d1
 01$		move.b	d0,(a3)+
 		dbf	d1,01$
-		move.l	a3,-(sp)
+10$		move.l	a3,-(sp)
 
 ; store stack pointer in high words of d4 and d5
 		move.l	sp,d4
@@ -2315,12 +2426,24 @@ disassemble	movem.l	d2-d7/a2/a4/a6,-(sp)
 		move.w	(a5),d1
 		and.w	#$ff00,d1
 		beq.s	02$
-		lea	zero_txt(pc),a0
+		lea	dcw_txt(pc),a0
 		bsr	put_str
+		moveq	#0,d0
+		moveq	#2,d1
+		bsr	put_hexnum
 		moveq	#-1,d0
 		bra	dis_end
 
-02$		lea	DisAsmTable(pc),a2
+02$		move.l	a4,d1
+		bne.s	03$
+
+		and.w	#$f000,d0
+		cmp.w	#$a000,d0
+		beq	invalid
+		cmp.w	#$f000,d0
+		beq	invalid
+
+03$		lea	DisAsmTable(pc),a2
 
 instr_loop	move.w	d7,d0
 		and.w	(a2)+,d0
@@ -2443,27 +2566,31 @@ str_routines	rw	datar11,datar2,addrr11,addrr2
 ; note: GetWord & GetLong do not modify d1
 ;
 GetWord		movem.l	d1/a3,-(sp)
-		move.l	a4,a3
 		move.w	(a5)+,d0
+		move.l	a4,d1
+		beq.s	01$
+		move.l	a4,a3
 		move.w	d0,-(sp)
 		moveq	#4,d1
 		bsr	put_hexnum1
 		move.w	(sp)+,d0
 		move.b	#SPACE,(a3)+
 		move.l	a3,a4
-		movem.l	(sp)+,d1/a3
+01$		movem.l	(sp)+,d1/a3
 		rts
 
 GetLong		movem.l	d1/a3,-(sp)
-		move.l	a4,a3
 		move.l	(a5)+,d0
+		move.l	a4,d1
+		beq.s	01$
+		move.l	a4,a3
 		move.l	d0,-(sp)
 		moveq	#8,d1
 		bsr	put_hexnum1
 		move.l	(sp)+,d0
 		move.b	#SPACE,(a3)+
 		move.l	a3,a4
-		movem.l	(sp)+,d1/a3
+01$		movem.l	(sp)+,d1/a3
 		rts
 
 datar11		move.b	#'d',(a3)+
@@ -2507,7 +2634,7 @@ sizes		dc.b	'bwl'
 
 nothing_txt	dc.b	'nothing',0
 pc_txt		dc.b	'(pc',0
-zero_txt	dc.b	'dc.w',TAB,'$00',0
+dcw_txt		dc.b	'dc.w    ',0
 
 		even
 
@@ -2518,17 +2645,30 @@ invalid		move.l	d4,d0		restore stack pointer
 		move.l	d0,sp
 
 		move.l	d3,a3
-		moveq	#'?',d0
-		move.b	d0,(a3)+
-		move.b	d0,(a3)+
-		move.b	d0,(a3)+
 		move.l	a6,a5
+
+		move.l	a4,d1
+		bne.s	00$
+		
+		lea	dcw_txt(pc),a0
+		bsr	put_str
+		moveq	#0,d0
+		move.w	-2(a5),d0
+		moveq	#4,d1
+		bsr	put_hexnum
+		bra.s	02$
+
+00$		moveq	#'?',d0
+		move.b	d0,(a3)+
+		move.b	d0,(a3)+
+		move.b	d0,(a3)+
+
 		move.l	d3,a0
 		moveq	#SPACE,d0
 		moveq	#18-1,d1
 01$		move.b	d0,-(a0)
 		dbf	d1,01$
-		moveq	#-1,d0
+02$		moveq	#-1,d0
 		bra	dis_end
 
 immediate_data	move.b	#'#',(a3)+
@@ -3041,10 +3181,13 @@ memdisplay	move.b	(a3),d0
 		cmp.b	#'i',d0
 		beq	memoryinfo
 		bsr	getparams
-		move.l	ConsoleUnit(a4),a0
+		moveq	#0,d6
+		move.l	ConsoleUnit(a4),d0
+		beq.s	00$
+		move.l	d0,a0
 		cmp.w	#65,cu_XMax(a0)
 		scs	d6
-		move.l	Addr(a4),a5
+00$		move.l	Addr(a4),a5
 
 disploop	startline
 		move.l	a5,D0
@@ -6496,9 +6639,16 @@ GetKey
 * else it is a special code or -1 if key is not recognised
 * by this routine (for example the function keys)
 		bsr.s	GetChar
-		cmp.b	#CSI,D0
-		bne.s	ret9
+		cmp.b	#ESC,d0
+		bne.s	01$
 		bsr.s	GetChar
+		cmp.b	#'[',d0
+		bne.s	key99
+		bra.s	02$
+
+01$		cmp.b	#CSI,D0
+		bne.s	ret9
+02$		bsr.s	GetChar
 		cmp.b	#'A',D0
 		bcs.s	key1
 		cmp.b	#'D',D0
@@ -6761,8 +6911,9 @@ eraseline	bsr.s	gotoleftedge
 ;  added checking of 60 or 80 column default font
 ;  now checks the window width from console unit
 ;
-puthex1_68
-		move.l	ConsoleUnit(a4),a0
+puthex1_68	move.l	ConsoleUnit(a4),d1
+		beq.s	phex1_8
+		move.l	d1,a0
 		cmp.w	#65,cu_XMax(a0)
 		bcs.s	phex1_68
 		bra.s	phex1_8
@@ -6773,7 +6924,7 @@ phex1_68	move.l	d0,d1
 		bne.s	phex1_8
 		moveq	#6,d1
 		bra.s	put_hexnum1
-phex1_8	moveq	#8,d1
+phex1_8		moveq	#8,d1
 		bra.s	put_hexnum1
 ;
 ; put a signed hexnum in buffer pointed by a3
@@ -7077,7 +7228,7 @@ comadrs		rw	calculator
 		rw	memtransfer
 		rw	memfill
 		rw	memdisplay
-		rw	exit
+		rw	exit0
 		rw	redirect
 		rw	info
 
@@ -7747,7 +7898,7 @@ instr_names	dc.b	'as',0
 		dc.b	'illegal',0,0
 
 **** HELP TEXT ****
-helptext	dc.b	FF,TAB,TAB,'-- Amiga Monitor v'
+helptext	dc.b	TAB,TAB,'-- Amiga Monitor v'
 		VERSION
 		dc.b	' help (i=info, x=exit) --',LF
 		dc.b	'o [name]',TAB,':redirect output'
@@ -7794,12 +7945,12 @@ helptext	dc.b	FF,TAB,TAB,'-- Amiga Monitor v'
 		dc.b	'| set [var=expr]',TAB,': set/show variables',LF,0
 
 **** INFO TEXT ****
-infotext	dc.b FF,LF
+infotext	dc.b LF
 		dc.b	TAB,TAB,"Monitor info (version "
 		VERSION
 		dc.b	')',LF
 		dc.b	TAB,TAB,'---------------------------',LF
-		dc.b	TAB,TAB,' © 1987-1990 by Timo Rossi',LF,LF
+		dc.b	TAB,' Copyright 1987-1990 by Timo Rossi',LF,LF
 		dc.b	"   This is a machine code monitor/debugger for the Amiga.",LF
 		dc.b	" Pressing the HELP-key displays a list of commands.",LF,LF
 		dc.b	" Note1: Some of the assembler instructions require the",LF
@@ -7815,14 +7966,15 @@ infotext	dc.b FF,LF
 **** text data ****
 
 UpAndClearEol	dc.b	CtrlK
-ClearEol	dc.b	CSI,'K',0
-delch		dc.b	CSI,'P',0
-insch		dc.b	CSI,'@',0
-go_left_fmt	dc.b	CSI,'%ldD',0
-go_right_fmt	dc.b	CSI,'%ldC',0
+ClearEol	dc.b	ESC,'[K',0
+delch		dc.b	ESC,'[P',0
+insch		dc.b	ESC,'[@',0
+go_left_fmt	dc.b	ESC,'[%ldD',0
+go_right_fmt	dc.b	ESC,'[%ldC',0
+cls_str		dc.b	ESC,'[H',ESC,'[J',0
 
 dosname		dc.b	'dos.library',0
-intuname	dc.b	'intuition.library',0
+gfxname		dc.b	'graphics.library',0
 tdname		dc.b	'trackdisk.device',0
 audioname	dc.b	'audio.device',0
 allocmap	dc.b	1,8,2,4
@@ -7831,8 +7983,8 @@ windowfmt	dc.b	'RAW:0/%ld/%ld/%ld/Amiga Monitor v'
 		VERSION
 		dc.b	0
 
-welcometxt	dc.b	FF,LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
-		dc.b	TAB,TAB,'© 1987-1990 by Timo Rossi, version '
+welcometxt	dc.b	LF,TAB,TAB,TAB,' --- Amiga Monitor ---',LF,LF
+		dc.b	TAB,'   Copyright 1987-1990 by Timo Rossi, version '
 		VERSION
 		dc.b	LF,LF,0
 

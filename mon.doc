@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.31 instructions
+                 Amiga Monitor v1.34 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga. The first
@@ -34,6 +34,15 @@
  An optional filename can also be given in the command line.  The monitor
  will try to load the named executable file immediately after starting.
  The filename must be in quotes if it contains spaces.
+
+
+ Option flags (New in version 1.34)
+ ----------------------------------
+
+ Commands 'opt +n' and 'opt -n' where 'n' is a number between 1 and 7
+ can be used to set and reset monitor option flags. Currently only
+ one flag is implemented: flag #1 switches on the narrow disassembly
+ output mode (does not show the data as hex digits).
 
 
  Input line editing and command line history:
@@ -559,6 +568,13 @@ x -- Exit
 
 Version history:
 ----------------
+1.34 ->
+ - added 'narrow disassembly' option.
+ - digisound player now defaults to play the sample once.
+1.32 ->
+ - now opens own window only if started with 'run' or window width and
+   height are given on the command line. can be used from serial terminal
+   with AUX: shell.
 1.31 ->
  - it is now not possible to accidentally try to assemble code to
    an odd address.
@@ -661,11 +677,10 @@ Version history:
 
 
 
-Amiga Monitor v1.31 Copyright © 1987-1990 by Timo Rossi. The monitor
+Amiga Monitor v1.34 Copyright © 1987-1990 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
 'patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the zoo-file 'mon131.zoo' or lharc-file 'mon131.lzh'.
-
+way of distribution is the zoo-file 'mon134.zoo' or lharc-file 'mon134.lzh'.
 
 Send suggestions, bug reports etc. to:
 
