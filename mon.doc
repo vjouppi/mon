@@ -1,5 +1,5 @@
 
-                 Amiga Monitor v1.60 instructions
+                 Amiga Monitor v1.61 instructions
                  ================================
 
   This is a machine code monitor/debugger program for the Amiga.
@@ -75,7 +75,7 @@
    - flag #2
       Causes characters $a0-$ff to be considered printable in
       `m' command memory dump (and `?' command ascii display)
-      (Note that this was changed in 1.42, previously they were
+      (Note that this was changed in v1.42, previously they were
       printable by default).
 
    - flag #3
@@ -144,7 +144,7 @@
   Numbers can also be entered as ASCII strings in single quotes, for example:
    'FORM'  -->  hex 464f524d
 
-  Note that `+' was the decimal prefix in older versions. Now it is `_'.
+  Note that `+' was the decimal prefix in some old versions. Now it is `_'.
 
   Expressions
   -----------
@@ -308,9 +308,9 @@
 
   When the monitor requires a file or directory name or the device name
   for the `dev'-command, the name must be in double quotes if it contains
-  spaces. This has been changed from the previous versions. Also, some
-  escape processing is now done to the filename strings and the arguments
-  of the echo-command. See the entry for echo-command for details.
+  spaces. Also, some escape processing is done to the filename strings
+  and the arguments of the echo-command. See the entry for echo-command
+  for details.
 
 
   The following commands are available in the monitor
@@ -558,9 +558,7 @@ e [addr] -- Extended trace (execute with temporary breakpoint)
  control instruction, the code flow may never come to the temporary
  breakpoint. Normally it is better to trace using the w-instruction,
  but for example, system calls cannot always be traced, and even if
- they can, you most probably don't want to do it. In previous versions
- of the monitor you had to manually insert a breakpoint after the call
- and use the g-command. Now you can simply use the e-command.
+ they can, you most probably don't want to do it.
 
 q [addr] -- QuickTrace (execute until flow-control instruction)
  This command executes code one instruction at time (in the 68000 trace mode)
@@ -683,8 +681,7 @@ dev -- set/show current disk device
  to edit hard disk sectors! Note also that actual disk IO buffers used by
  the monitor are always in chip memory.
 
- The current disk device is used by the `<' and `>'-commands.  Previous
- versions of the monitor had them hardwired to use trackdisk.device.
+ The current disk device is used by the disk read/write commands (`<' and `>').
 
 <  -- Read disk sectors
  Usage:
@@ -785,8 +782,8 @@ vr -- show resource list
 
 vp -- show port list
   Shows the addresses, SigBits, mp_Flags-fields and names of all public
-  message ports currently in the system (Note: the flags-field is not
-  in hexadecimal, it was in decimal in previous versions)
+  message ports currently in the system (Note: the flags-field is
+  in hexadecimal, it was in decimal in some older versions)
 
 vs -- show semaphore list
   Shows the addresses and names of all public SignalSemaphores currently
@@ -893,6 +890,10 @@ if counter <= _10 goto loop
 
 Version history:
 ----------------
+1.61 ->
+  - breakpoint list shows counts correctly.
+  - better error messages with b and br commands.
+
 1.60 ->
   - command line setting from monitor command line works again
     (was broken in 1.59)
@@ -1104,7 +1105,7 @@ Version history:
  - chip memory allocation syntax has been changed.
 
 1.08 ->
- - the monitor works ok with 68010/68020 processors. previous versions
+ - the monitor works ok with 68010/68020 processors. older versions
    left sometimes extra data in supervisor stack.
 
 1.07 ->
@@ -1141,10 +1142,9 @@ Version history:
  - prehistoric versions...
 
 
-  Amiga Monitor v1.60 is Copyright © 1987-1993 by Timo Rossi. The monitor
+  Amiga Monitor v1.61 is Copyright © 1987-1993 by Timo Rossi. The monitor
 can be freely distributed non-commercially. This document file and the
-`patchtrace'-program should be included in the distribution. Preferred
-way of distribution is the lha-archive `mon160.lha'.
+`patchtrace'-program should be included in the distribution.
 
   Permission is given to Fred Fish to distribute this program
 on his `Fish disks'.

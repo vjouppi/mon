@@ -40,6 +40,7 @@
 * v1.58 ->	     1993-04-04    *
 * v1.59 ->	     1993-05-05..  *
 * v1.60 ->	     1993-06-06..  *
+* v1.61 ->	     1993-06-26..  *
 ************************************
 
 ;
@@ -528,4 +529,8 @@
 ;		  but the method used may be be completely legal...
 ;		- showing base register relative displacements
 ;		  as symbols now works.
+;
+;
+; 1993-06-26 --> 1.61
+;		- breakpoint listing lists counts correctly
 ;

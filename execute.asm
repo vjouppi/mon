@@ -33,6 +33,9 @@
 
 		xref	generic_error
 		xref	out_memory_error
+		xref	brk_already_set_error
+		xref	brk_not_set_error
+		xref	odd_address_error
 
 ;
 ;*** SET BREAKPOINT ***
@@ -41,7 +44,7 @@
 
 		call	GetExpr
 		btst	#0,D0
-		bne.s	brk_err
+		bne	odd_address_error
 		move.l	D0,a5
 
 		moveq	#1,d2
@@ -50,11 +53,11 @@
 
 		call	GetExpr
 		move.l	d0,d2
-		ble.s	brk_err
+		ble	generic_error
 
 1$		move.l	a5,d0
 		bsr	find_break
-		bpl.s	brk_err		;break already set
+		bpl	brk_already_set_error
 
 		move.l	A1,D3
 		moveq	#brk_SIZE,D0
@@ -76,8 +79,6 @@ no_start_of_list
 		move.l	(A1),(A0)
 		move.l	A0,(A1)
 brset9		rts
-
-brk_err		bra	generic_error
 
 ;
 ;*** REMOVE BREAKPOINT ***
@@ -103,7 +104,7 @@ brk_err		bra	generic_error
 
 break_rem1	call	GetExpr
 		bsr	find_break
-		bmi.s	brk_err		;break not set
+		bmi	brk_not_set_error
 
 do_remove_brk	move.l	A1,D0
 		bne.s	no_remove_from_start_of_list
@@ -124,7 +125,7 @@ rembrk_num	addq.l	#1,a3
 		call.s	find_brk_num
 		moveq	#-1,d1
 		cmp.l	d1,d0
-		beq.s	brk_err
+		beq	brk_not_set_error
 		bra.s	do_remove_brk
 ;
 ; params: breakpoint number in d0, returns breakpoint address or -1
@@ -799,7 +800,7 @@ breaklist_txt	dc.b	'Breakpoints:',LF,0
 skip_txt	dc.b	'*** Skipping ***',LF,0
 stackreset_txt	dc.b	'*** Stack reset ***',LF,0
 
-brk_fmt		dc.b	'%3ld   $%08lx   [%d]',LF,0
+brk_fmt		dc.b	'%3ld   $%08lx   [%ld]',LF,0
 hexfmt		dc.b	'$%08lx',LF,0
 
 		end

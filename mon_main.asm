@@ -40,7 +40,8 @@
 		xdef	addrmode_error
 		xdef	scriptonly_error
 		xdef	undeflabel_error
-
+		xdef	brk_already_set_error
+		xdef	brk_not_set_error
 		xdef	out_range_txt
 		xdef	break_txt
 
@@ -500,6 +501,8 @@ expression_error	bsr.s	errorhandler
 addrmode_error		bsr.s	errorhandler
 scriptonly_error	bsr.s	errorhandler
 undeflabel_error	bsr.s	errorhandler
+brk_already_set_error	bsr.s	errorhandler
+brk_not_set_error	bsr.s	errorhandler
 break_error		bsr.s	errorhandler
 		nop
 errorhandler	lea	error_routines+2(pc),a0
@@ -948,14 +951,16 @@ unknown_cmd_fmt	dc.b	"Unknown command '%s'",0
 
 script_err_fmt	dc.b	"in script '%s' line %ld",LF,0
 
-error_messages	dc.b	'Syntax error',0	; 0
-		dc.b	'odd address',0		; 1
-out_range_txt	dc.b	'out of range',0	; 2
-		dc.b	'out of memory',0	; 3
-		dc.b	'invalid expression',0	; 4
-		dc.b	'illegal addrmode',0	; 5
-		dc.b	'script only',0		; 6
-		dc.b	'undefined label',0	; 7
-break_txt	dc.b	'***Break',0		; 8
+error_messages	dc.b	'Syntax error',0		; 0
+		dc.b	'odd address',0			; 1
+out_range_txt	dc.b	'out of range',0		; 2
+		dc.b	'out of memory',0		; 3
+		dc.b	'invalid expression',0		; 4
+		dc.b	'illegal addrmode',0		; 5
+		dc.b	'script only',0			; 6
+		dc.b	'undefined label',0		; 7
+		dc.b	'breakpoint already set',0	; 8
+		dc.b	'no such breakpoint',0		; 9
+break_txt	dc.b	'***Break',0			;10
 
 		end
